@@ -1,0 +1,15 @@
+src/**
+tests/**
+scripts/**
+node_modules/**
+.vscode/**
+.vscodeignore
+.gitignore
+biome.json
+tsconfig.json
+pnpm-lock.yaml
+docs/screenshots/**
+dist/host-tests.cjs
+dist/smoke.cjs
+dist/**/*.map
+*.vsix
