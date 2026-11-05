@@ -4,11 +4,12 @@ import {
   actionSchema,
   applyEvent,
   deriveTitle,
+  mentionedAgent,
   parseMention,
   parseRunAgent,
   restoreSessions,
   type Session,
-} from '../src/model';
+} from '../src/core/model';
 export function session(id = 'one'): Session {
   return {
     id,
@@ -70,7 +71,7 @@ test('restored tools cannot keep claiming to run', () => {
     tool: { kind: 'command', name: 'command', title: 'pnpm test', status: 'running' },
   });
   const [restored] = restoreSessions({ version: 1, sessions: [target] });
-  assert.equal(restored.messages[0].tool?.status, 'failed');
+  assert.equal(restored.messages[0].tool?.status, 'interrupted');
 });
 test('a thinking block records when it ended, and patches merge tool state', () => {
   const target = session();
@@ -104,6 +105,10 @@ test('only a leading @mention with a task delegates', () => {
   assert.equal(parseMention('please ask @codex'), undefined);
   assert.equal(parseMention('@codex'), undefined);
   assert.equal(parseMention('@someone do it'), undefined);
+  assert.equal(mentionedAgent('@claude2 '), 'claud2');
+  assert.equal(mentionedAgent('  @CODEX fix it'), 'codex');
+  assert.equal(mentionedAgent('@claude'), undefined, 'the name may still be being typed');
+  assert.equal(mentionedAgent('please ask @codex now'), undefined);
 });
 test('run_agent arguments are validated before anything can start', () => {
   assert.equal(parseRunAgent({ agent: 'claude2', prompt: 'go' }).agent, 'claud2');

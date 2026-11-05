@@ -25,5 +25,10 @@
         "noExplicitAny": "off"
       }
     }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   }
 }

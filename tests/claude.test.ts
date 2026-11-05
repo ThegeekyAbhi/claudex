@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import type { AgentEvent, Session } from '../src/model';
-import { ClaudeAgent } from '../src/providers/claude';
-import { readClaudeTitle } from '../src/providers/claude-title';
+import type { AgentEvent, Session } from '../src/core/model';
+import { ClaudeAgent } from '../src/providers/claude/adapter';
+import { readClaudeTitle } from '../src/providers/claude/title';
 
 function session(extra: Partial<Session> = {}): Session {
   return {
@@ -97,7 +97,11 @@ test('thinking and text stream separately and reconcile with their final blocks'
   );
 });
 test('the chosen model and effort reach the CLI and thinking summaries are requested', async () => {
-  const { options, events } = await run([result], { model: 'sonnet', effort: 'high' });
+  const { options, events } = await run([result], {
+    model: 'sonnet',
+    effort: 'high',
+    thinking: 'on',
+  });
   assert.equal(options.model, 'sonnet');
   assert.equal(options.effort, 'high');
   assert.deepEqual(options.thinking, { type: 'adaptive', display: 'summarized' });
@@ -110,6 +114,13 @@ test('unset choices leave the CLI config alone, and no adaptive thinking is resp
   assert.equal('thinking' in options, false);
   assert.equal(options.permissionMode, undefined);
   assert.equal(options.allowDangerouslySkipPermissions, undefined);
+});
+
+test('Claude thinking Off is explicit while Default preserves native configuration', async () => {
+  const off = await run([result], { thinking: 'off' });
+  assert.deepEqual(off.options.thinking, { type: 'disabled' });
+  const native = await run([result]);
+  assert.equal('thinking' in native.options, false);
 });
 test('edits show a diff, and reported hunks replace the estimate after the tool runs', async () => {
   const { events } = await run([
@@ -277,7 +288,7 @@ test('Claude receives attached images as content blocks and is told of the size 
   await writeFile(large, Buffer.alloc(5 * 1024 * 1024 + 1));
   await assert.rejects(agent.send('Look', [{ path: large, mediaType: 'image/png' }]), /5 MB/);
 });
-test('usage falls back to the last response when the CLI cannot answer, and a failure is harmless', async () => {
+test('context comes from what the turn reported, at no cost to the turn', async () => {
   const { events } = await run([
     {
       ...assistant('m1', [{ type: 'text', text: 'Hi' }]),

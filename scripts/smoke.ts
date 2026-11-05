@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
-import type { Agent, AgentEvent, Session } from '../src/model';
-import { ClaudeAgent } from '../src/providers/claude';
-import { CodexAgent } from '../src/providers/codex';
+import type { Agent, AgentEvent, Session } from '../src/core/model';
+import { ClaudeAgent } from '../src/providers/claude/adapter';
+import { CodexAgent } from '../src/providers/codex/adapter';
 
 const root = await mkdtemp(path.join(tmpdir(), 'agent-workspace-smoke-'));
 await writeFile(path.join(root, 'README.md'), '# Adapter smoke test\n');

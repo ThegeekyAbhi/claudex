@@ -3,9 +3,9 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { ImageStore } from '../src/attachments';
-import type { AgentEvent, Session } from '../src/model';
-import { CodexAgent } from '../src/providers/codex';
+import type { AgentEvent, Session } from '../src/core/model';
+import { CodexAgent } from '../src/providers/codex/adapter';
+import { ImageStore } from '../src/providers/shared/image-store';
 
 function required<T>(value: T | undefined): T {
   assert.ok(value);
@@ -145,6 +145,67 @@ async function untilDone(events: AgentEvent[]) {
   }
   throw new Error('Fixture timed out');
 }
+test('Codex Off uses none consistently in turn and collaboration settings', async () => {
+  const { root, executable } = await fixture(
+    `emit({ method: 'turn/completed', params: { threadId: root, turn: { id: 't1', status: 'completed' } } });`,
+  );
+  const events: AgentEvent[] = [];
+  const agent = new CodexAgent(
+    codexSession(root, { mode: 'plan', thinking: 'off', effort: 'high' }),
+    executable,
+    (event) => events.push(event),
+  );
+  try {
+    await agent.send('Plan it');
+    await untilDone(events);
+    const turn = JSON.parse(await readFile(path.join(root, 'turn.json'), 'utf8'));
+    assert.equal(turn.effort, 'none');
+    assert.equal(turn.collaborationMode.settings.reasoning_effort, 'none');
+    assert.equal(turn.collaborationMode.settings.developer_instructions, null);
+  } finally {
+    agent.dispose();
+  }
+});
+
+test('Codex interruption waits for the matching terminal event after the RPC reply', async () => {
+  const { root, executable } = await fixture(`
+    lines.on('line', line => {
+      const request = JSON.parse(line);
+      if (request.method !== 'turn/interrupt') return;
+      emit({ id: request.id, result: {} });
+      emit({ method: 'item/agentMessage/delta', params: { threadId: root, itemId: 'marker', delta: 'reply-sent' } });
+      emit({ method: 'turn/completed', params: { threadId: root, turn: { id: 'other-turn', status: 'interrupted' } } });
+      const timer = setInterval(() => {
+        if (!require('fs').existsSync('release-stop')) return;
+        clearInterval(timer);
+        emit({ method: 'turn/completed', params: { threadId: root, turn: { id: 't1', status: 'interrupted' } } });
+      }, 5);
+    });
+  `);
+  const events: AgentEvent[] = [];
+  const agent = new CodexAgent(codexSession(root), executable, (event) => events.push(event));
+  try {
+    await agent.send('Work');
+    let settled = false;
+    const stopped = agent.interrupt().then(() => {
+      settled = true;
+    });
+    for (
+      let attempt = 0;
+      attempt < 100 &&
+      !events.some((event) => event.type === 'delta' && event.text === 'reply-sent');
+      attempt++
+    )
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(events.some((event) => event.type === 'delta' && event.text === 'reply-sent'));
+    assert.equal(settled, false);
+    await writeFile(path.join(root, 'release-stop'), 'release');
+    await stopped;
+    assert.equal(settled, true);
+  } finally {
+    agent.dispose();
+  }
+});
 test('Codex receives the chosen model and effort, and streams thinking, diffs, and names', async () => {
   const { root, executable } = await fixture(`
     const p = { threadId: root, turnId: 't1' };

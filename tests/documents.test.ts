@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createDocument, listDocuments, readDocument, resolveInside } from '../src/documents';
+import { createDocument, listDocuments, readDocument } from '../src/host/documents';
+import { resolveInside } from '../src/providers/shared/paths';
 
 test('documents remain ordinary files, and external edits are visible', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'aw-docs-'));

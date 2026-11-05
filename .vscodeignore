@@ -13,3 +13,5 @@ dist/host-tests.cjs
 dist/smoke.cjs
 dist/**/*.map
 *.vsix
+releases/**
+test-results/**

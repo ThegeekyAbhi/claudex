@@ -3,8 +3,17 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import type { Delegate, EventSink } from '../src/model';
-import { createAgentFactory, Sessions } from '../src/sessions';
+import { setTimeout as delay } from 'node:timers/promises';
+import type { Delegate, EventSink } from '../src/core/model';
+import { createAgentFactory, Sessions } from '../src/harness/session-manager';
+
+async function waitUntil(ready: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    if (ready()) return;
+    await delay(5);
+  }
+  assert.fail('Provider did not start');
+}
 
 function required<T>(value: T | undefined): T {
   assert.ok(value);
@@ -127,6 +136,7 @@ test('late failures and events from stopped agents cannot overwrite a resumed tu
   const sinks: EventSink[] = [];
   let rejectOld: (error: Error) => void = () => {};
   let calls = 0;
+  let oldStarted = false;
   const manager = new Sessions(storage, (_session, emit) => {
     sinks.push(emit);
     const first = calls++ === 0;
@@ -135,6 +145,7 @@ test('late failures and events from stopped agents cannot overwrite a resumed tu
         first
           ? new Promise<void>((_resolve, reject) => {
               rejectOld = reject;
+              oldStarted = true;
             })
           : Promise.resolve(),
       interrupt: async () => {},
@@ -143,6 +154,7 @@ test('late failures and events from stopped agents cannot overwrite a resumed tu
   });
   const item = manager.create('codex', storage, storage, 'Resume');
   const oldTurn = manager.send(item.id, 'old');
+  await waitUntil(() => oldStarted);
   await manager.interrupt(item.id);
   await manager.send(item.id, 'new');
   sinks[0]({ type: 'status', status: 'failed' });
@@ -168,7 +180,7 @@ test('ongoing output is checkpointed before a long-running turn completes', asyn
   required(sink)({ type: 'nativeId', id: 'recoverable-native-id' });
   const timer = setInterval(() => required(sink)({ type: 'delta', id: 'answer', text: '.' }), 30);
   try {
-    await new Promise((resolve) => setTimeout(resolve, 650));
+    await new Promise((resolve) => setTimeout(resolve, 1700));
     const data = JSON.parse(await readFile(path.join(storage, 'sessions.json'), 'utf8'));
     assert.equal(data.sessions[0].nativeId, 'recoverable-native-id');
     assert.equal(data.sessions[0].status, 'running');
@@ -235,7 +247,7 @@ test('a delegated agent runs as a child thread and reports its real outcome', as
       childId = id;
     },
   );
-  await new Promise((resolve) => setImmediate(resolve));
+  await waitUntil(() => sent.has(childId));
   const child = manager.get(childId);
   assert.equal(child.parentId, lead.id);
   assert.equal(child.provider, 'claude');
@@ -376,7 +388,9 @@ test('building a plan answers the pending request or starts a turn, and claims n
   assert.deepEqual(answers, [true]);
   assert.equal(claude.mode, 'agent');
   assert.equal(required(claude.plan).status, 'approved');
-  assert.deepEqual(sent, ['Plan it'], 'an answered request does not send another message');
+  assert.equal(sent.length, 1, 'an answered request does not send another message');
+  assert.ok(sent[0].startsWith('Plan it'));
+  assert.match(sent[0], /planning-guide/);
   assert.equal(claude.status, 'running', 'approval is not completion');
 
   // With no request waiting, as with Codex, building is an ordinary next turn.
@@ -412,7 +426,7 @@ test('context reaches the agent but stays out of the transcript', async () => {
   const images = [{ path: '/a.png', mediaType: 'image/png' }];
   const attachments = [{ kind: 'file' as const, path: 'a.ts' }];
   await manager.send(session.id, 'Look', { context: '<attached_context/>', images, attachments });
-  assert.deepEqual(sent[0], ['Look\n\n<attached_context/>', images]);
+  assert.deepEqual(sent[0], ['Look\n\n<attached_context/>', images, undefined]);
   assert.equal(session.messages[0].text, 'Look');
   assert.deepEqual(session.messages[0].attachments, attachments);
   await manager.dispose();

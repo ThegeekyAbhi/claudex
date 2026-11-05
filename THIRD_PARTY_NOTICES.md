@@ -4,7 +4,9 @@ The MIT license in `LICENSE` covers this project's own source code only. Bundled
 
 - React, React DOM, react-markdown, remark-gfm, Zod, cmdk, and Radix UI: MIT, including their transitive dependencies.
 - Shiki: MIT, including its bundled language grammars, whose own licenses are listed in that package.
-- remend: Apache-2.0.
+- remend and class-variance-authority: Apache-2.0.
+- Tailwind CSS (its compiled output), clsx, and tailwind-merge: MIT.
+- shadcn/ui components, copied into `src/webview/components/ui` and modified: MIT.
 - Lucide icons (lucide-react): ISC.
 - Inter, the typeface (@fontsource-variable/inter): SIL Open Font License 1.1.
 

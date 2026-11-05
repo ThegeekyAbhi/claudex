@@ -3,16 +3,16 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { collectChanges } from '../src/changes';
 import {
   countPatch,
   parsePatch,
   patchFromContent,
   patchFromEdit,
   stripPatchHeader,
-} from '../src/diff';
+} from '../src/core/diff';
+import { collectChanges } from '../src/host/changes';
+import { git } from '../src/host/worktrees';
 import { displayCommand } from '../src/providers/tool-format';
-import { git } from '../src/worktrees';
 
 test('edit patches keep only what changed and claim no line numbers', () => {
   const patch = patchFromEdit('a\nb\nc\nd\ne\nf\ng', 'a\nb\nc\nX\ne\nf\ng');

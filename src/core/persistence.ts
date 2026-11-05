@@ -1,0 +1,139 @@
+import { z } from 'zod';
+import { agentModeEnum } from './modes';
+import { attachmentSchema, IMAGE_FILE, type Session } from './session';
+
+const persistedDiff = z.object({
+  path: z.string(),
+  kind: z.enum(['add', 'update', 'delete', 'rename']),
+  patch: z.string(),
+  additions: z.number(),
+  deletions: z.number(),
+  original: z.string().optional(),
+  truncated: z.boolean().optional(),
+  binary: z.boolean().optional(),
+});
+const persistedSession = z.object({
+  id: z.string(),
+  provider: z.enum(['codex', 'claude']),
+  claudeCommand: z.enum(['claude', 'claud2']).optional(),
+  title: z.string(),
+  pinned: z.boolean().optional(),
+  titleSource: z.enum(['prompt', 'provider', 'user']).optional(),
+  cwd: z.string(),
+  workspace: z.string(),
+  nativeId: z.string().optional(),
+  parentId: z.string().optional(),
+  observed: z.boolean().optional(),
+  delegated: z.boolean().optional(),
+  model: z.string().optional(),
+  effort: z.string().optional(),
+  thinking: z.enum(['default', 'on', 'off']).optional(),
+  activeModel: z.string().optional(),
+  adaptiveThinking: z.boolean().optional(),
+  mode: agentModeEnum.optional(),
+  reportedMode: z.string().optional(),
+  nativeSettings: z
+    .object({
+      approvalPolicy: z.unknown(),
+      approvalsReviewer: z.unknown(),
+      sandbox: z.unknown(),
+    })
+    .optional(),
+  plan: z
+    .object({
+      text: z.string(),
+      status: z.enum(['drafting', 'ready', 'incomplete', 'approved']),
+      updatedAt: z.number(),
+      file: z.string().optional(),
+      after: z.string().optional(),
+    })
+    .optional(),
+  usage: z
+    .object({
+      context: z.object({ used: z.number(), max: z.number() }).optional(),
+      limits: z
+        .array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            usedPercent: z.number(),
+            resetsAt: z.number().optional(),
+          }),
+        )
+        .optional(),
+      updatedAt: z.number(),
+    })
+    .optional(),
+  status: z.enum(['idle', 'running', 'waiting', 'completed', 'failed', 'interrupted']),
+  messages: z.array(
+    z.object({
+      id: z.string(),
+      role: z.enum(['user', 'assistant', 'tool', 'notice', 'thinking', 'image']),
+      text: z.string(),
+      attachments: z.array(attachmentSchema).optional(),
+      image: z
+        .object({
+          status: z.enum(['generating', 'ready', 'failed']),
+          file: z.string().regex(IMAGE_FILE).optional(),
+          prompt: z.string().optional(),
+          failure: z.string().optional(),
+        })
+        .optional(),
+      startedAt: z.number().optional(),
+      endedAt: z.number().optional(),
+      planningGuideVersion: z.string().optional(),
+      tool: z
+        .object({
+          kind: z.enum(['command', 'read', 'edit', 'search', 'web', 'agent', 'skill', 'other']),
+          name: z.string(),
+          title: z.string(),
+          pinned: z.boolean().optional(),
+          status: z.enum(['running', 'completed', 'failed', 'declined', 'interrupted']),
+          input: z.string().optional(),
+          diffs: z.array(persistedDiff).optional(),
+          diffSource: z.literal('filesystem').optional(),
+          captureNote: z.string().optional(),
+          workerId: z.string().optional(),
+          durationMs: z.number().optional(),
+          skill: z
+            .object({
+              name: z.string(),
+              path: z.string().optional(),
+              phase: z.enum(['read', 'invoke']),
+            })
+            .optional(),
+        })
+        .optional(),
+    }),
+  ),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+export const savedState = z.object({ version: z.literal(1), sessions: z.array(persistedSession) });
+export function restoreSessions(value: unknown): Session[] {
+  return savedState.parse(value).sessions.map((session) => {
+    const unfinished = ['running', 'waiting'].includes(session.status);
+    return {
+      ...session,
+      status: unfinished ? 'interrupted' : session.status,
+      ...(session.plan?.status === 'drafting'
+        ? { plan: { ...session.plan, status: 'incomplete' as const } }
+        : {}),
+      // Nothing that never reported an outcome may keep claiming to run after a restart.
+      messages: session.messages.map((message) => {
+        if (message.tool?.status === 'running')
+          return { ...message, tool: { ...message.tool, status: 'interrupted' as const } };
+        if (message.image?.status === 'generating')
+          return {
+            ...message,
+            image: {
+              ...message.image,
+              status: 'failed' as const,
+              failure: 'The window closed before this finished.',
+            },
+          };
+        return message;
+      }),
+    };
+  });
+}

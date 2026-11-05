@@ -31,6 +31,21 @@ Verified on 2026-11-04 with fixtures: `pnpm check` and `pnpm test:ui` passed, un
 
 Verified on 2026-11-04 with fixtures: `pnpm check` and `pnpm test:ui` passed, under the extension's CSP. The UI test answers questions by keyboard (including multiple choice and a typed answer), skips with Esc, and checks the usage card's figures and that an elapsed limit is hidden. Parser tests use the protocol shapes from the generated Codex types and the SDK's declarations. No live turn ran, so neither CLI's usage reports nor `getContextUsage` and the SDK's experimental usage call have been seen working against a real account.
 
+## 0.6.0 update
+
+Verified on 2026-11-04 with fixtures only: `pnpm check` and `pnpm test:ui` passed, under the extension's CSP. No provider turns were run and `pnpm smoke` was not run, as agreed.
+
+Covered: the exact settings each mode sends on each CLI, restoring Codex's settings after Ask, a refused Auto, plan file saving, Build using edited text, skill catalog parsing including malformed entries, the `/` menu by keyboard, muted chips, the panel, the one-nudge rule, and the plan editor in a browser.
+
+**Not yet confirmed against real CLIs or a real VS Code window:**
+
+- Auto on both CLIs, and whether your Claude model allows it.
+- Ask staying read-only on both.
+- Plan to Build on both, including whether Claude follows edited text passed through `updatedInput.plan`.
+- A skill running on each, including `/name` through the SDK.
+- `skills/list`, `skills/config/write`, and `mcpServer/startupStatus/updated` against your Codex version. They're read from its generated types.
+- The custom editor, and the lazily loaded highlighter, in a real webview.
+
 ## Limits of this verification
 
 Real approval clicks with live provider tools, real internal worker delegation, the terminal-to-rich-chat handoff, long-running workloads, and every provider permission subtype still need interactive end-to-end acceptance in VS Code. Their application logic is covered where applicable by automated tests; the full native user workflow has not been certified. Rich transcripts do not backfill messages written in native terminals.

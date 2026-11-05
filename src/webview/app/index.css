@@ -1,0 +1,416 @@
+/*
+ * The only stylesheet. Components style themselves with Tailwind classes. What stays here can't
+ * live in a className: theme values, element defaults, and agent-written Markdown, whose HTML
+ * carries no classes. Preflight is left out, so these defaults are the only reset.
+ */
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
+
+@source "../";
+
+/* shadcn's `dark:` follows VS Code's theme, not the operating system's. */
+@custom-variant dark (&:where(
+    .vscode-dark,
+    .vscode-dark *,
+    .vscode-high-contrast,
+    .vscode-high-contrast *
+  ));
+
+/* Semantic tokens follow the active VS Code theme, including custom themes. */
+body {
+  color-scheme: dark;
+  --canvas: var(--vscode-editor-background, #181818);
+  --surface: var(--vscode-textCodeBlock-background, var(--canvas));
+  --raised: var(--vscode-input-background, #242424);
+  --overlay: var(--vscode-menu-background, var(--raised));
+  --foreground: var(--vscode-foreground, #dedede);
+  --muted: var(--vscode-descriptionForeground, #a0a0a0);
+  --faint: var(--vscode-descriptionForeground, #a0a0a0);
+  --border: var(--vscode-widget-border, var(--vscode-panel-border, #444));
+  --border-strong: var(--vscode-input-border, var(--vscode-panel-border, #555));
+  --hover: var(--vscode-list-hoverBackground, #ffffff0d);
+  --selection: var(--vscode-list-activeSelectionBackground, #ffffff18);
+  --accent: var(--vscode-button-background, #dedede);
+  --accent-hover: var(--vscode-button-hoverBackground, var(--accent));
+  --accent-text: var(--vscode-button-foreground, #181818);
+  --focus: var(--vscode-focusBorder, #888);
+  --success: var(--vscode-testing-iconPassed, #58b88b);
+  --warning: var(--vscode-editorWarning-foreground, #d8b268);
+  --error: var(--vscode-errorForeground, #e47777);
+  --add: var(--vscode-gitDecoration-addedResourceForeground, var(--success));
+  --del: var(--vscode-gitDecoration-deletedResourceForeground, var(--error));
+  --add-bg: var(--vscode-diffEditor-insertedTextBackground, #58b88b22);
+  --del-bg: var(--vscode-diffEditor-removedTextBackground, #e4777722);
+  --link: var(--vscode-textLink-foreground, #9bb9df);
+  --claude: #d97757;
+  --codex: #8b9bff;
+  --shadow: 0 6px 24px var(--vscode-widget-shadow, #0005);
+  --mono: var(--vscode-editor-font-family, ui-monospace, "SF Mono", Menlo, monospace);
+  --plan: var(--warning);
+  --plan-text: var(--accent-text);
+  --plan-bg: color-mix(in srgb, var(--warning) 14%, transparent);
+  --code-foreground: var(--vscode-editor-foreground, var(--foreground));
+  --code-background: transparent;
+  --code-token-keyword: var(--vscode-symbolIcon-keywordForeground, var(--foreground));
+  --code-token-string: var(--vscode-symbolIcon-stringForeground, var(--foreground));
+  --code-token-string-expression: var(--code-token-string);
+  --code-token-comment: var(--muted);
+  --code-token-constant: var(--vscode-symbolIcon-constantForeground, var(--foreground));
+  --code-token-function: var(--vscode-symbolIcon-functionForeground, var(--foreground));
+  --code-token-parameter: var(--foreground);
+  --code-token-punctuation: var(--muted);
+  --code-token-link: var(--link);
+  --code-token-inserted: var(--add);
+  --code-token-deleted: var(--del);
+  --code-token-changed: var(--warning);
+}
+html[data-surface="sidebar"] body {
+  --canvas: var(--vscode-sideBar-background, var(--vscode-editor-background, #181818));
+}
+body.vscode-light,
+body.vscode-high-contrast-light {
+  color-scheme: light;
+  --canvas: var(--vscode-editor-background, #fff);
+  --raised: var(--vscode-input-background, #f4f4f4);
+  --foreground: var(--vscode-foreground, #222);
+  --muted: var(--vscode-descriptionForeground, #606060);
+  --accent: var(--vscode-button-background, #333);
+  --accent-text: var(--vscode-button-foreground, #fff);
+  --claude: #c15f3c;
+  --codex: #4f5bd5;
+}
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+  --border: var(--vscode-contrastBorder, var(--foreground));
+  --border-strong: var(--vscode-contrastBorder, var(--foreground));
+  --claude: var(--foreground);
+  --codex: var(--foreground);
+}
+/* Anything marked with an agent takes that agent's colour. High contrast stays on theme colours. */
+[data-agent] {
+  --agent: var(--foreground);
+  --agent-tint: color-mix(in srgb, var(--agent) 15%, transparent);
+  --agent-edge: color-mix(in srgb, var(--agent) 55%, transparent);
+}
+[data-agent="claude"],
+[data-agent="claud2"] {
+  --agent: var(--claude);
+}
+[data-agent="codex"] {
+  --agent: var(--codex);
+}
+body.vscode-high-contrast [data-agent],
+body.vscode-high-contrast-light [data-agent] {
+  --agent-tint: var(--selection);
+  --agent-edge: var(--focus);
+}
+
+/* Resolved to the tokens above, so every VS Code theme still applies. */
+@theme inline {
+  --font-sans: var(--vscode-font-family, -apple-system), system-ui, sans-serif;
+  --color-background: var(--canvas);
+  --color-foreground: var(--foreground);
+  --color-card: var(--raised);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--overlay);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-text);
+  --color-secondary: var(--raised);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--hover);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--selection);
+  --color-accent-foreground: var(--foreground);
+  --color-destructive: var(--error);
+  --color-border: var(--border-strong);
+  --color-input: var(--border-strong);
+  --color-ring: var(--focus);
+  --color-faint: var(--faint);
+  --color-plan: var(--plan);
+  --color-plan-foreground: var(--plan-text);
+  --color-plan-tint: var(--plan-bg);
+  --color-warning: var(--warning);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-overlay: var(--overlay);
+  --color-subtle: var(--border);
+  --color-strong: var(--border-strong);
+  --color-accent-hover: var(--accent-hover);
+  --color-link: var(--link);
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-claude: var(--claude);
+  --color-codex: var(--codex);
+  --color-agent: var(--agent);
+  --color-agent-tint: var(--agent-tint);
+  --color-agent-edge: var(--agent-edge);
+  --color-add: var(--add);
+  --color-del: var(--del);
+  --color-add-bg: var(--add-bg);
+  --color-del-bg: var(--del-bg);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-md: var(--shadow);
+  --font-mono: var(--mono);
+  --animate-spinner: spin 0.8s linear infinite;
+  --animate-menu-in: menu-in 110ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-shimmer: shimmer 1.8s linear infinite;
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes menu-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+@utility shimmer {
+  background: linear-gradient(90deg, var(--muted) 30%, var(--foreground) 50%, var(--muted) 70%);
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: var(--animate-shimmer);
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    background: none;
+    color: var(--muted);
+  }
+}
+
+/* Element defaults. Zero-specificity where it matters, so any class wins. */
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--canvas);
+  color: var(--foreground);
+  font-family: var(--vscode-font-family, -apple-system), system-ui, sans-serif;
+  font-size: var(--vscode-font-size, 13px);
+  line-height: 1.5;
+  font-feature-settings: "cv01", "ss03";
+  -webkit-font-smoothing: antialiased;
+}
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button:where(:not([data-slot="button"])) {
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease;
+}
+button:where(:not([data-slot="button"])):hover:where(:not(:disabled)) {
+  background: var(--hover);
+}
+button:where(:not([data-slot="button"])):disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 1px;
+}
+input,
+textarea {
+  background: transparent;
+  border: none;
+  outline: none;
+  min-width: 0;
+}
+textarea::placeholder,
+input::placeholder {
+  color: var(--faint);
+}
+button svg {
+  flex-shrink: 0;
+}
+kbd {
+  font: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+.session-empty code {
+  background: var(--selection);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+[cmdk-group-heading] {
+  padding: 6px 7px 3px;
+  font-size: 11px;
+  color: var(--faint);
+}
+:where([data-slot="button"]) {
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+:where([data-slot], [data-slot] *) {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: var(--border-strong);
+}
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+}
+
+/* Markdown written by agents. */
+:where(.markdown) {
+  line-height: 1.65;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+:where(.markdown) > :first-child {
+  margin-top: 0;
+}
+:where(.markdown) > :last-child {
+  margin-bottom: 0;
+}
+:where(.markdown) p {
+  margin: 0.7em 0;
+}
+:where(.markdown) h1,
+:where(.markdown) h2,
+:where(.markdown) h3 {
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.5em 0 0.5em;
+  scroll-margin-top: 8px;
+}
+:where(.markdown) h1 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+:where(.markdown) h2 {
+  font-size: 15px;
+}
+:where(.markdown) h3 {
+  font-size: 13px;
+}
+:where(.markdown) strong {
+  font-weight: 600;
+}
+:where(.markdown) hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+:where(.markdown) pre {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  max-height: 360px;
+}
+:where(.markdown) .code-block pre {
+  border: none;
+  border-radius: 0;
+  margin: 0;
+  color: var(--code-foreground);
+  overflow-wrap: normal;
+}
+:where(.markdown) code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  background: var(--selection);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+:where(.markdown) pre code {
+  padding: 0;
+  background: none;
+  white-space: pre;
+}
+:where(.markdown) blockquote {
+  border-left: 2px solid var(--border-strong);
+  margin: 0.9em 0;
+  padding-left: 12px;
+  color: var(--muted);
+}
+:where(.markdown) table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+:where(.markdown) td,
+:where(.markdown) th {
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  padding: 6px 10px;
+  overflow-wrap: normal;
+}
+:where(.markdown) tr:last-child td {
+  border-bottom: none;
+}
+:where(.markdown) th {
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--raised);
+}
+:where(.markdown) ul,
+:where(.markdown) ol {
+  padding-left: 20px;
+  margin: 0.7em 0;
+}
+:where(.markdown) li {
+  margin: 0.25em 0;
+}
+:where(.markdown) li::marker {
+  color: var(--faint);
+}
+:where(.markdown) ul.contains-task-list {
+  list-style: none;
+  padding-left: 4px;
+}
+:where(.markdown) .task-list-item input {
+  margin: 0 6px 0 0;
+  vertical-align: -1px;
+  accent-color: var(--muted);
+}
+
+/* These menus are frequent actions; opening them should be immediate. */
+[data-slot="dropdown-menu-content"],
+[role="menu"] {
+  animation: none;
+}

@@ -5,6 +5,7 @@ import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
+import type { Session } from '../src/core/model';
 
 const preview = spawn(process.execPath, ['scripts/preview.mjs'], {
   stdio: ['ignore', 'pipe', 'inherit'],
@@ -31,7 +32,7 @@ page.on('pageerror', (error) => errors.push(error.message));
 page.on('console', (message) => {
   if (/Content Security Policy/i.test(message.text())) errors.push(message.text());
 });
-await mkdir('docs/screenshots', { recursive: true });
+await mkdir('test-results/screenshots', { recursive: true });
 try {
   await page.goto('http://127.0.0.1:4173');
   await page.getByRole('button', { name: /^Model: Codex/ }).waitFor();
@@ -182,6 +183,28 @@ try {
             },
           },
           {
+            id: 'shell-diff',
+            role: 'tool',
+            text: '',
+            tool: {
+              kind: 'other',
+              name: 'filesystemChanges',
+              title: 'Observed file changes',
+              status: 'completed',
+              diffSource: 'filesystem',
+              diffs: [
+                {
+                  path: 'src/shell-edit.ts',
+                  kind: 'update',
+                  patch: '@@ edit @@\n-before\n+after',
+                  additions: 1,
+                  deletions: 1,
+                },
+              ],
+              captureNote: '1 path skipped (capture limits, symlinks, or unreadable files).',
+            },
+          },
+          {
             id: 'a',
             role: 'assistant',
             text: 'The cache is keyed too loosely, so I fixed that. Next milestone:\n\n- Validate render contracts\n- Implement the plan compiler\n\nThe brief is in `docs/agent-work/`.',
@@ -294,14 +317,14 @@ try {
       expected,
     );
   }
-  const box = page.getByRole('textbox', { name: 'Message your agent' });
+  const box = page.locator('textarea[aria-label="Message your agent"]');
 
   // The panel fills the webview despite VS Code's injected body padding, with a left divider.
   const frame = await page.evaluate(() => ({
     padding: getComputedStyle(document.body).paddingLeft,
     left: document.querySelector('.workspace')?.getBoundingClientRect().left,
     border: getComputedStyle(document.querySelector('.workspace') as Element).borderLeftWidth,
-    font: document.fonts.check('13px "Inter Variable"'),
+    font: getComputedStyle(document.body).fontFamily.split(',')[0].trim() === 'system-ui',
   }));
   assert.deepEqual(frame, { padding: '0px', left: 0, border: '1px', font: true });
 
@@ -319,7 +342,7 @@ try {
   );
   await page.getByRole('option', { name: 'GPT-6.1-Sol' }).waitFor();
   assert.equal(await page.getByRole('option', { name: 'Sonnet 5.5' }).count(), 0);
-  await page.screenshot({ path: 'docs/screenshots/model-selector.png' });
+  await page.screenshot({ path: 'test-results/screenshots/model-selector.png' });
   // Choosing a provider on the left shows its models on the right, by mouse or arrow key.
   await rail.getByRole('tab', { name: 'Claude', exact: true }).click();
   await page.getByRole('option', { name: 'Sonnet 5.5' }).waitFor();
@@ -327,10 +350,13 @@ try {
   // Older versions wait behind More models.
   assert.equal(await page.getByRole('option', { name: 'Opus 4.8' }).count(), 0);
   await page.getByRole('option', { name: /More models/ }).click();
-  // The highlight moves to the first revealed row, and the footer describes that row.
+  // The highlight moves to the first revealed row, with its description inline.
   await page.getByRole('option', { name: 'Opus 4.8', selected: true }).waitFor();
-  await page.locator('.menu-footer').getByText('Best for everyday, complex tasks').waitFor();
-  await page.screenshot({ path: 'docs/screenshots/model-selector-claude.png' });
+  await page
+    .getByRole('option', { name: 'Opus 4.8' })
+    .getByText('Best for everyday, complex tasks')
+    .waitFor();
+  await page.screenshot({ path: 'test-results/screenshots/model-selector-claude.png' });
   const search = page.getByRole('combobox');
   await search.focus();
   await search.press('ArrowRight');
@@ -346,16 +372,13 @@ try {
   await search.fill('opus 4');
   await page.getByRole('option', { name: 'Opus 4.8' }).waitFor();
   await search.fill('sonnet');
-  await page.screenshot({ path: 'docs/screenshots/model-selector-search.png' });
+  await page.screenshot({ path: 'test-results/screenshots/model-selector-search.png' });
   assert.equal(await page.getByRole('option').count(), 1, 'search filters across agents');
   await search.press('Enter');
   await page.getByRole('button', { name: /^Model: Claude Sonnet/ }).waitFor();
   // Effort lives in the model menu, for the model that is chosen.
   await page.getByRole('button', { name: /^Model:/ }).click();
-  await page
-    .getByRole('group', { name: 'Reasoning effort' })
-    .getByRole('button', { name: 'High' })
-    .click();
+  await page.getByRole('combobox', { name: 'Reasoning effort' }).selectOption('high');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /^Model: Claude Sonnet 5.5, high effort/ }).waitFor();
   await box.fill('Fix the login bug');
@@ -377,6 +400,11 @@ try {
   // Worktrees are opt-in, offered as a choice next to the model.
   await page.getByRole('button', { name: /^Location/ }).click();
   await page.getByRole('menuitemradio', { name: /New worktree/ }).click();
+  // A mention with no prompt yet waits, instead of sending its own text to the current agent.
+  await box.fill('@claude ');
+  assert.equal(await page.getByRole('button', { name: 'Send message' }).isDisabled(), true);
+  await box.press('Enter');
+  assert.equal((await sentOf('start')).length, 1, 'a bare mention does not start a thread');
   await box.fill('@codex Try it in isolation');
   await box.press('Enter');
   const [, mentioned] = await sentOf('start');
@@ -395,19 +423,77 @@ try {
   // The worktree choice applied to that thread only.
   await page.getByRole('button', { name: 'Location: local checkout' }).waitFor();
 
+  const pickAgent = async (agent: string, option: string) => {
+    await page.getByRole('button', { name: /^Model:/ }).click();
+    await page.getByRole('tablist').getByRole('tab', { name: agent, exact: true }).click();
+    await page.getByRole('option', { name: option }).click();
+  };
+  await pickAgent('Codex', 'GPT-6-Luna');
+  catalog.codex.models[1].efforts.unshift('none');
+  await update(undefined);
+  await page.getByRole('button', { name: 'Thinking', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Off', exact: true }).click();
+  assert.equal(
+    (await page.getByRole('button', { name: 'Thinking', exact: true }).textContent())?.includes(
+      'Off',
+    ),
+    true,
+  );
+  await page.getByRole('button', { name: 'Thinking', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Default', exact: true }).click();
+
   // A thread shows thinking, steps, visible diffs, and child threads.
   await update('codex-one');
   await page.getByRole('heading', { name: 'Run Claude agent?' }).waitFor();
   await page.getByRole('region', { name: 'Changes to src/compiler.ts' }).waitFor();
   assert.ok(await page.locator('.diff-line.add').first().isVisible(), 'diffs show by default');
+  const observedDiff = page.getByRole('region', { name: 'Changes to src/shell-edit.ts' });
+  await observedDiff.getByText('after', { exact: true }).waitFor();
+  await page.getByText('Observed file changes', { exact: true }).waitFor();
+  await page
+    .getByText('1 path skipped (capture limits, symlinks, or unreadable files).', { exact: true })
+    .waitFor();
+  await observedDiff.getByRole('button', { name: 'src/shell-edit.ts', exact: true }).click();
+  assert.equal(await observedDiff.getByText('after', { exact: true }).count(), 0);
+  await observedDiff.getByRole('button', { name: 'src/shell-edit.ts', exact: true }).click();
   await page.getByRole('button', { name: /Edited 1 file, ran 2 commands, read 1 file/ }).click();
   await page.getByRole('button', { name: 'Thought for 4s' }).click();
   await page.getByText('so a renamed clip could reuse').waitFor();
   await page.getByText('Failed: running').waitFor();
-  await page.screenshot({ path: 'docs/screenshots/conversation.png' });
+  await page.screenshot({ path: 'test-results/screenshots/conversation.png' });
   await page.getByRole('button', { name: 'Allow once' }).click();
   const [approval] = await sentOf('approve');
   assert.deepEqual([approval.id, approval.allowed], ['codex-one', true]);
+
+  // Switching a native tool request to Auto sends intent, never an approval.
+  const autoSession = snapshot.sessions[0] as Session;
+  autoSession.nativeId = 'native-root';
+  autoSession.nativeSettings = { approvalPolicy: 'on-request' };
+  autoSession.approval = {
+    id: 'native-approval',
+    title: 'Run command?',
+    detail: 'pnpm check',
+    origin: 'provider',
+  };
+  await update('codex-one');
+  await page.getByRole('button', { name: 'Stop and resume in Auto' }).click();
+  const autoActions = await sentOf('resumeInAuto');
+  assert.deepEqual(autoActions.at(-1), {
+    type: 'resumeInAuto',
+    id: 'codex-one',
+    requestId: 'native-approval',
+  });
+  assert.equal((await sentOf('approve')).length, 1, 'Auto does not grant the request');
+  autoSession.transition = 'stopping';
+  await update('codex-one');
+  await page.getByText('Stopping…', { exact: true }).waitFor();
+  assert.ok(await page.getByRole('button', { name: 'Allow once' }).isDisabled());
+  delete autoSession.transition;
+  autoSession.approval = {
+    id: 'approval-one',
+    title: 'Run Claude agent?',
+    detail: 'Double-check the plan compiler cache key.',
+  };
 
   // Questions dock on the composer, one at a time, and answer from the keyboard.
   snapshot.sessions.push({
@@ -419,6 +505,8 @@ try {
     status: 'waiting',
     createdAt: 8,
     updatedAt: Date.now(),
+    mode: 'agent',
+    runtime: { mcpServers: [{ name: 'figma', status: 'failed' }] },
     usage: {
       context: { used: 176_000, max: 200_000 },
       limits: [
@@ -464,7 +552,7 @@ try {
     throw new Error('The question card did not take focus.');
   });
   await questionCard.getByText('Recommended', { exact: true }).waitFor();
-  await page.screenshot({ path: 'docs/screenshots/questions.png' });
+  await page.screenshot({ path: 'test-results/screenshots/questions.png' });
   const continueButton = questionCard.getByRole('button', { name: /Continue/ });
   assert.equal(await continueButton.isDisabled(), true, 'an answer is needed to move on');
   await page.keyboard.press('b');
@@ -488,6 +576,7 @@ try {
   });
   // Esc tells the agent you declined, and reports no answers.
   await update(undefined);
+  await questionCard.waitFor({ state: 'detached' });
   await update('asking');
   await questionCard.getByText('1 of 3').waitFor();
   await questionCard.focus();
@@ -496,13 +585,25 @@ try {
   assert.deepEqual([skipped.allowed, skipped.answers], [false, {}]);
   // Usage: a quiet ring with the CLI's own numbers, and a way forward when nearly full.
   const ring = page.getByRole('button', { name: 'Context 88% used' });
+  assert.match(await ring.innerText(), /Ctx 88%/);
+  assert.match(await ring.innerText(), /Week/);
   await ring.hover();
-  const usageCard = page.getByRole('dialog', { name: 'Usage' });
+  const usageCard = page.getByRole('dialog', { name: 'Thread details' });
   await usageCard.getByText('176K of 200K tokens').waitFor();
   await usageCard.getByText('Weekly limit').waitFor();
   assert.equal(await usageCard.getByText('Expired').count(), 0, 'an elapsed window is not shown');
   await usageCard.getByRole('button', { name: 'Hand off to another agent' }).waitFor();
-  await page.screenshot({ path: 'docs/screenshots/usage.png' });
+  // The card is also the inspector: what the CLI reported, and a failed MCP server gets a dot.
+  await usageCard.getByText('Mode').waitFor();
+  await usageCard.getByText('figma: failed').waitFor();
+  await page.getByTestId('mcp-dot').waitFor();
+  // At most one nudge, the most useful one, and closing it stays closed.
+  const nudges = page.locator('.composer-caption output');
+  assert.equal(await nudges.count(), 1);
+  await nudges.getByText('Close to a limit.').waitFor();
+  await page.screenshot({ path: 'test-results/screenshots/usage.png' });
+  await page.getByRole('button', { name: 'Dismiss: Close to a limit.' }).click();
+  assert.equal(await nudges.count(), 0);
   await page.mouse.move(0, 0);
   await usageCard.waitFor({ state: 'detached' });
   await update('codex-one');
@@ -517,11 +618,14 @@ try {
   // An agent can be run from the composer without leaving the thread.
   await box.fill('@cl');
   await page.getByRole('option', { name: /@claude2/ }).waitFor();
-  await page.screenshot({ path: 'docs/screenshots/mention.png' });
+  await page.screenshot({ path: 'test-results/screenshots/mention.png' });
   await box.press('ArrowDown');
   await box.press('Enter');
   assert.equal(await box.inputValue(), '@claude2 ');
+  // The pill names who a mention runs, on the model it will really use.
+  await page.getByRole('button', { name: 'Model: Claude 2 Default' }).waitFor();
   await box.fill('@codex Write the migration');
+  await page.getByRole('button', { name: 'Model: Codex Default' }).waitFor();
   await page.getByRole('button', { name: 'Send message' }).click();
   const [delegated] = await sentOf('delegate');
   assert.deepEqual(
@@ -581,7 +685,7 @@ try {
     { patch },
   );
   await page.getByRole('complementary').getByText('2 files').waitFor();
-  await page.screenshot({ path: 'docs/screenshots/changes-panel.png' });
+  await page.screenshot({ path: 'test-results/screenshots/changes-panel.png' });
   await page
     .getByRole('button', { name: 'Open src/compiler.ts in the diff editor' })
     .last()
@@ -595,11 +699,25 @@ try {
   await page.getByRole('tooltip').waitFor();
   await page.mouse.move(0, 0);
 
-  // Modes: Shift+Tab toggles, and a new thread starts in the chosen mode.
+  // Modes: Shift+Tab cycles from Agent through Auto and Ask to Plan, and a new thread starts in it.
   await update(undefined);
   await box.fill('Plan the render cache');
   await box.press('Shift+Tab');
+  await page.getByRole('button', { name: 'Mode: Auto' }).waitFor();
+  await box.press('Shift+Tab');
+  await page.getByRole('button', { name: 'Mode: Ask' }).waitFor();
+  await box.press('Shift+Tab');
   await page.getByRole('button', { name: 'Mode: Plan' }).waitFor();
+  // Every mode is offered, and neither bypass nor full access is.
+  await page.getByRole('button', { name: 'Mode: Plan' }).click();
+  assert.deepEqual(
+    (await page.getByRole('menuitemradio').allTextContents()).map(
+      (item) => item.split(/(?=[A-Z])/)[0],
+    ),
+    ['Ask', 'Plan', 'Agent', 'Auto'],
+  );
+  await page.keyboard.press('Escape');
+  await box.focus();
   await box.press('Enter');
   const planStart = (await sentOf('start')).at(-1);
   assert.equal(planStart.mode, 'plan');
@@ -613,6 +731,108 @@ try {
   });
   await page.getByRole('button', { name: 'Mode: Plan' }).click();
   await page.getByRole('menuitemradio', { name: /Agent/ }).click();
+
+  // Skills: / opens a searchable menu, a pick becomes a chip, and a chip is only a request.
+
+  (snapshot as any).skills = {
+    codex: {
+      status: 'ready',
+      skills: [
+        {
+          name: 'review',
+          description: 'Reviews the current diff for bugs',
+          source: 'project',
+          path: '/skills/review/SKILL.md',
+          enabled: true,
+        },
+        {
+          name: 'release',
+          description: 'Cuts a release',
+          source: 'personal',
+          path: '/skills/release/SKILL.md',
+          enabled: true,
+        },
+        {
+          name: 'off',
+          description: 'Turned off',
+          source: 'system',
+          path: '/skills/off/SKILL.md',
+          enabled: false,
+        },
+      ],
+      problems: ['bad/SKILL.md is missing a description'],
+    },
+    claude: {
+      status: 'ready',
+      skills: [{ name: 'deploy', description: 'Deploys the app', enabled: true }],
+      problems: [],
+    },
+    claud2: { status: 'ready', skills: [], problems: [] },
+  };
+  await update(undefined);
+  await pickAgent('Codex', 'GPT-6.1-Sol');
+  await box.fill('/');
+  const skillMenu = page.getByRole('listbox', { name: 'Skills' });
+  await skillMenu.waitFor();
+  assert.ok((await sentOf('refreshSkills')).length > 0, 'opening the menu refreshes behind it');
+  assert.equal(await skillMenu.getByText('off', { exact: true }).count(), 0, 'off stays out');
+  await skillMenu.getByText('1 skill couldn’t be read.').waitFor();
+  await box.pressSequentially('rev');
+  await skillMenu.getByText('review', { exact: true }).waitFor();
+  assert.equal(await skillMenu.getByText('release', { exact: true }).count(), 0);
+  await page.screenshot({ path: 'test-results/screenshots/skills-menu.png' });
+  await box.press('Enter');
+  assert.equal(await box.inputValue(), '', 'the search text goes when the skill is picked');
+  const chip = page.locator('.composer .attachment-chip', { hasText: 'review' });
+  await chip.waitFor();
+  assert.equal(await page.getByText('Used skill').count(), 0, 'a selection is not use');
+  // Another agent without this skill mutes the chip and says so, rather than sending it.
+  await pickAgent('Claude', 'Sonnet 5.5');
+  await page.getByText('Claude doesn’t have review.').waitFor();
+  await box.fill('Check this');
+  await box.press('Enter');
+  const startsBefore = (await sentOf('start')).length;
+  await box.press('Enter');
+  assert.equal((await sentOf('start')).length, startsBefore, 'a missing skill blocks the send');
+  await pickAgent('Codex', 'GPT-6.1-Sol');
+  await box.focus();
+  await box.press('Enter');
+  const skillStart = (await sentOf('start')).at(-1);
+  assert.deepEqual(skillStart.attachments, [
+    { kind: 'skill', name: 'review', path: '/skills/review/SKILL.md' },
+  ]);
+  await page.evaluate(
+    (id) => window.postMessage({ type: 'sent', id, text: 'Check this' }, '*'),
+    skillStart.draftKey,
+  );
+  // The panel lists each CLI's skills, and only offers what that CLI can do.
+  await box.fill('/');
+  await skillMenu.getByText('Manage skills…').dispatchEvent('pointerdown');
+  const panel = page.getByRole('dialog', { name: 'Skills' });
+  await panel.waitFor();
+  await panel.getByRole('button', { name: 'Turn off review' }).click();
+  assert.deepEqual((await sentOf('setSkillEnabled')).at(-1), {
+    type: 'setSkillEnabled',
+    agent: 'codex',
+    name: 'review',
+    path: '/skills/review/SKILL.md',
+    enabled: false,
+  });
+  await panel.getByRole('button', { name: 'Open' }).first().click();
+  assert.equal((await sentOf('openSkill')).at(-1).name, 'review');
+  await panel.getByPlaceholder('Search skills…').fill('cut');
+  await panel.getByText('release', { exact: true }).waitFor();
+  assert.equal(await panel.getByText('review', { exact: true }).count(), 0);
+  await panel.getByRole('tab', { name: /^Claude$/ }).click();
+  await panel.getByPlaceholder('Search skills…').fill('');
+  await panel.getByText('deploy', { exact: true }).waitFor();
+  assert.equal(
+    await panel.getByRole('button', { name: /Turn off/ }).count(),
+    0,
+    'Claude has no toggle',
+  );
+  await page.screenshot({ path: 'test-results/screenshots/skills-panel.png' });
+  await page.keyboard.press('Escape');
 
   // A plan is pinned above the thread, with rich Markdown and an honest state.
   const planText = [
@@ -638,7 +858,12 @@ try {
     mode: 'plan',
     createdAt: 9,
     updatedAt: Date.now(),
-    plan: { text: planText, status: 'ready', updatedAt: Date.now() },
+    plan: {
+      text: planText,
+      status: 'ready',
+      updatedAt: Date.now(),
+      file: '/plans/render_cache.plan.md',
+    },
     approval: { id: 'plan-1', title: 'Build this plan?', detail: '', kind: 'plan' },
     messages: [
       {
@@ -666,32 +891,67 @@ try {
     ],
   } as unknown as (typeof snapshot.sessions)[number]);
   await update('planned');
-  const plan = page.getByRole('region', { name: 'Plan' });
-  await plan.getByText('Ready for your review').waitFor();
-  await plan.locator('.callout.warning').getByText('Old keys must not be reused.').waitFor();
-  await plan.getByRole('table').waitFor();
+  const plan = page.getByRole('region', { name: 'Created plan' });
+  await plan.getByRole('heading', { name: 'Render cache' }).waitFor();
   assert.equal(
     await page.getByRole('button', { name: 'Allow once' }).count(),
     0,
     'the card answers it',
   );
-  // Code is really highlighted, with colors from our own tokens.
-  const tokens = await plan
-    .locator('.code-block code span span')
-    .evaluateAll((spans) => new Set(spans.map((span) => (span as HTMLElement).style.color)).size);
-  assert.ok(tokens > 2, `highlighted code has several colors (${tokens})`);
-  await plan
-    .getByRole('navigation', { name: 'Plan outline' })
-    .getByRole('button', { name: 'Tests' })
-    .click();
-  await plan.getByRole('button', { name: 'Copy plan' }).click();
-  assert.equal((await sentOf('copy')).at(-1).text, planText);
-  await plan.getByRole('button', { name: 'Save plan to docs/agent-work' }).click();
-  await plan.getByRole('button', { name: 'Keep planning' }).click();
-  assert.equal((await sentOf('keepPlanning')).length, 1);
-  await plan.getByRole('button', { name: 'Build it' }).click();
-  assert.equal((await sentOf('buildPlan')).at(-1).id, 'planned');
-  await page.screenshot({ path: 'docs/screenshots/plan.png' });
+  await plan.getByRole('button', { name: 'View Plan' }).click();
+  assert.equal((await sentOf('viewPlan')).at(-1).id, 'planned');
+  await plan.getByRole('combobox', { name: 'Implementation destination' }).selectOption('worker');
+  await plan.getByRole('button', { name: 'Implement plan' }).click();
+  assert.equal((await sentOf('buildPlan')).at(-1).agent, 'claude');
+  await plan.getByRole('combobox', { name: 'Implementation destination' }).selectOption('current');
+  await plan.getByRole('button', { name: 'Implement plan' }).click();
+  assert.deepEqual((await sentOf('buildPlan')).at(-1), { type: 'buildPlan', id: 'planned' });
+  // Cmd+Enter builds with an empty composer. A message you're writing stays yours to send.
+  const buildsBefore = (await sentOf('buildPlan')).length;
+  await page.keyboard.press('Control+Enter');
+  assert.equal((await sentOf('buildPlan')).length, buildsBefore + 1);
+  // Typing while a plan waits is feedback on it, not a separate turn.
+  await box.fill('Use a smaller cache');
+  await page.keyboard.press('Control+Enter');
+  assert.equal((await sentOf('buildPlan')).length, buildsBefore + 1);
+  assert.deepEqual((await sentOf('keepPlanning')).at(-1), {
+    type: 'keepPlanning',
+    id: 'planned',
+    feedback: 'Use a smaller cache',
+  });
+  assert.equal(await box.inputValue(), '');
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: 'test-results/screenshots/plan.png' });
+
+  const diagramSession = snapshot.sessions.find((item) => item.id === 'planned');
+  assert.ok(diagramSession);
+  diagramSession.status = 'completed';
+  diagramSession.approval = undefined;
+  (diagramSession as unknown as Session).messages.push({
+    id: 'diagram-test',
+    role: 'assistant',
+    text: '```mermaid\nflowchart LR\n A[Plan] --> B[Worker]\n```',
+    at: Date.now(),
+  } as any);
+  await update('planned');
+  await page.getByRole('region', { name: 'Mermaid diagram' }).locator('svg').waitFor();
+  const diagram = page.getByRole('region', { name: 'Mermaid diagram' }).locator('svg');
+  const initialDiagram = await diagram.getAttribute('id');
+  await page.evaluate(() => {
+    document.body.style.setProperty('--vscode-editor-background', '#fbfaf7');
+    document.body.style.setProperty('--vscode-foreground', '#202020');
+    document.body.style.setProperty('--vscode-input-background', '#eeeeee');
+    document.body.style.setProperty('--vscode-panel-border', '#555555');
+  });
+  await page.waitForFunction((id) => {
+    const svg = document.querySelector('[aria-label="Mermaid diagram"] svg');
+    return svg && svg.id !== id;
+  }, initialDiagram);
+  assert.match(await diagram.innerHTML(), /#202020/);
+  await page.evaluate(() => {
+    for (const key of ['editor-background', 'foreground', 'input-background', 'panel-border'])
+      document.body.style.removeProperty(`--vscode-${key}`);
+  });
 
   // Images: a generated one opens full size; generating and failed states say so.
   await page.getByRole('button', { name: 'View image full size' }).click();
@@ -711,7 +971,7 @@ try {
     file: 'sample.png',
     reveal: true,
   });
-  await page.screenshot({ path: 'docs/screenshots/images.png' });
+  await page.screenshot({ path: 'test-results/screenshots/images.png' });
 
   // The @ and # menu: recent files, categories, drill-in, chips.
   await box.fill('Look at ');
@@ -753,7 +1013,7 @@ try {
     0,
     'agents only lead a message',
   );
-  await page.screenshot({ path: 'docs/screenshots/context-menu.png' });
+  await page.screenshot({ path: 'test-results/screenshots/context-menu.png' });
   await box.press('Enter');
   assert.equal(await box.inputValue(), 'Look at ', 'the token leaves the text');
   await page.locator('.composer .attachment-chip').getByText('compiler.ts').waitFor();
@@ -813,7 +1073,8 @@ try {
     ),
   );
   await page.locator('.composer .attachment-chip img').waitFor();
-  await page.getByRole('button', { name: 'Remove shot.png' }).click();
+  assert.match(await page.locator('.composer textarea').inputValue(), /\[Image #\d+\]/);
+  await page.getByRole('button', { name: /Remove .*shot.png/ }).click();
 
   // In the side bar: no second divider, and it holds up at real panel widths.
   await page.evaluate(() => {
@@ -837,7 +1098,7 @@ try {
       { overflow: false, border: '0px', send: true },
       `Side bar at ${width}px`,
     );
-    await page.screenshot({ path: `docs/screenshots/sidebar-${width}.png` });
+    await page.screenshot({ path: `test-results/screenshots/sidebar-${width}.png` });
   }
   await page.setViewportSize({ width: 360, height: 900 });
   await page.getByRole('button', { name: /^Model:/ }).click();
@@ -849,7 +1110,7 @@ try {
       .evaluate((label) => label.scrollWidth <= label.clientWidth),
     'provider names are not cut off in the side bar',
   );
-  await page.screenshot({ path: 'docs/screenshots/sidebar-model.png' });
+  await page.screenshot({ path: 'test-results/screenshots/sidebar-model.png' });
   await page.keyboard.press('Escape');
   await update(undefined);
   // A new thread puts the composer first, with recent threads under it.
@@ -858,9 +1119,9 @@ try {
     .getByRole('button', { name: /Try Plan Mode|Mode: Agent/ })
     .first()
     .waitFor();
-  await page.screenshot({ path: 'docs/screenshots/sidebar-new-thread.png' });
+  await page.screenshot({ path: 'test-results/screenshots/sidebar-new-thread.png' });
   await page.getByRole('button', { name: /^Model:/ }).click();
-  await page.screenshot({ path: 'docs/screenshots/sidebar-new-model.png' });
+  await page.screenshot({ path: 'test-results/screenshots/sidebar-new-model.png' });
   await page.keyboard.press('Escape');
   await page.evaluate(() => {
     delete document.documentElement.dataset.surface;
@@ -898,23 +1159,52 @@ try {
       { border: '1px', top: 0, height: 840, pageHeight: 840, scrollY: 0 },
       `Frame at ${width}px`,
     );
-    await page.screenshot({ path: `docs/screenshots/conversation-${width}.png` });
+    await page.screenshot({ path: `test-results/screenshots/conversation-${width}.png` });
   }
   await page.setViewportSize({ width: 1440, height: 960 });
+  for (const [className, background, foreground] of [
+    ['vscode-dark', '#181818', '#dedede'],
+    ['vscode-dark', '#102030', '#d0e0f0'],
+    ['vscode-high-contrast', '#000000', '#ffffff'],
+    ['vscode-high-contrast-light', '#ffffff', '#000000'],
+  ]) {
+    const colors = await page.evaluate(
+      ({ className, background, foreground }) => {
+        document.body.className = className;
+        document.body.style.setProperty('--vscode-editor-background', background);
+        document.body.style.setProperty('--vscode-foreground', foreground);
+        const style = getComputedStyle(document.body);
+        return { background: style.backgroundColor, foreground: style.color };
+      },
+      { className, background, foreground },
+    );
+    assert.notEqual(colors.background, colors.foreground);
+    assert.equal(
+      await page.evaluate(() =>
+        getComputedStyle(document.body).getPropertyValue('--canvas').trim(),
+      ),
+      background,
+    );
+  }
+  await page.evaluate(() => {
+    document.body.className = '';
+    document.body.style.removeProperty('--vscode-editor-background');
+    document.body.style.removeProperty('--vscode-foreground');
+  });
   await page.evaluate(() => document.body.classList.add('vscode-light'));
   await page.getByRole('button', { name: /^Model:/ }).click();
   await page.getByRole('tablist', { name: 'Agents' }).waitFor();
-  await page.screenshot({ path: 'docs/screenshots/light-theme.png' });
+  await page.screenshot({ path: 'test-results/screenshots/light-theme.png' });
   await page.keyboard.press('Escape');
   await page.evaluate(() => document.body.classList.remove('vscode-light'));
   await update(undefined);
-  await page.screenshot({ path: 'docs/screenshots/overview.png' });
+  await page.screenshot({ path: 'test-results/screenshots/overview.png' });
   assert.deepEqual(errors, []);
   console.log(
     'UI checks passed: no-prompt start, model and effort menus, modes, plan card, Markdown and highlighting, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, changes panel, side bar widths, and 4 viewport sizes.',
   );
 } catch (error) {
-  await page.screenshot({ path: 'docs/screenshots/failure.png' });
+  await page.screenshot({ path: 'test-results/screenshots/failure.png' });
   console.error('Browser errors:', errors);
   throw error;
 } finally {

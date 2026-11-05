@@ -4,14 +4,9 @@ import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {
-  fuzzyScore,
-  ImageStore,
-  resolveAttachments,
-  searchContext,
-  sniffImage,
-} from '../src/attachments';
-import { actionSchema, restoreSessions, type Session } from '../src/model';
+import { actionSchema, restoreSessions, type Session } from '../src/core/model';
+import { fuzzyScore, resolveAttachments, searchContext } from '../src/host/attachments';
+import { ImageStore, sniffImage } from '../src/providers/shared/image-store';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAI', 'base64');
 async function setup() {
@@ -144,4 +139,16 @@ test('threads from older versions restore, and unfinished work does not claim to
   assert.equal(unfinished.status, 'interrupted');
   assert.equal(unfinished.plan?.status, 'incomplete');
   assert.equal(unfinished.messages[0].image?.status, 'failed');
+});
+
+test('image reference numbers survive validation and map to provider image order', async () => {
+  const { root, options } = await setup();
+  const file = await options.store.copy(path.join(root, 'src/shot.png'), 10 * 1024 * 1024);
+  const result = await resolveAttachments(
+    [{ kind: 'image', file, name: 'shot.png', reference: 3 }],
+    options,
+  );
+  assert.equal(result.images?.length, 1);
+  assert.match(result.context ?? '', /Image attachment 1 is \[Image #3\]/);
+  assert.equal(result.attachments?.[0].kind === 'image' && result.attachments[0].reference, 3);
 });

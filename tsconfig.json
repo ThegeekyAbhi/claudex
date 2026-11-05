@@ -15,7 +15,13 @@
       "node",
       "vscode"
     ],
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/webview/*"
+      ]
+    }
   },
   "include": [
     "src",

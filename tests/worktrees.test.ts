@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createWorktree, git, parseGitStatus } from '../src/worktrees';
+import { createWorktree, git, parseGitStatus } from '../src/host/worktrees';
 
 test('worktrees start from HEAD and preserve dirty source checkouts', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'aw-git-'));

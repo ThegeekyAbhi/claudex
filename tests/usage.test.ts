@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyEvent, type Session } from '../src/model';
+import { applyEvent, type Session } from '../src/core/model';
 import { claudeContextTokens, claudeLimits, codexLimits } from '../src/providers/usage';
 
 test('Codex windows keep the reported numbers and convert reset seconds', () => {

@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
-import type { Provider } from '../src/model';
-import { createAgentFactory, Sessions } from '../src/sessions';
+import type { Provider } from '../src/core/model';
+import { createAgentFactory, Sessions } from '../src/harness/session-manager';
 
 const CODEX = process.env.CODEX_BIN ?? '/opt/homebrew/bin/codex';
 const CLAUDE = process.env.CLAUDE_BIN ?? path.join(homedir(), '.local/bin/claude');

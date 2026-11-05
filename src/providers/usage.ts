@@ -1,4 +1,4 @@
-import type { UsageLimit } from '../model';
+import type { UsageLimit } from '../core/model';
 
 const finite = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);

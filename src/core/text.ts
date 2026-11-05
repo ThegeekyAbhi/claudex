@@ -1,0 +1,42 @@
+import type { AgentKind } from './agents';
+
+/** Reads `@codex do this`. Only a leading mention counts, so prose can still contain @names. */
+export function parseMention(text: string): { agent: AgentKind; prompt: string } | undefined {
+  const match = /^@(codex|claude2|claude|claud2)\s+([\s\S]*\S)\s*$/i.exec(text.trimStart());
+  if (!match) return undefined;
+  const name = match[1].toLowerCase();
+  return {
+    agent: name === 'codex' ? 'codex' : name === 'claude' ? 'claude' : 'claud2',
+    prompt: match[2],
+  };
+}
+/** Who a leading mention names, as soon as it is complete, even before a prompt is written. */
+export function mentionedAgent(text: string): AgentKind | undefined {
+  const name = /^@(codex|claude2|claude|claud2)\s/i.exec(text.trimStart())?.[1].toLowerCase();
+  if (!name) return undefined;
+  return name === 'codex' ? 'codex' : name === 'claude' ? 'claude' : 'claud2';
+}
+/** The provider's own fallback for an unnamed session: the first line of the first prompt. */
+export function deriveTitle(prompt: string): string {
+  const line =
+    prompt
+      .split('\n')
+      .map((item) => item.trim())
+      .find(Boolean) ?? '';
+  const clean = line.replace(/\s+/g, ' ');
+  if (!clean) return 'New thread';
+  return clean.length > 60 ? `${clean.slice(0, 59).trimEnd()}…` : clean;
+}
+
+/** A plan's first heading, or the thread's title when it has none. */
+export function planTitle(text: string, fallback: string): string {
+  return /^#{1,3}\s+(.+)$/m.exec(text)?.[1]?.trim() || fallback;
+}
+/** The first paragraph of prose, for a card that doesn't repeat the whole plan. */
+export function planSummary(text: string): string {
+  for (const block of text.split(/\n\s*\n/)) {
+    const line = block.trim();
+    if (line && !/^(#|[-*+] |\d+\. |>|```|\|)/.test(line)) return line.replace(/\s+/g, ' ');
+  }
+  return '';
+}

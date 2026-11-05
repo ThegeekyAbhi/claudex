@@ -57,9 +57,46 @@ A new independent coding session can be linked to a lead; that relationship is o
 
 The UI runs as a webview view in the secondary side bar (`agentWorkspace.chat`), which VS Code accepts from extensions from version 1.106; older hosts get the same view in the activity bar. **Open in Editor** adds a large editor-tab layout. All surfaces share threads through one controller and receive every snapshot; search results and attached images go only to the surface that asked. Code, diffs, and documents open in the active editor group, so review happens in the center.
 
+## Modes
+
+Each adapter maps a mode to its CLI's real settings. `src/core/capabilities.ts` describes what each CLI supports as data, so the UI never branches on provider name. It lives in `core` because the webview reads it.
+
+| Mode | Claude | Codex (`turn/start`) |
+| --- | --- | --- |
+| unset | nothing sent, so `permissions.defaultMode` applies | nothing sent |
+| Ask | `dontAsk`, `disallowedTools: Edit, Write, NotebookEdit`, no `run_agent` server | `readOnly` sandbox, no network, `approvalPolicy: never`, `run_agent` refused |
+| Plan | `plan` | `collaborationMode: plan` with the thread's original settings |
+| Agent | `default` | the thread's original settings, `collaborationMode: default` |
+| Auto | `auto` | the thread's original settings, `approvalsReviewer: auto_review` |
+
+Codex keeps these settings from turn to turn, so the thread's original `approvalPolicy`, `approvalsReviewer`, and `sandbox` are captured once from the start response and stored with the session. Every explicit mode restates them, which is what lets a thread leave Ask. Claude runs one query per turn, so it needs none of this.
+
+The composer shows `init.permissionMode` when Claude reports one. If that differs from the request, the thread gets a notice and the composer a nudge. Codex doesn't report a mode, so its chip shows the one sent and accepted. Bypass and full access are never requested. A setting your own CLI already has is left as it is.
+
 ## Plans
 
-Plan mode uses each provider's own feature and adds no restrictions of its own. Claude gets `permissionMode: 'plan'`, and its `ExitPlanMode` request remains a permission decision that **Build it** or **Keep planning** answers. The SDK does not type that tool's input, so the adapter reads `plan`, then `planFilePath`, and otherwise says the text was not shared. Codex gets `collaborationMode` on `turn/start`, which its protocol marks experimental, and streams `item/plan/delta` then a `plan` item. Codex keeps a mode for later turns, so the adapter sends one whenever you have chosen a mode. A plan's status records only drafting, ready, incomplete, or your approval, and its checkboxes are never read as progress.
+Plan mode uses each provider's own feature. A finished plan is written by the extension to `<storage>/plans/<title>_<id>.plan.md`, because plan mode can't write files itself. It stays ordinary Markdown. A failed write costs only the file: the plan stays in the thread, with a notice.
+
+`*.plan.md` opens in a `CustomTextEditorProvider` (`src/host/plan-editor.ts`) that renders it, and **Open as text** is VS Code's own editor on the same file. Its messages are validated by `planViewActionSchema`. A plan file with no owning thread can be read but not built.
+
+**Build** saves any open edits and reads the file when clicked.
+
+- **Claude, with `ExitPlanMode` waiting:** answered with `updatedInput.plan` set to your edited text, then `setPermissionMode` to the chosen mode.
+- **Codex, or no request waiting:** a normal turn. An unedited plan sends "Implement the plan."; an edited one sends its text, so nothing depends on the CLI being able to read our storage folder.
+- **Another agent:** a linked thread whose prompt carries the text. A waiting request is declined.
+
+Text typed while a plan waits goes back as the denial message, so Claude revises in the same turn. Nothing is inferred from checkboxes, and the card says "Build started", never done. A revised plan replaces the thread's file, including hand edits the agent wasn't told about.
+
+## Skills
+
+`src/harness/skill-catalog.ts` reads what each CLI reports. No turn runs and no quota is used.
+
+- **Claude:** `query.supportedCommands()` on an idle session with `settingSources: user, project, local`, leaving out `builtin` entries. It reports no source or path, so none is shown.
+- **Codex:** `skills/list`, with malformed entries reported as problems. `skills/config/write` turns one on or off.
+
+Catalogs load in the background, at most every 30 seconds per agent, and are refreshed behind the `/` menu, so opening it never waits on a CLI. A skill coming back from the webview is checked against the catalog before it's sent.
+
+Invocation is native: Claude gets `/name` for the first skill and the rest named in the text, and Codex gets `{ type: 'skill', name, path }` inputs. A chip is a request. "Used skill" appears only for a real Claude `Skill` tool call. Codex's protocol reports no such event, so nothing claims one ran.
 
 ## Attachments and images
 
@@ -72,15 +109,29 @@ Images are checked by their bytes (PNG, JPEG, GIF, WebP) and kept under generate
 The composer shows only numbers a CLI reported, kept with the thread and labeled with their age. Nothing is estimated, and no cost is shown, because a dollar figure would mislead on a subscription. Reading them runs no model turn.
 
 - **Codex:** context comes from `thread/tokenUsage/updated` (`last.totalTokens` against `modelContextWindow`). Limits come from `account/rateLimits/read` when the thread opens and `account/rateLimits/updated` after that. Updates are sparse, so a missing window keeps its last value.
-- **Claude:** after each turn the adapter calls `getContextUsage({ detail: 'summary' })`, falling back to the last response's usage against `modelUsage[].contextWindow`. Plan limits come from the SDK's usage call, which it marks experimental and which reads the claude.ai usage endpoint. Both reads are bounded to 1.5 seconds and may fail without affecting the turn; API key sessions have no plan limits. `rate_limit_event` is not used because its `utilization` has no documented unit.
+- **Claude:** context comes from the last response's usage against `modelUsage[].contextWindow`, so reading it adds no wait to a turn. Plan limits are read in the background when a session starts, through the SDK's usage call, which it marks experimental. API key accounts have none.
 
 A window whose reset time has passed is hidden, since it no longer describes the present.
 
+## Staying out of the way
+
+The extension doesn't sit between you and the CLI. Nothing is awaited between Send and the provider call except attachment reads you asked for. While a thread streams, an update carries that thread's tail, and catalogs or documents only when they changed. Shiki loads as its own chunk the first time code appears, and falls back to plain code if that fails. `tests/streaming.test.ts` guards these.
+
+## Source layout
+
+Dependencies point inward: `webview`, `host`, and `harness` depend on `core`, and `core` depends on nothing.
+
+- `src/core`: the domain, with no Node or VS Code APIs. Schemas, events, modes, capabilities, skills, nudges.
+- `src/providers`: one adapter per CLI.
+- `src/harness`: sessions and catalogs.
+- `src/host`: VS Code activation, controller, surfaces, plans, documents.
+- `src/webview`: `app`, `features`, `components/ui` (shadcn), `lib`.
+
 ## Webview components
 
-The composer and thread views follow the anatomy of [AI Elements](https://ui.shadcn.com/docs/ai-elements/base/model-selector) (Model Selector, Reasoning, Tool, Subagent, Prompt Input). The AI SDK itself is a model API client, which this extension does not use. Menus use Radix (non-modal) and cmdk; icons use Lucide; agent marks are drawn here because Lucide has no vendor logos. Markdown uses react-markdown with GFM and `remend` for half-written syntax while streaming. Streamdown was not used because it expects Tailwind and adds raw HTML handling, neither of which this project has. Code uses Shiki with its JavaScript regex engine, because the default engine needs WebAssembly, which the CSP does not allow. Mermaid diagrams show as code: the library is large and needs styles the CSP forbids.
+The composer and thread views follow the anatomy of [AI Elements](https://ui.shadcn.com/docs/ai-elements/base/model-selector) (Model Selector, Reasoning, Tool, Subagent, Prompt Input). The AI SDK itself is a model API client, which this extension does not use. Menus use Radix (non-modal) and cmdk; icons use Lucide; agent marks are drawn here because Lucide has no vendor logos. Markdown uses react-markdown with GFM and `remend` for half-written syntax while streaming. Streamdown was not used because it expects Tailwind and adds raw HTML handling, neither of which this project has. Code uses Shiki with its JavaScript regex engine, because the default engine needs WebAssembly, which the CSP does not allow. Mermaid loads on demand for settled diagram blocks, with readable source on failure. SVG rendering requires inline styles; scripts remain nonce restricted. Plans open in the standard Markdown preview, with implementation controls on their conversation cards.
 
-The questions card and usage ring follow the structure of AI Elements' `Question` and `Context`, with this project's own markup and CSS. AI Elements itself is not installed: it needs Tailwind 4 and shadcn/ui, neither of which this project has, and its site says the project will be deprecated at the end of November 2026 in favor of shadcn/ui.
+The questions card and usage ring follow the structure of AI Elements' `Question` and `Context`. shadcn/ui components live in `src/webview/components/ui`, copied in as source. Tailwind 4 compiles to `dist/app.css`, with no Preflight, and its tokens map onto the project's variables so every VS Code theme still applies. Older features keep their own CSS until they're next touched.
 
 The webview's CSP allows no inline styles. `pnpm test:ui` serves the build under the same policy and fails on any violation, so a dependency that needs more is caught. Its preview also applies the `body { padding: 0 20px }` VS Code injects into webviews.
 
