@@ -26,6 +26,7 @@ import {
 import { ClaudeAgent } from '../providers/claude/adapter';
 import { CodexAgent } from '../providers/codex/adapter';
 import type { ImageStore } from '../providers/shared/image-store';
+import { EXPLAIN_GUIDE, EXPLAIN_GUIDE_VERSION } from './explain-guidance';
 import { FileObserver } from './file-observer';
 import { PLANNING_GUIDE, PLANNING_GUIDE_VERSION } from './planning-guidance';
 
@@ -63,6 +64,7 @@ export class Sessions extends EventEmitter {
     private saveDelayMs = 1500,
     private plans?: PlanFiles,
     private guidedPlanning: () => boolean = () => true,
+    private richExplanations: () => boolean = () => false,
   ) {
     super();
   }
@@ -135,12 +137,16 @@ export class Sessions extends EventEmitter {
     if (session.observed) throw new Error('This worker is controlled by its main agent.');
     if (session.status === 'running' || session.status === 'waiting')
       throw new Error('Wait for this turn or stop it before sending another message.');
-    const guided = session.mode === 'plan' && this.guidedPlanning();
+    // With a skill, a guide would become part of the skill's arguments.
+    const guides = !input.skills?.length;
+    const guided = guides && session.mode === 'plan' && this.guidedPlanning();
+    const explained = guides && session.mode === 'ask' && this.richExplanations();
     session.messages.push({
       id: randomUUID(),
       role: 'user',
       text,
       ...(guided ? { planningGuideVersion: PLANNING_GUIDE_VERSION } : {}),
+      ...(explained ? { explainGuideVersion: EXPLAIN_GUIDE_VERSION } : {}),
       ...(input.attachments?.length ? { attachments: input.attachments } : {}),
     });
     session.status = 'running';
@@ -170,10 +176,23 @@ export class Sessions extends EventEmitter {
         nativeSeen: new Set(),
       });
       await agent.send(
-        [text, input.context, guided ? PLANNING_GUIDE : undefined].filter(Boolean).join('\n\n'),
+        [
+          text,
+          input.context,
+          guided ? PLANNING_GUIDE : undefined,
+          explained ? EXPLAIN_GUIDE : undefined,
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
         input.images,
         input.skills,
       );
+      // The CLI accepted the history, so the next switch back sends only what follows it.
+      if (input.syncs?.length && this.generations.get(id) === generation) {
+        session.synced = { ...session.synced };
+        for (const { from, through } of input.syncs) session.synced[from] = through;
+        this.changed();
+      }
     } catch (error) {
       if (this.generations.get(id) !== generation) return;
       this.agents.delete(id);
@@ -368,6 +387,25 @@ export class Sessions extends EventEmitter {
     request.respond(allowed, answers);
     this.changed();
   }
+  /**
+   * Your answer to one request, and a change of mode for what follows. Only an ordinary native
+   * tool request qualifies: questions, plans, and requests to start another agent stay one-by-one.
+   */
+  allowInAuto(id: string, requestId: string): void {
+    this.assertAvailable(id);
+    const session = this.get(id);
+    const request = this.approvals.get(id)?.get(requestId);
+    if (!request) throw new Error('This request is no longer pending.');
+    const { approval } = request;
+    if (approval.origin !== 'provider' || approval.questions || approval.kind)
+      throw new Error('This request has to be answered on its own.');
+    if (session.observed) throw new Error('This worker is controlled by its main agent.');
+    if (session.provider === 'codex' && session.nativeSettings?.approvalPolicy !== 'on-request')
+      throw new Error('Native Auto requires an on-request approval policy.');
+    session.mode = 'auto';
+    delete session.reportedMode;
+    this.approve(id, requestId, true, {});
+  }
   async interrupt(id: string): Promise<void> {
     const transition = this.transitions.get(id);
     if (transition) {
@@ -548,7 +586,7 @@ export class Sessions extends EventEmitter {
     if (!text.trim()) throw new Error('The plan file is empty.');
     return text;
   }
-  async buildPlan(id: string, mode: 'agent' | 'auto' = 'agent'): Promise<void> {
+  async buildPlan(id: string): Promise<void> {
     this.assertAvailable(id);
     const session = this.get(id);
     if (!session.plan) throw new Error('This thread has no plan to build.');
@@ -562,16 +600,36 @@ export class Sessions extends EventEmitter {
     const text = await this.currentPlanText(session);
     const request = waiting();
     const edited = text.trim() !== session.plan.text.trim();
+    const before = {
+      mode: session.mode,
+      reportedMode: session.reportedMode,
+      status: session.plan.status,
+    };
     session.plan.text = text;
-    session.mode = mode;
+    session.mode = 'auto';
     delete session.reportedMode;
     session.plan.status = 'approved';
-    if (request) this.approve(id, request.id, true, edited ? { plan: text } : {});
-    else
+    if (request) {
+      this.approve(id, request.id, true, edited ? { plan: text } : {});
+      return;
+    }
+    // A build that couldn't run didn't start: put things back so it can be tried again.
+    const restore = () => {
+      session.mode = before.mode;
+      if (before.reportedMode) session.reportedMode = before.reportedMode;
+      if (session.plan) session.plan.status = before.status;
+      this.changed();
+    };
+    try {
       await this.send(
         id,
         edited ? `Implement this plan. I edited it:\n\n${text}` : 'Implement the plan.',
       );
+    } catch (error) {
+      restore();
+      throw error;
+    }
+    if (session.status === 'failed') restore();
   }
   /** The prompt for another agent, which hasn't seen this thread. */
   async handOffPlan(id: string): Promise<string> {

@@ -9,13 +9,17 @@ import {
   type Session,
   type ToolInfo,
 } from '../../../core/model';
+import { EXPLAIN_GUIDE } from '../../../harness/explain-guidance';
 import { PLANNING_GUIDE } from '../../../harness/planning-guidance';
 import { send } from '../../app/bridge';
 import { AgentMark, Icon, type IconName } from '../../components/icons';
+import { AutoHelp } from '../../components/menus';
 import { MarkdownText } from '../../lib/markdown';
 import { AttachmentChip } from '../attachments/context-menu';
 import { DiffCard, DiffStat } from '../changes/diff-view';
 import { ImageMessage } from '../images/image-view';
+import { ACTIVITY_LABELS, type MascotActivity, mascotActivity } from '../mascot/activity';
+import { Mascot } from '../mascot/mascot';
 import { PlanCard } from '../plan/plan-card';
 import { isQuestion } from '../questions/question-card';
 
@@ -125,6 +129,14 @@ function ToolStep({ message }: { message: Message }) {
           {duration(tool.durationMs)}
         </span>
       ) : null}
+      {tool.exitCode !== undefined && tool.exitCode !== 0 ? (
+        <span
+          className="text-[10.5px] text-error shrink-0 tabular-nums"
+          title="Exit code, as the CLI reported it"
+        >
+          exit {tool.exitCode}
+        </span>
+      ) : null}
       <StepState status={tool.status} />
     </>
   );
@@ -201,7 +213,7 @@ function Reasoning({ message, active }: { message: Message; active: boolean }) {
       </button>
       {open ? (
         <div className="mt-0.5 mr-0 mb-2 ml-1.5 pl-2.5 [border-left:1px_dashed_var(--border-strong)] text-muted-foreground text-[12px] markdown">
-          <MarkdownText text={message.text} />
+          <MarkdownText text={message.text} streaming={streaming} />
         </div>
       ) : null}
     </div>
@@ -223,8 +235,7 @@ function activitySummary(items: Message[]): string {
   // Threads from before tool details were recorded have only plain rows.
   const plain = items.filter((m) => m.role === 'tool' && !m.tool).length;
   if (plain) parts.push(`ran ${plural(plain, 'step')}`);
-  if (!parts.length)
-    return items.some((m) => m.tool?.diffSource) ? 'Observed file changes' : 'Thought it through';
+  if (!parts.length) return 'Thought it through';
   const text = parts.join(', ');
   return text[0].toUpperCase() + text.slice(1);
 }
@@ -242,9 +253,11 @@ function ActivityGroup({
   active,
   sessionId,
   activeLabel = 'Working…',
+  activity,
 }: {
   items: Message[];
   activeLabel?: string;
+  activity?: MascotActivity;
   active: boolean;
   sessionId: string;
 }) {
@@ -268,6 +281,7 @@ function ActivityGroup({
         onClick={() => setOverride(!open)}
       >
         <Chevron open={open} />
+        {active && activity ? <Mascot activity={activity} /> : null}
         <span className={active ? 'shimmer' : ''}>
           {active ? activeLabel : activitySummary(items)}
         </span>
@@ -290,9 +304,6 @@ function ActivityGroup({
       {/* Diffs stay visible when the steps above are collapsed. */}
       {items.map((message) => (
         <div key={message.id}>
-          {message.tool?.diffSource ? (
-            <p className="mt-1.5 mb-1 text-[11px] text-muted-foreground">Observed file changes</p>
-          ) : null}
           {message.tool?.captureNote ? (
             <p className="my-1 text-[11px] text-muted-foreground">{message.tool.captureNote}</p>
           ) : null}
@@ -306,6 +317,7 @@ function ActivityGroup({
 }
 function ChildTranscript({ session }: { session: Session }) {
   const segments = segment(session.messages);
+  const activity = mascotActivity(session);
   return (
     <div className="subagent-transcript m-0 pt-1.5 px-3 pb-2 border-t border-subtle">
       {segments.map((item, index) =>
@@ -313,7 +325,11 @@ function ChildTranscript({ session }: { session: Session }) {
           <ActivityGroup
             key={item.items[0].id}
             items={item.items}
-            active={session.status === 'running' && index === segments.length - 1}
+            active={
+              session.status === 'running' && index === segments.length - 1 && Boolean(activity)
+            }
+            activity={activity}
+            activeLabel={ACTIVITY_LABELS[activity ?? 'working']}
             sessionId={session.id}
           />
         ) : item.message.role === 'user' ? null : (
@@ -362,6 +378,10 @@ function SubagentCard({
       ? duration(child.updatedAt - started)
       : undefined;
   const result = child?.messages.filter((item) => item.role === 'assistant').at(-1)?.text;
+  // The child's own record of what it received. Long threads send only their tail here.
+  const sentMessage = child?.messages.find((item) => item.role === 'user');
+  const sentText =
+    sentMessage?.text ?? (tool.name !== 'Task' && tool.name !== 'Agent' ? tool.input : undefined);
   const stateLabel = child
     ? WORKER_STATUS[child.status][0]
     : tool.status === 'declined'
@@ -418,6 +438,14 @@ function SubagentCard({
           </button>
         ) : null}
       </div>
+      {sentText ? (
+        <SentPrompt
+          asker={tool.name === 'delegate' ? 'You' : agentLabel(parent)}
+          agentName={agentName}
+          text={sentText}
+          message={sentMessage}
+        />
+      ) : null}
       {child?.approval && !isQuestion(child.approval) ? (
         <ApprovalForm approval={child.approval} sessionId={child.id} session={child} />
       ) : null}
@@ -440,6 +468,72 @@ function SubagentCard({
     </div>
   );
 }
+/** What a guide added to a message beyond your words. */
+function GuideDisclosures({ message }: { message: Message }) {
+  return (
+    <>
+      {message.planningGuideVersion ? (
+        <details className="mt-1 text-[11px] text-muted-foreground">
+          <summary>Planning guide v{message.planningGuideVersion}</summary>
+          <div className="markdown">
+            <MarkdownText text={PLANNING_GUIDE.replace(/<[^>]+>/g, '')} />
+          </div>
+        </details>
+      ) : null}
+      {message.explainGuideVersion ? (
+        <details className="mt-1 text-[11px] text-muted-foreground">
+          <summary>Explanation guide v{message.explainGuideVersion}</summary>
+          <div className="markdown">
+            <MarkdownText text={EXPLAIN_GUIDE.replace(/<[^>]+>/g, '')} />
+          </div>
+        </details>
+      ) : null}
+    </>
+  );
+}
+/** Who asked the agent on this card, and in exactly what words. */
+function SentPrompt({
+  asker,
+  agentName,
+  text,
+  message,
+}: {
+  asker: string;
+  agentName: string;
+  text: string;
+  message?: Message;
+}) {
+  const [all, setAll] = useState(false);
+  const long = text.length > 240 || text.split('\n').length > 3;
+  return (
+    <div className="sent-prompt pt-1.5 px-3 pb-2 border-t border-subtle text-[12px]">
+      <div className="text-[11px] text-muted-foreground mb-0.5">
+        {asker} asked {agentName}
+      </div>
+      {message?.attachments?.length ? (
+        <div className="flex flex-wrap items-start gap-1 pb-1">
+          {message.attachments.map((item, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a sent message's attachments never change
+            <AttachmentChip key={index} attachment={item} />
+          ))}
+        </div>
+      ) : null}
+      <div className={`whitespace-pre-wrap wrap-anywhere ${long && !all ? 'line-clamp-3' : ''}`}>
+        {text}
+      </div>
+      {long ? (
+        <button
+          type="button"
+          className="mt-0.5 p-0 text-[11px] text-muted-foreground enabled:hover:text-foreground"
+          onClick={() => setAll(!all)}
+        >
+          {all ? 'Show less' : 'Show all'}
+        </button>
+      ) : null}
+      {message ? <GuideDisclosures message={message} /> : null}
+    </div>
+  );
+}
 const MessageRow = memo(function MessageRow({
   message,
   streaming,
@@ -459,7 +553,7 @@ const MessageRow = memo(function MessageRow({
     return (
       <article className="my-3.5 [&.user]:bg-raised [&.user]:border [&.user]:border-subtle [&.user]:rounded-[8px] [&.user]:px-3 [&.user]:py-2 [&.user]:mt-6 [&.user]:first:mt-0 in-[.subagent-transcript]:my-2 in-[.subagent-transcript]:text-[12px] user">
         {message.attachments?.length ? (
-          <div className="flex flex-wrap gap-1 pt-2 px-2.5 pb-0 in-[.user]:pt-0 in-[.user]:px-0 in-[.user]:pb-1.5">
+          <div className="flex flex-wrap items-start gap-1 pt-2 px-2.5 pb-0 in-[.user]:pt-0 in-[.user]:px-0 in-[.user]:pb-1.5">
             {message.attachments.map((item, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: a sent message's attachments never change
               <AttachmentChip key={index} attachment={item} />
@@ -469,14 +563,7 @@ const MessageRow = memo(function MessageRow({
         <div className="markdown">
           <MarkdownText text={text} />
         </div>
-        {message.planningGuideVersion ? (
-          <details className="mt-1 text-[11px] text-muted-foreground">
-            <summary>Planning guide v{message.planningGuideVersion}</summary>
-            <div className="markdown">
-              <MarkdownText text={PLANNING_GUIDE.replace(/<[^>]+>/g, '')} />
-            </div>
-          </details>
-        ) : null}
+        <GuideDisclosures message={message} />
       </article>
     );
   return (
@@ -497,7 +584,9 @@ export function ApprovalForm({
   session?: Session;
 }) {
   const transitioning = Boolean(session?.transition);
+  // Already in Auto, this would be the same as Allow once.
   const eligible =
+    session?.mode !== 'auto' &&
     approval.origin === 'provider' &&
     !approval.questions &&
     !approval.kind &&
@@ -519,25 +608,10 @@ export function ApprovalForm({
         <DiffCard key={diff.path} diff={diff} />
       ))}
       {approval.detail ? <pre>{approval.detail}</pre> : null}
-      {eligible ? (
-        <p className="text-[11.5px] text-muted-foreground">
-          Auto stops this turn and continues the task using native review. It does not approve this
-          request.
-        </p>
-      ) : null}
       {session?.transition ? (
         <output>{session.transition === 'stopping' ? 'Stopping…' : 'Resuming in Auto…'}</output>
       ) : null}
       <div className="flex flex-wrap justify-end gap-1.5 mt-2.5 [&>button]:border-strong [&>button]:px-3 [&>button]:py-1 [&>button]:text-[12px]">
-        {eligible ? (
-          <button
-            type="button"
-            disabled={transitioning}
-            onClick={() => send({ type: 'resumeInAuto', id: sessionId, requestId: approval.id })}
-          >
-            <Icon name="autoMode" size={13} /> Stop and resume in Auto
-          </button>
-        ) : null}
         <button type="button" disabled={transitioning} onClick={() => respond(false)}>
           Decline
         </button>
@@ -549,6 +623,34 @@ export function ApprovalForm({
         >
           Allow once
         </button>
+        {eligible ? (
+          <>
+            <button
+              type="button"
+              className="bg-mode-auto text-mode-auto-foreground enabled:hover:opacity-90"
+              disabled={transitioning}
+              onClick={() =>
+                send({
+                  type: 'approve',
+                  id: sessionId,
+                  requestId: approval.id,
+                  allowed: true,
+                  auto: true,
+                  answers: {},
+                })
+              }
+            >
+              <Icon name="autoMode" size={13} /> Allow in Auto
+            </button>
+            <AutoHelp
+              text={
+                session?.provider === 'codex'
+                  ? 'Allows this request, then uses Codex Auto review from its next turn. Until then it may still ask.'
+                  : 'Allows this request, then Claude Code Auto mode reviews what comes next and asks only when it needs to.'
+              }
+            />
+          </>
+        ) : null}
       </div>
     </section>
   );
@@ -566,6 +668,8 @@ function isSubagent(message: Message): boolean {
 export function segment(messages: Message[]): Segment[] {
   const segments: Segment[] = [];
   for (const message of messages) {
+    // Observations remain in session history, but do not add duplicate change cards to chat.
+    if (message.tool?.diffSource) continue;
     if (isSubagent(message)) segments.push({ type: 'subagent', message });
     else if (message.role === 'tool' || message.role === 'thinking') {
       const last = segments.at(-1);
@@ -625,6 +729,7 @@ export function Conversation({
   const visible = session.messages.slice(-limit);
   const segments = segment(visible);
   const running = session.status === 'running';
+  const activity = mascotActivity(session);
   const lastIndex = segments.length - 1;
   // After the message it followed, so what you build from it reads below it.
   const planIndex = segments.findIndex((item) => segmentHas(item, session.plan?.after));
@@ -682,8 +787,15 @@ export function Conversation({
                   <ActivityGroup
                     key={item.items[0].id}
                     items={item.items}
-                    active={running && index === lastIndex && session.plan?.status !== 'drafting'}
-                    activeLabel={session.mode === 'plan' ? 'Planning…' : 'Working…'}
+                    active={
+                      running &&
+                      index === lastIndex &&
+                      session.plan?.status !== 'drafting' &&
+                      Boolean(activity) &&
+                      activity !== 'attentive'
+                    }
+                    activity={activity}
+                    activeLabel={ACTIVITY_LABELS[activity ?? 'working']}
                     sessionId={session.id}
                   />
                 );
@@ -739,14 +851,13 @@ export function Conversation({
               />
             ) : null,
           )}
-          {running &&
-          !lastIsActivity &&
+          {activity &&
+          (activity === 'attentive' || !lastIsActivity) &&
           session.plan?.status !== 'drafting' &&
-          !session.transition &&
-          !session.approval ? (
+          !session.transition ? (
             <output className="flex items-center gap-2 text-muted-foreground text-[12px] my-3">
-              <span className="spinner size-[11px] shrink-0 inline-block rounded-full border-[1.5px] border-strong border-t-foreground animate-spinner motion-reduce:animate-none" />
-              <span className="shimmer">{session.mode === 'plan' ? 'Planning…' : 'Working…'}</span>
+              <Mascot activity={activity} />
+              <span>{ACTIVITY_LABELS[activity]}</span>
             </output>
           ) : null}
         </div>

@@ -8,6 +8,8 @@ import {
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
 import { Button } from '../../components/ui/button';
+import { ACTIVITY_LABELS, mascotActivity } from '../mascot/activity';
+import { Mascot } from '../mascot/mascot';
 import { BuildButton } from './build-button';
 
 const NOTE = {
@@ -21,12 +23,13 @@ export function PlanCard({ session }: { session: Session }) {
   const pending = session.approval?.kind === 'plan';
   const busy = (session.status === 'running' || session.status === 'waiting') && !pending;
   const offered = plan?.status === 'ready' || plan?.status === 'incomplete';
+  const activity = mascotActivity(session);
   if (!plan) return null;
   if (plan.status === 'drafting')
     return (
       <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-        <Icon name="plan" size={13} />
-        <span className="shimmer">Planning…</span>
+        <Mascot activity={activity ?? 'attentive'} />
+        <span>{activity ? ACTIVITY_LABELS[activity] : 'Plan unfinished'}</span>
       </div>
     );
   const summary = planSummary(plan.text);

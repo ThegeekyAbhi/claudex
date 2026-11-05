@@ -143,7 +143,10 @@ export function UsageIndicator({
             />
           ) : null}
           {inlineUsage ? (
-            <span className="max-w-[180px] truncate" title={`${inlineUsage} used`}>
+            <span
+              className="max-w-[180px] truncate @max-[640px]:hidden"
+              title={`${inlineUsage} used`}
+            >
               {inlineUsage}
             </span>
           ) : null}

@@ -29,8 +29,11 @@ const page = await browser.newPage({
 });
 const errors: string[] = [];
 page.on('pageerror', (error) => errors.push(error.message));
+// The hostile visual below is meant to be blocked; everything else must load cleanly.
+let expectBlocked = false;
 page.on('console', (message) => {
-  if (/Content Security Policy/i.test(message.text())) errors.push(message.text());
+  if (/Content Security Policy/i.test(message.text()) && !expectBlocked)
+    errors.push(message.text());
 });
 await mkdir('test-results/screenshots', { recursive: true });
 try {
@@ -216,6 +219,7 @@ try {
             tool: {
               kind: 'agent',
               name: 'run_agent',
+              input: 'Double-check the plan compiler cache key.',
               title: 'Double-check the compiler',
               status: 'running',
               workerId: 'delegate',
@@ -228,6 +232,7 @@ try {
             tool: {
               kind: 'agent',
               name: 'delegate',
+              input: 'Write the release notes',
               title: 'Write release notes',
               status: 'completed',
               workerId: 'delegate-done',
@@ -376,11 +381,12 @@ try {
   assert.equal(await page.getByRole('option').count(), 1, 'search filters across agents');
   await search.press('Enter');
   await page.getByRole('button', { name: /^Model: Claude Sonnet/ }).waitFor();
-  // Effort lives in the model menu, for the model that is chosen.
-  await page.getByRole('button', { name: /^Model:/ }).click();
-  await page.getByRole('combobox', { name: 'Reasoning effort' }).selectOption('high');
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: /^Model: Claude Sonnet 5.5, high effort/ }).waitFor();
+  // Effort has its own menu, for the levels the chosen model supports.
+  await page.getByRole('button', { name: 'Model: Claude Sonnet 5.5' }).waitFor();
+  await page.getByRole('button', { name: /^Effort:/ }).click();
+  assert.equal(await page.getByRole('menuitemradio').count(), 4, 'default plus three levels');
+  await page.getByRole('menuitemradio', { name: 'High' }).click();
+  await page.getByRole('button', { name: 'Effort: High' }).waitFor();
   await box.fill('Fix the login bug');
   await box.press('Shift+Enter');
   assert.equal((await sentOf('start')).length, 0, 'Shift+Enter is a new line');
@@ -408,10 +414,12 @@ try {
   await box.fill('@codex Try it in isolation');
   await box.press('Enter');
   const [, mentioned] = await sentOf('start');
+  // A first-message mention runs in a card, and your main agent stays your main agent.
   assert.deepEqual(
-    [mentioned.agent, mentioned.text, mentioned.worktree],
+    [mentioned.delegate, mentioned.text, mentioned.worktree],
     ['codex', 'Try it in isolation', true],
   );
+  assert.equal(mentioned.agent, 'claude');
   // A background update during a slow start must not allow a duplicate start.
   await update(undefined);
   await box.press('Enter');
@@ -431,16 +439,30 @@ try {
   await pickAgent('Codex', 'GPT-6-Luna');
   catalog.codex.models[1].efforts.unshift('none');
   await update(undefined);
-  await page.getByRole('button', { name: 'Thinking', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: 'Off', exact: true }).click();
-  assert.equal(
-    (await page.getByRole('button', { name: 'Thinking', exact: true }).textContent())?.includes(
-      'Off',
-    ),
-    true,
-  );
-  await page.getByRole('button', { name: 'Thinking', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: 'Default', exact: true }).click();
+  // Thinking is one click, and stays within what the model supports.
+  const thinkingToggle = page.getByRole('button', { name: 'Thinking', exact: true });
+  const pressed = async (value: 'true' | 'false') =>
+    page.waitForFunction(
+      (want) =>
+        document.querySelector('button[aria-label="Thinking"]')?.getAttribute('aria-pressed') ===
+        want,
+      value,
+    );
+  await pressed('false');
+  await thinkingToggle.click();
+  await pressed('true');
+  await thinkingToggle.click();
+  await pressed('false');
+  // This model can't turn thinking off, so the toggle goes On, then back to Default.
+  catalog.codex.models[1].efforts.shift();
+  await update(undefined);
+  await thinkingToggle.click();
+  await pressed('true');
+  await thinkingToggle.click();
+  await pressed('false');
+  assert.equal(await thinkingToggle.isEnabled(), true);
+  catalog.codex.models[1].efforts.unshift('none');
+  await update(undefined);
 
   // A thread shows thinking, steps, visible diffs, and child threads.
   await update('codex-one');
@@ -448,14 +470,8 @@ try {
   await page.getByRole('region', { name: 'Changes to src/compiler.ts' }).waitFor();
   assert.ok(await page.locator('.diff-line.add').first().isVisible(), 'diffs show by default');
   const observedDiff = page.getByRole('region', { name: 'Changes to src/shell-edit.ts' });
-  await observedDiff.getByText('after', { exact: true }).waitFor();
-  await page.getByText('Observed file changes', { exact: true }).waitFor();
-  await page
-    .getByText('1 path skipped (capture limits, symlinks, or unreadable files).', { exact: true })
-    .waitFor();
-  await observedDiff.getByRole('button', { name: 'src/shell-edit.ts', exact: true }).click();
-  assert.equal(await observedDiff.getByText('after', { exact: true }).count(), 0);
-  await observedDiff.getByRole('button', { name: 'src/shell-edit.ts', exact: true }).click();
+  assert.equal(await observedDiff.count(), 0, 'observed change cards stay out of chat');
+  assert.equal(await page.getByText('Observed file changes', { exact: true }).count(), 0);
   await page.getByRole('button', { name: /Edited 1 file, ran 2 commands, read 1 file/ }).click();
   await page.getByRole('button', { name: 'Thought for 4s' }).click();
   await page.getByText('so a renamed clip could reuse').waitFor();
@@ -476,14 +492,24 @@ try {
     origin: 'provider',
   };
   await update('codex-one');
-  await page.getByRole('button', { name: 'Stop and resume in Auto' }).click();
-  const autoActions = await sentOf('resumeInAuto');
-  assert.deepEqual(autoActions.at(-1), {
-    type: 'resumeInAuto',
+  await page.getByRole('button', { name: 'Allow in Auto' }).click();
+  assert.deepEqual((await sentOf('approve')).at(-1), {
+    type: 'approve',
     id: 'codex-one',
     requestId: 'native-approval',
+    allowed: true,
+    auto: true,
+    answers: {},
   });
-  assert.equal((await sentOf('approve')).length, 1, 'Auto does not grant the request');
+  assert.equal(await page.getByRole('button', { name: 'Stop and resume in Auto' }).count(), 0);
+  // Already in Auto, it would be the same as Allow once.
+  const modeBeforeAuto = autoSession.mode;
+  autoSession.mode = 'auto';
+  await update('codex-one');
+  await page.locator('.composer-area[data-mode="auto"]').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Allow in Auto' }).count(), 0);
+  await page.getByRole('button', { name: 'Allow once' }).waitFor();
+  autoSession.mode = modeBeforeAuto;
   autoSession.transition = 'stopping';
   await update('codex-one');
   await page.getByText('Stopping…', { exact: true }).waitFor();
@@ -505,7 +531,7 @@ try {
     status: 'waiting',
     createdAt: 8,
     updatedAt: Date.now(),
-    mode: 'agent',
+    mode: 'auto',
     runtime: { mcpServers: [{ name: 'figma', status: 'failed' }] },
     usage: {
       context: { used: 176_000, max: 200_000 },
@@ -615,6 +641,15 @@ try {
   await page.getByText('Release notes are ready for review.').waitFor();
   await page.getByRole('button', { name: 'Add this result to your next message' }).waitFor();
 
+  // Picking an agent mid-message moves it to the front, keeping your words.
+  await box.fill('');
+  await box.pressSequentially('use @claude');
+  await page.getByRole('option', { name: /@claude2/ }).waitFor();
+  assert.match((await page.getByRole('option').first().textContent()) ?? '', /@claude/);
+  await box.press('Enter');
+  assert.equal(await box.inputValue(), '@claude use ');
+  await box.fill('');
+
   // An agent can be run from the composer without leaving the thread.
   await box.fill('@cl');
   await page.getByRole('option', { name: /@claude2/ }).waitFor();
@@ -622,10 +657,15 @@ try {
   await box.press('ArrowDown');
   await box.press('Enter');
   assert.equal(await box.inputValue(), '@claude2 ');
-  // The pill names who a mention runs, on the model it will really use.
-  await page.getByRole('button', { name: 'Model: Claude 2 Default' }).waitFor();
+  // A mention doesn't replace your main agent's chip. Another one says who it goes to.
+  const mainModel = await page.getByRole('button', { name: /^Model:/ }).getAttribute('aria-label');
+  assert.doesNotMatch(mainModel ?? '', /Claude 2/);
+  await page.locator('.composer').getByText('Claude 2', { exact: true }).waitFor();
   await box.fill('@codex Write the migration');
-  await page.getByRole('button', { name: 'Model: Codex Default' }).waitFor();
+  assert.equal(
+    await page.getByRole('button', { name: /^Model:/ }).getAttribute('aria-label'),
+    mainModel,
+  );
   await page.getByRole('button', { name: 'Send message' }).click();
   const [delegated] = await sentOf('delegate');
   assert.deepEqual(
@@ -639,6 +679,45 @@ try {
   await page.getByRole('option', { name: 'GPT-6-Luna' }).click();
   const [changed] = await sentOf('setModel');
   assert.deepEqual([changed.id, changed.model, changed.effort], ['codex-one', 'gpt-6-luna', null]);
+
+  // A card says who asked, and in what words.
+  const sentPrompts = page.locator('.sent-prompt');
+  await sentPrompts
+    .filter({ hasText: /You asked Codex|You asked Claude/ })
+    .first()
+    .waitFor();
+  await sentPrompts.getByText('Write the release notes').first().waitFor();
+  await sentPrompts
+    .filter({ hasText: /Codex asked/ })
+    .getByText(/cache key/)
+    .first()
+    .waitFor();
+
+  // A thread in its terminal says so, and the composer steps aside without losing your draft.
+  await box.fill('Keep this draft');
+  const terminalThread = snapshot.sessions.find((item) => item.id === 'codex-one') as any;
+  const terminalBefore = {
+    nativeId: terminalThread.nativeId,
+    approval: terminalThread.approval,
+    status: terminalThread.status,
+  };
+  await page.getByRole('button', { name: 'Open in terminal' }).waitFor();
+  terminalThread.nativeId = 'native-root';
+  terminalThread.inTerminal = true;
+  terminalThread.approval = undefined;
+  terminalThread.status = 'idle';
+  await update('codex-one');
+  await page.getByRole('button', { name: 'Back to chat' }).click();
+  assert.equal((await sentOf('terminalBack')).at(-1).id, 'codex-one');
+  await page.getByRole('button', { name: 'Show terminal' }).click();
+  assert.equal((await sentOf('terminal')).at(-1).id, 'codex-one');
+  await page.getByRole('img', { name: 'In terminal' }).first().waitFor();
+  await page.screenshot({ path: 'test-results/screenshots/terminal-strip.png' });
+  terminalThread.inTerminal = false;
+  Object.assign(terminalThread, terminalBefore);
+  await update('codex-one');
+  assert.equal(await box.inputValue(), 'Keep this draft');
+  await box.fill('');
 
   // Per-thread drafts survive switching.
   await box.fill('Draft for Codex');
@@ -699,11 +778,44 @@ try {
   await page.getByRole('tooltip').waitFor();
   await page.mouse.move(0, 0);
 
-  // Modes: Shift+Tab cycles from Agent through Auto and Ask to Plan, and a new thread starts in it.
+  // On a new chat there's room, so the @ menu opens right under the line you're typing on.
+  await update(undefined);
+  await box.fill('');
+  await box.pressSequentially('use @');
+  const newChatMenu = page.getByRole('listbox', { name: 'Add context' });
+  await newChatMenu.getByRole('option', { name: /@claude2/ }).waitFor();
+  const newChatPlacement = await page.evaluate(() => {
+    const list = (
+      document.querySelector('[aria-label="Add context"]') as Element
+    ).getBoundingClientRect();
+    const area = (document.querySelector('.composer textarea') as Element).getBoundingClientRect();
+    return { top: list.top, areaTop: area.top, left: list.left, areaLeft: area.left };
+  });
+  assert.ok(newChatPlacement.top > newChatPlacement.areaTop, 'opens below the caret');
+  assert.ok(
+    newChatPlacement.top < newChatPlacement.areaTop + 50,
+    'right under the first line, over the composer',
+  );
+  assert.ok(newChatPlacement.left > newChatPlacement.areaLeft + 20, 'lined up with the @');
+  await page.screenshot({ path: 'test-results/screenshots/context-menu-new-chat.png' });
+  await box.press('Escape');
+  await box.fill('');
+  // Modes: a new chat starts in Auto, and Shift+Tab cycles through Ask to Plan.
   await update(undefined);
   await box.fill('Plan the render cache');
-  await box.press('Shift+Tab');
   await page.getByRole('button', { name: 'Mode: Auto' }).waitFor();
+  // On a new chat, the composer is at the top, so its menus open downward.
+  await page.getByRole('button', { name: 'Mode: Auto' }).click();
+  const modeMenu = page.getByRole('menuitemradio').first();
+  await modeMenu.waitFor();
+  const opensDown = await page.evaluate(() => ({
+    menu: (document.querySelector('[role="menuitemradio"]') as Element).getBoundingClientRect().top,
+    chip: (document.querySelector('.mode-chip') as Element).getBoundingClientRect().bottom,
+  }));
+  assert.ok(opensDown.menu > opensDown.chip, 'the mode menu opens below its chip');
+  await page.screenshot({ path: 'test-results/screenshots/mode-menu-new-chat.png' });
+  await page.keyboard.press('Escape');
+  await box.focus();
   await box.press('Shift+Tab');
   await page.getByRole('button', { name: 'Mode: Ask' }).waitFor();
   await box.press('Shift+Tab');
@@ -714,7 +826,7 @@ try {
     (await page.getByRole('menuitemradio').allTextContents()).map(
       (item) => item.split(/(?=[A-Z])/)[0],
     ),
-    ['Ask', 'Plan', 'Agent', 'Auto'],
+    ['Ask', 'Plan', 'Auto'],
   );
   await page.keyboard.press('Escape');
   await box.focus();
@@ -730,7 +842,7 @@ try {
     return area?.value === '';
   });
   await page.getByRole('button', { name: 'Mode: Plan' }).click();
-  await page.getByRole('menuitemradio', { name: /Agent/ }).click();
+  await page.getByRole('menuitemradio', { name: /Auto/ }).click();
 
   // Skills: / opens a searchable menu, a pick becomes a chip, and a chip is only a request.
 
@@ -906,6 +1018,7 @@ try {
   await plan.getByRole('combobox', { name: 'Implementation destination' }).selectOption('current');
   await plan.getByRole('button', { name: 'Implement plan' }).click();
   assert.deepEqual((await sentOf('buildPlan')).at(-1), { type: 'buildPlan', id: 'planned' });
+  assert.equal(await plan.getByRole('button', { name: 'Implement in Auto' }).count(), 0);
   // Cmd+Enter builds with an empty composer. A message you're writing stays yours to send.
   const buildsBefore = (await sentOf('buildPlan')).length;
   await page.keyboard.press('Control+Enter');
@@ -954,13 +1067,45 @@ try {
   });
 
   // Images: a generated one opens full size; generating and failed states say so.
-  await page.getByRole('button', { name: 'View image full size' }).click();
-  await page.getByRole('dialog', { name: 'Image viewer' }).waitFor();
+  await page.getByRole('button', { name: 'View image full size: mock.png' }).click();
+  await page.getByRole('dialog', { name: /Image viewer:/ }).waitFor();
+  await page.locator('[data-slot="dialog-overlay"]').click({ position: { x: 10, y: 10 } });
+  await page.getByRole('dialog', { name: /Image viewer:/ }).waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'View image full size: A render cache diagram' }).click();
+  await page.getByRole('dialog', { name: /Image viewer:/ }).waitFor();
   assert.ok(
     await page
       .locator('.lightbox img')
       .evaluate((image: HTMLImageElement) => image.naturalWidth > 0),
     'the image loads under the policy',
+  );
+  await page.getByRole('button', { name: 'Actual size', exact: true }).click();
+  assert.equal(
+    await page
+      .getByRole('button', { name: 'Actual size', exact: true })
+      .getAttribute('aria-pressed'),
+    'true',
+  );
+  await page.getByRole('button', { name: 'Fit', exact: true }).click();
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 640 });
+  const viewerBounds = await page.getByRole('dialog', { name: /Image viewer:/ }).boundingBox();
+  assert.ok(
+    viewerBounds &&
+      viewerBounds.x >= 0 &&
+      viewerBounds.y >= 0 &&
+      viewerBounds.x + viewerBounds.width <= 320 &&
+      viewerBounds.y + viewerBounds.height <= 640,
+    `image viewer fits narrow panels: ${JSON.stringify(viewerBounds)}`,
+  );
+  await page.screenshot({ path: 'test-results/screenshots/image-viewer-narrow.png' });
+  if (viewport) await page.setViewportSize(viewport);
+  await page.screenshot({ path: 'test-results/screenshots/image-viewer.png' });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'View image full size: A render cache diagram' }).click();
+  assert.equal(
+    await page.getByRole('button', { name: 'Fit', exact: true }).getAttribute('aria-pressed'),
+    'true',
   );
   await page.keyboard.press('Escape');
   await page.getByText('Generating image…').waitFor();
@@ -1008,11 +1153,23 @@ try {
     /Images/,
   ])
     await menu.getByRole('option', { name }).waitFor();
-  assert.equal(
-    await menu.getByRole('option', { name: /@claude/ }).count(),
-    0,
-    'agents only lead a message',
-  );
+  // Agents are offered mid-message, after the recent file so Enter still adds context.
+  const midRows = await menu.getByRole('option').allTextContents();
+  assert.match(midRows[0] ?? '', /compiler\.ts/);
+  await menu.getByRole('option', { name: /@claude2/ }).waitFor();
+  // The menu sits under the @, not at the composer's edge.
+  const placement = await page.evaluate(() => {
+    const list = document.querySelector('[aria-label="Add context"]') as Element;
+    const area = document.querySelector('.composer textarea') as Element;
+    return {
+      list: list.getBoundingClientRect().toJSON(),
+      area: area.getBoundingClientRect().toJSON(),
+      viewport: window.innerHeight,
+    };
+  });
+  assert.ok(placement.list.left > placement.area.left + 30, 'the menu follows the caret');
+  assert.ok(placement.list.left < placement.area.left + 140, 'and stays near it');
+  assert.ok(placement.list.bottom <= placement.viewport, 'the menu stays on screen');
   await page.screenshot({ path: 'test-results/screenshots/context-menu.png' });
   await box.press('Enter');
   assert.equal(await box.inputValue(), 'Look at ', 'the token leaves the text');
@@ -1025,8 +1182,8 @@ try {
   await page.locator('.composer .attachment-chip').getByText('webview').waitFor();
   await box.pressSequentially('@');
   await menu.getByRole('option', { name: /Past Threads/ }).waitFor();
-  await box.press('ArrowDown');
-  await box.press('ArrowDown');
+  // Past the recent file, the three agents, and Files & Folders.
+  for (let step = 0; step < 5; step++) await box.press('ArrowDown');
   await box.press('ArrowRight');
   await menu.getByRole('option', { name: 'Playback review' }).waitFor();
   await box.press('Escape');
@@ -1047,7 +1204,9 @@ try {
   await page.locator('.composer .attachment-chip').waitFor({ state: 'detached' });
 
   // Pasting an image sends it to the host, which replies with a stored file.
+  await box.fill('Keep my words');
   await box.focus();
+  await box.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(5, 5));
   await page.evaluate(async () => {
     const bytes = Uint8Array.from(atob('iVBORw0KGgo='), (c) => c.charCodeAt(0));
     const data = new DataTransfer();
@@ -1072,9 +1231,170 @@ try {
       '*',
     ),
   );
-  await page.locator('.composer .attachment-chip img').waitFor();
-  assert.match(await page.locator('.composer textarea').inputValue(), /\[Image #\d+\]/);
+  const thumbnail = page.locator('.composer .attachment-image');
+  await thumbnail.locator('img').waitFor();
+  assert.equal(await box.inputValue(), 'Keep my words');
+  assert.equal(await box.evaluate((element: HTMLTextAreaElement) => element.selectionStart), 5);
+  assert.equal(await thumbnail.innerText(), '');
+  const previewButton = thumbnail.getByRole('button', { name: /View image full size/ });
+  assert.equal(
+    await previewButton.evaluate((element) => getComputedStyle(element).cursor),
+    'zoom-in',
+  );
+  const dimensions = await previewButton.boundingBox();
+  assert.ok(dimensions && dimensions.width >= 90 && dimensions.height >= 70);
+  await previewButton.focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('dialog', { name: /Image viewer:/ }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(
+    (element) => document.activeElement === element,
+    await previewButton.elementHandle(),
+  );
+  await previewButton.click();
+  await page.getByRole('button', { name: 'Close image', exact: true }).click();
+  await page.evaluate(() =>
+    window.postMessage(
+      {
+        type: 'attached',
+        draftKey: 'claude-two',
+        attachment: { kind: 'image', file: 'sample-2.png', name: 'second.png' },
+      },
+      '*',
+    ),
+  );
+  await page.locator('.composer .attachment-image').nth(1).locator('img').waitFor();
+  assert.equal(await box.inputValue(), 'Keep my words');
+  await box.press('Enter');
+  await page.waitForFunction(() =>
+    (window as any).sent.some(
+      (message: any) =>
+        message.type === 'send' &&
+        message.text === 'Keep my words' &&
+        message.attachments?.length === 2,
+    ),
+  );
+  assert.deepEqual(
+    (await sentOf('send')).at(-1).attachments.map((item: any) => item.name),
+    ['shot.png', 'second.png'],
+  );
   await page.getByRole('button', { name: /Remove .*shot.png/ }).click();
+  await page.getByRole('button', { name: /Remove second.png/ }).click();
+  await page.evaluate(() =>
+    window.postMessage({ type: 'sent', id: 'claude-two', text: 'Keep my words' }, '*'),
+  );
+  await page.evaluate(() =>
+    window.postMessage(
+      {
+        type: 'attached',
+        draftKey: 'claude-two',
+        attachment: { kind: 'image', file: 'missing.png', name: 'missing.png' },
+      },
+      '*',
+    ),
+  );
+  await page.getByText('Image unavailable', { exact: true }).waitFor();
+  assert.ok(
+    await page.getByRole('button', { name: 'View image full size: missing.png' }).isDisabled(),
+  );
+  await page.getByRole('button', { name: 'Remove missing.png', exact: true }).click();
+
+  // Mascot state follows current activity; reduced motion freezes the same first frame.
+  const mascotSession = snapshot.sessions.find((item) => item.id === 'claude-two') as Session;
+  const beforeMascot = { ...mascotSession };
+  Object.assign(mascotSession, {
+    status: 'running',
+    mode: 'auto',
+    messages: [],
+    approval: undefined,
+    plan: undefined,
+    transition: undefined,
+  });
+  for (const activity of ['working', 'thinking', 'planning', 'coding', 'reading'] as const) {
+    mascotSession.mode = activity === 'planning' ? 'plan' : 'auto';
+    mascotSession.messages =
+      activity === 'thinking'
+        ? [{ id: 'mascot-thought', role: 'thinking', text: 'Reviewing the task' }]
+        : activity === 'coding' || activity === 'reading'
+          ? [
+              {
+                id: 'mascot-tool',
+                role: 'tool',
+                text: '',
+                tool: {
+                  kind: activity === 'coding' ? 'edit' : 'read',
+                  name: activity,
+                  title: 'src/app.ts',
+                  status: 'running',
+                },
+              },
+            ]
+          : [];
+    await update(mascotSession.id);
+    const mascot = page.locator(`.main .mascot[data-activity="${activity}"]`);
+    await mascot.waitFor();
+    assert.equal(
+      await mascot.evaluate((element) => getComputedStyle(element, '::before').animationName),
+      'none',
+    );
+    await mascot.evaluate(async (element) => {
+      const background = getComputedStyle(element, '::before').backgroundImage;
+      const image = new Image();
+      image.src = background.slice(5, -2);
+      await image.decode();
+      if (image.naturalWidth !== 1024 || image.naturalHeight !== 128)
+        throw new Error(`Unexpected mascot strip: ${image.naturalWidth}×${image.naturalHeight}`);
+    });
+    const gif = await page.evaluate(async (state) => {
+      const response = await fetch(`/mascot/${state}.gif`);
+      const decoder = new (window as any).ImageDecoder({
+        data: await response.arrayBuffer(),
+        type: 'image/gif',
+      });
+      await decoder.tracks.ready;
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Cannot inspect GIF frames');
+      const pixels: Uint8ClampedArray[] = [];
+      for (const frameIndex of [0, 4]) {
+        const { image } = await decoder.decode({ frameIndex });
+        context.clearRect(0, 0, 128, 128);
+        context.drawImage(image, 0, 0);
+        pixels.push(context.getImageData(0, 0, 128, 128).data);
+        image.close();
+      }
+      const frameCount = decoder.tracks.selectedTrack.frameCount;
+      decoder.close();
+      return { frameCount, changed: pixels[0].some((value, index) => value !== pixels[1][index]) };
+    }, activity);
+    assert.equal(gif.frameCount, 8, `${activity} GIF contains eight animation frames`);
+    assert.ok(gif.changed, `${activity} GIF has visibly different frames`);
+    await page.screenshot({ path: `test-results/screenshots/mascot-${activity}.png` });
+  }
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  assert.equal(
+    await page
+      .locator('.main .mascot')
+      .evaluate((element) => getComputedStyle(element, '::before').animationName),
+    'mascot-frames',
+  );
+  mascotSession.status = 'waiting';
+  await update(mascotSession.id);
+  const attentive = page.locator('.main .mascot[data-activity="attentive"]');
+  await attentive.waitFor();
+  assert.equal(
+    await attentive.evaluate((element) => getComputedStyle(element, '::before').animationName),
+    'none',
+  );
+  for (const status of ['completed', 'failed', 'interrupted'] as const) {
+    mascotSession.status = status;
+    await update(mascotSession.id);
+    await page.locator('.main .mascot').waitFor({ state: 'detached' });
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  Object.assign(mascotSession, beforeMascot);
 
   // In the side bar: no second divider, and it holds up at real panel widths.
   await page.evaluate(() => {
@@ -1116,7 +1436,7 @@ try {
   // A new thread puts the composer first, with recent threads under it.
   await page.getByRole('navigation', { name: 'Recent threads' }).waitFor();
   await page
-    .getByRole('button', { name: /Try Plan Mode|Mode: Agent/ })
+    .getByRole('button', { name: /Try Plan Mode|Mode: Auto/ })
     .first()
     .waitFor();
   await page.screenshot({ path: 'test-results/screenshots/sidebar-new-thread.png' });
@@ -1170,6 +1490,7 @@ try {
   ]) {
     const colors = await page.evaluate(
       ({ className, background, foreground }) => {
+        document.documentElement.dataset.appearance = 'editor';
         document.body.className = className;
         document.body.style.setProperty('--vscode-editor-background', background);
         document.body.style.setProperty('--vscode-foreground', foreground);
@@ -1191,7 +1512,353 @@ try {
     document.body.style.removeProperty('--vscode-editor-background');
     document.body.style.removeProperty('--vscode-foreground');
   });
-  await page.evaluate(() => document.body.classList.add('vscode-light'));
+  const canvasWith = (appearance: string, className: string) =>
+    page.evaluate(
+      ({ appearance, className }) => {
+        document.documentElement.dataset.appearance = appearance;
+        document.body.className = className;
+        document.body.style.setProperty('--vscode-editor-background', '#444444');
+        return getComputedStyle(document.body).getPropertyValue('--canvas').trim();
+      },
+      { appearance, className },
+    );
+  assert.equal(await canvasWith('cursor', 'vscode-dark'), '#181818', 'any dark theme');
+  assert.equal(await canvasWith('editor', 'vscode-dark'), '#444444', 'turned off');
+  assert.equal(await canvasWith('cursor', 'vscode-light'), '#444444', 'light keeps the editor');
+  assert.equal(await canvasWith('cursor', 'vscode-high-contrast'), '#444444');
+  assert.equal(await canvasWith('cursor', 'vscode-high-contrast-light'), '#444444');
+  await page.evaluate(() => document.body.style.removeProperty('--vscode-editor-background'));
+  await canvasWith('cursor', 'vscode-dark');
+  await page.evaluate(() => document.body.style.removeProperty('--vscode-editor-background'));
+
+  // Every mode has its own colour on the chip and send button, and stays readable.
+  const luminance = (rgb: string) => {
+    const [r, g, b] = (rgb.match(/[\d.]+/g) ?? []).slice(0, 3).map((value) => {
+      const channel = Number(value) / 255;
+      return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const moded = snapshot.sessions.find((item) => item.id === 'claude-two') as unknown as Session;
+  const modeColors: Record<string, string> = {};
+  for (const mode of ['ask', 'plan', 'auto'] as const) {
+    moded.mode = mode;
+    moded.status = 'idle';
+    await update('claude-two');
+    await page.locator(`.composer-area[data-mode="${mode}"]`).waitFor();
+    const colors = await page.evaluate(() => {
+      const send = getComputedStyle(document.querySelector('.send-button') as Element);
+      const chip = getComputedStyle(document.querySelector('.mode-chip') as Element);
+      return { fill: send.backgroundColor, icon: send.color, chip: chip.color };
+    });
+    assert.equal(colors.chip, colors.fill, `${mode} chip matches its send button`);
+    const [light, dark] = [luminance(colors.fill), luminance(colors.icon)].sort((a, b) => b - a);
+    const contrast = (light + 0.05) / (dark + 0.05);
+    assert.ok(contrast >= 4.5, `${mode} send contrast is ${contrast.toFixed(2)}`);
+    modeColors[mode] = colors.fill;
+    await page.screenshot({ path: `test-results/screenshots/cursor-${mode}.png` });
+  }
+  assert.equal(new Set(Object.values(modeColors)).size, 3, 'each mode looks different');
+
+  // Guides can be chosen, one click each, from the mode that uses them.
+  moded.mode = 'plan';
+  await update('claude-two');
+  await page.locator('.composer-area[data-mode="plan"]').waitFor();
+  const planGuide = page.getByRole('button', { name: 'Planning guide' });
+  assert.equal(await planGuide.getAttribute('aria-pressed'), 'true');
+  await planGuide.click();
+  assert.deepEqual((await sentOf('setGuide')).at(-1), {
+    type: 'setGuide',
+    guide: 'guidedPlanning',
+    enabled: false,
+  });
+  moded.mode = 'ask';
+  await update('claude-two');
+  await page.locator('.composer-area[data-mode="ask"]').waitFor();
+  await page.getByRole('button', { name: 'Visual explanations' }).click();
+  assert.equal((await sentOf('setGuide')).at(-1).guide, 'richExplanations');
+  moded.mode = 'auto';
+  await update('claude-two');
+  await page.locator('.composer-area[data-mode="auto"]').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Planning guide' }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Visual explanations' }).count(), 0);
+
+  // On a thread, the toggle tells the host what it chose.
+  assert.equal(await thinkingToggle.isDisabled(), true, 'an unknown model has nothing to offer');
+  const toggleModel = catalog.claude.models[0];
+  (toggleModel as { adaptiveThinking?: boolean }).adaptiveThinking = true;
+  moded.model = toggleModel.id;
+  await update('claude-two');
+  await thinkingToggle.click();
+  assert.equal((await sentOf('setThinking')).at(-1).thinking, 'on');
+  delete (toggleModel as { adaptiveThinking?: boolean }).adaptiveThinking;
+  delete moded.model;
+
+  // A Plan reply in plain prose, with no plan card, can still be built.
+  moded.mode = 'plan';
+  moded.status = 'completed';
+  await update('claude-two');
+  const sendsBefore = (await sentOf('send')).length;
+  await box.fill('One more thing');
+  await page.getByRole('button', { name: 'Implement', exact: true }).click();
+  assert.equal((await sentOf('setMode')).at(-1).mode, 'auto');
+  assert.equal((await sentOf('send')).length, sendsBefore, 'a draft stays yours to send');
+  assert.equal(await box.inputValue(), 'One more thing');
+  await box.fill('');
+  await page.getByRole('button', { name: 'Implement', exact: true }).click();
+  assert.equal((await sentOf('send')).at(-1).text, 'Implement what you proposed above.');
+  moded.mode = undefined;
+  moded.status = 'idle';
+
+  // Finished subagents wait behind a toggle. Running ones never do.
+  await update('planned');
+  const threads = page.getByRole('navigation', { name: 'Agent sessions' });
+  const earlierToggle = threads.getByRole('button', { name: /\d+ earlier/ });
+  await earlierToggle.waitFor();
+  assert.equal(await threads.getByRole('button', { name: /Write release notes/ }).count(), 0);
+  assert.ok(await threads.getByRole('button', { name: /Double-check the compiler/ }).count());
+  await earlierToggle.click();
+  await threads.getByRole('button', { name: /Write release notes/ }).waitFor();
+  await threads.getByRole('button', { name: 'Hide earlier' }).click();
+  await threads.getByPlaceholder('Find a thread…').fill('release notes');
+  await threads.getByRole('button', { name: /Write release notes/ }).waitFor();
+  await threads.getByPlaceholder('Find a thread…').fill('');
+  await threads.getByRole('button', { name: 'Running only' }).click();
+  assert.equal(await threads.getByRole('button', { name: /Playback review/ }).count(), 0);
+  assert.ok(await threads.getByRole('button', { name: /Double-check the compiler/ }).count());
+  await page.screenshot({ path: 'test-results/screenshots/running-only.png' });
+  await threads.getByRole('button', { name: 'Running only' }).click();
+  await threads.getByRole('button', { name: /Playback review/ }).waitFor();
+
+  // Open threads are tabs. A new one doesn't disturb the others, and closing one stops nothing.
+  const tablist = page.getByRole('tablist', { name: 'Open threads' });
+  const tabNamed = (name: RegExp | string) => tablist.getByRole('tab', { name });
+  await update('claude-two');
+  await update('planned');
+  await tabNamed(/Playback review/).waitFor();
+  await tabNamed(/Plan the cache/).waitFor();
+  // Every click is a new chat, and what you typed stays in its own tab, sent or not.
+  const draftTabs = () => tablist.getByRole('tab', { name: /New chat|unsent words/ }).count();
+  const draftsBefore = await draftTabs();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await box.fill('unsent words');
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  assert.equal(await draftTabs(), draftsBefore + 3);
+  assert.equal(await box.inputValue(), '', 'a new chat starts empty');
+  await tabNamed(/Plan the cache/).waitFor();
+  await tabNamed(/unsent words/).click();
+  assert.equal(await box.inputValue(), 'unsent words');
+  await page.screenshot({ path: 'test-results/screenshots/draft-tabs.png' });
+  await update('planned');
+  await tabNamed(/unsent words/).waitFor();
+  await page.getByRole('button', { name: 'Close unsent words' }).click({ force: true });
+  await page.waitForFunction(
+    () => !document.querySelector('[role="tablist"]')?.textContent?.includes('unsent words'),
+  );
+  // Which threads need you shows on their tabs, and only until you've looked.
+  const backgrounded = snapshot.sessions.find(
+    (item) => item.id === 'claude-two',
+  ) as unknown as Session;
+  backgrounded.status = 'waiting';
+  await update('planned');
+  await tablist.getByRole('img', { name: 'Needs your review' }).first().waitFor();
+  backgrounded.status = 'completed';
+  backgrounded.updatedAt = Date.now() + 60_000;
+  await update('planned');
+  await tablist.getByRole('img', { name: 'Finished since you last looked' }).waitFor();
+  await page.screenshot({ path: 'test-results/screenshots/thread-tabs.png' });
+  await tabNamed(/Playback review/).click();
+  assert.equal((await sentOf('select')).at(-1).id, 'claude-two');
+  await update('claude-two');
+  await page.waitForFunction(
+    () => !document.querySelector('[aria-label="Finished since you last looked"]'),
+  );
+  backgrounded.status = 'idle';
+  await update('planned');
+  const interruptsBefore = (await sentOf('interrupt')).length;
+  await page.getByRole('button', { name: 'Close Playback review' }).click({ force: true });
+  await page.waitForFunction(
+    () => !document.querySelector('[role="tablist"]')?.textContent?.includes('Playback review'),
+  );
+  assert.equal((await sentOf('interrupt')).length, interruptsBefore, 'closing a tab stops nothing');
+  await threads.getByRole('button', { name: /Playback review/ }).waitFor();
+  // Closing the open tab moves to its neighbour, and a snapshot already on its way can't undo it.
+  await update('claude-two');
+  await page.getByRole('button', { name: 'Close Playback review' }).click();
+  await page.evaluate(
+    (snapshot) => window.postMessage({ type: 'snapshot', snapshot, selectedId: 'claude-two' }, '*'),
+    snapshot,
+  );
+  await page.waitForTimeout(100);
+  assert.equal(await tabNamed(/Playback review/).count(), 0, 'a stale snapshot stays closed');
+  await update('planned');
+  await tablist.getByRole('tab', { name: /Plan the cache/ }).waitFor();
+
+  // A visual renders in a sandbox: it can draw and animate, and nothing else.
+  expectBlocked = true;
+  // Chromium reports a blocked request too, so what counts is whether it was let out.
+  const reachedNetwork: string[] = [];
+  const blockedReasons: string[] = [];
+  await page.route('**://example.test/**', (route) => {
+    reachedNetwork.push(route.request().url());
+    return route.abort();
+  });
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('example.test'))
+      blockedReasons.push(`${request.url()} ${request.failure()?.errorText}`);
+  });
+  const visualHost = snapshot.sessions.find(
+    (item) => item.id === 'claude-two',
+  ) as unknown as Session;
+  visualHost.mode = 'ask';
+  visualHost.status = 'running';
+  const visualMessage = {
+    id: 'visual-test',
+    role: 'assistant',
+    text: `\`\`\`visual
+<div id="hello" class="card fade-in" style="height:320px">Flow <a id="docs" href="https://example.test/docs">docs</a>
+<svg viewBox="0 0 40 10" width="200"><line class="dash-flow" x1="0" y1="5" x2="40" y2="5" stroke="currentColor"/></svg></div>
+<img id="remote" src="https://example.test/remote.png">
+<img src="missing.png" onerror="parent.document.body.dataset.pwned='handler'">
+<script>parent.document.body.dataset.pwned='script'</script>
+\`\`\``,
+    at: Date.now(),
+  };
+  (visualHost.messages as unknown[]).push({ ...visualMessage, text: '```visual\n<div>half' });
+  await update('claude-two');
+  await page.getByText('Drawing a visual…').waitFor();
+  assert.equal(await page.locator('iframe[title="Visual explanation"]').count(), 0);
+  (visualHost.messages as unknown[]).pop();
+  (visualHost.messages as unknown[]).push(visualMessage);
+  visualHost.status = 'completed';
+  await update('claude-two');
+  const visual = page.frameLocator('iframe[title="Visual explanation"]');
+  await visual.locator('#hello').waitFor();
+  await page.waitForFunction(() => {
+    const frame = document.querySelector('iframe[title="Visual explanation"]') as HTMLElement;
+    return frame && frame.getBoundingClientRect().height >= 320;
+  });
+  await page.waitForTimeout(250);
+  assert.equal(await page.evaluate(() => document.body.dataset.pwned), undefined);
+  assert.deepEqual(reachedNetwork, [], 'a visual reaches no network');
+  assert.ok(
+    blockedReasons.every((reason) => reason.endsWith(' csp')),
+    String(blockedReasons),
+  );
+  assert.equal(
+    await visual.locator('#remote').evaluate((image) => (image as HTMLImageElement).naturalWidth),
+    0,
+  );
+  assert.equal(
+    await page.locator('iframe[title="Visual explanation"]').getAttribute('sandbox'),
+    'allow-same-origin',
+  );
+  await visual.locator('#docs').click();
+  assert.equal((await sentOf('link')).at(-1).href, 'https://example.test/docs');
+  await page.screenshot({ path: 'test-results/screenshots/visual.png' });
+  (visualHost.messages as unknown[]).pop();
+  visualHost.mode = undefined;
+  visualHost.status = 'idle';
+  expectBlocked = false;
+  await update('planned');
+
+  // Continuing in another agent moves the draft with a context chip, and sends nothing by itself.
+  const continueSource = {
+    ...(snapshot.sessions.find((item) => item.id === 'planned') as object),
+    id: 'continue-source',
+    title: 'Cache the render graph',
+    provider: 'codex',
+    claudeCommand: undefined,
+    parentId: undefined,
+    plan: undefined,
+    approval: undefined,
+    status: 'completed',
+    messages: [
+      { id: 'cs1', role: 'user', text: 'Cache the render graph' },
+      { id: 'cs2', role: 'assistant', text: 'Added a cache keyed by node hash.' },
+    ],
+  };
+  const continueLinked = {
+    ...continueSource,
+    id: 'continue-linked',
+    title: 'Review the cache',
+    provider: 'claude',
+    claudeCommand: 'claude',
+    continuedFrom: 'continue-source',
+    messages: [{ id: 'cl1', role: 'assistant', text: 'Reviewed.' }],
+  };
+  snapshot.sessions.push(continueSource as any, continueLinked as any);
+  await update('continue-source');
+  await page.getByRole('button', { name: /Continued in Claude: Review the cache/ }).waitFor();
+  await box.fill('Carry on from here');
+  const quiet = async () =>
+    (await sentOf('start')).length +
+    (await sentOf('send')).length +
+    (await sentOf('delegate')).length;
+  const quietBefore = await quiet();
+  await page.locator('main > header').getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Continue in Claude 2' }).click();
+  const contextChip = page.getByRole('button', {
+    name: 'Preview Context from Cache the render graph',
+  });
+  await contextChip.waitFor();
+  assert.equal(await box.inputValue(), 'Carry on from here', 'the draft moves with you');
+  const continuedModel = await page
+    .getByRole('button', { name: /^Model:/ })
+    .getAttribute('aria-label');
+  assert.match(continuedModel ?? '', /Claude 2/);
+  assert.doesNotMatch(continuedModel ?? '', /gpt/i, 'no Codex model carries over to Claude');
+  assert.equal(await quiet(), quietBefore, 'switching sends nothing by itself');
+  await contextChip.click();
+  assert.deepEqual((await sentOf('previewContext')).at(-1), {
+    type: 'previewContext',
+    id: 'continue-source',
+    history: 'recent',
+  });
+  await page.screenshot({ path: 'test-results/screenshots/continue-chip.png' });
+  await box.press('Enter');
+  const continuedStart = (await sentOf('start')).at(-1);
+  assert.equal(continuedStart.agent, 'claud2');
+  assert.equal(continuedStart.continuedFrom, 'continue-source');
+  assert.deepEqual(continuedStart.attachments, [
+    { kind: 'thread', id: 'continue-source', title: 'Cache the render graph', history: 'recent' },
+  ]);
+  await page.evaluate(
+    (draftKey) =>
+      window.postMessage({ type: 'sent', id: draftKey, text: 'Carry on from here' }, '*'),
+    continuedStart.draftKey,
+  );
+  // Going back to an agent with a linked thread resumes that thread instead of starting one.
+  await update('continue-source');
+  await box.fill('Check it again');
+  await page.locator('main > header').getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Continue in Claude', exact: true }).click();
+  assert.equal((await sentOf('select')).at(-1).id, 'continue-linked');
+  await page
+    .getByRole('button', { name: /Continued from Codex: Cache the render graph/ })
+    .waitFor();
+  await contextChip.waitFor();
+  assert.equal(await box.inputValue(), 'Check it again');
+  await box.press('Enter');
+  const resumed = (await sentOf('send')).at(-1);
+  assert.equal(resumed.id, 'continue-linked');
+  assert.deepEqual(resumed.attachments, [
+    { kind: 'thread', id: 'continue-source', title: 'Cache the render graph', history: 'recent' },
+  ]);
+  await page.evaluate(() =>
+    window.postMessage({ type: 'sent', id: 'continue-linked', text: 'Check it again' }, '*'),
+  );
+  snapshot.sessions.splice(
+    snapshot.sessions.findIndex((item) => item.id === 'continue-source'),
+    2,
+  );
+  await update('planned');
+
+  await page.evaluate(() => {
+    document.body.className = '';
+    document.body.classList.add('vscode-light');
+  });
   await page.getByRole('button', { name: /^Model:/ }).click();
   await page.getByRole('tablist', { name: 'Agents' }).waitFor();
   await page.screenshot({ path: 'test-results/screenshots/light-theme.png' });
@@ -1201,7 +1868,7 @@ try {
   await page.screenshot({ path: 'test-results/screenshots/overview.png' });
   assert.deepEqual(errors, []);
   console.log(
-    'UI checks passed: no-prompt start, model and effort menus, modes, plan card, Markdown and highlighting, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, changes panel, side bar widths, and 4 viewport sizes.',
+    'UI checks passed: no-prompt start, model and effort menus, appearance, mode colours, guide toggles, sandboxed visuals, thread filters, thread tabs and signals, modes, plan card, Markdown and highlighting, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, continuing in another agent, changes panel, side bar widths, and 4 viewport sizes.',
   );
 } catch (error) {
   await page.screenshot({ path: 'test-results/screenshots/failure.png' });

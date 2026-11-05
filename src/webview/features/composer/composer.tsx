@@ -14,7 +14,10 @@ import {
   MODE_LABELS,
   mentionedAgent,
   modeView,
+  newChatMode,
   nextMode,
+  nextThinking,
+  type Preferences,
   parseMention,
   type Session,
   type SkillCatalogs,
@@ -22,10 +25,12 @@ import {
   THINKING_LABELS,
   type Thinking,
   thinkingSupport,
+  withMention,
 } from '../../../core/model';
 import { api, type ComposeChoice, send } from '../../app/bridge';
-import { Icon, type IconName } from '../../components/icons';
-import { Menu } from '../../components/menus';
+import { AgentMark, Icon, type IconName } from '../../components/icons';
+import { Hint, Menu } from '../../components/menus';
+import { caretRect, type MenuAnchor, placeMenu } from '../../lib/caret';
 import {
   AttachmentChip,
   ContextMenu,
@@ -34,6 +39,7 @@ import {
   type Trigger,
   triggerAt,
 } from '../attachments/context-menu';
+import { EffortMenu } from '../models/effort-menu';
 import { ModelSelector } from '../models/model-selector';
 import { SkillMenu } from '../skills/skill-menu';
 import { UsageIndicator } from '../usage/usage-indicator';
@@ -66,7 +72,6 @@ function readFile(file: File): Promise<string> {
 const MODE_ICONS: Record<AgentMode, IconName> = {
   ask: 'question',
   plan: 'plan',
-  agent: 'agentMode',
   auto: 'autoMode',
 };
 export function Composer({
@@ -93,6 +98,7 @@ export function Composer({
   onDismissNudge,
   onSubmit,
   onError,
+  preferences,
 }: {
   catalog: Catalog;
   skills: SkillCatalogs;
@@ -120,18 +126,21 @@ export function Composer({
   onDismissNudge: (key: string) => void;
   onSubmit: () => void;
   onError: (text: string) => void;
+  preferences: Preferences;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [trigger, setTrigger] = useState<Trigger>();
   /** Escape hides the menu until the text changes. */
   const [dismissed, setDismissed] = useState<number>();
   const menuKeys = useRef<((event: React.KeyboardEvent) => boolean) | null>(null);
+  const menuFrame = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<MenuAnchor>();
   const requestId = useRef(0);
   const pendingCaret = useRef<number | undefined>(undefined);
   const agent = session ? agentKind(session) : choice.agent;
   const model = session ? session.model : choice.model;
   const effort = session ? session.effort : choice.effort;
-  const requestedMode = session ? session.mode : choice.modes?.[agent];
+  const requestedMode = session ? session.mode : newChatMode(choice.modes?.[agent]);
   const nudge = chooseNudge(session, agent, requestedMode, dismissedNudges);
   const modeLocked = busy || Boolean(session?.transition) || session?.status === 'waiting';
   const thinking = (session ? session.thinking : choice.thinking) ?? 'default';
@@ -163,37 +172,6 @@ export function Composer({
   useEffect(() => {
     textarea.current?.focus();
   }, [focusKey]);
-  const previousImages = useRef(
-    new Set(attachments.filter((item) => item.kind === 'image').map((item) => item.file)),
-  );
-  const imageCounter = useRef(0);
-  // Host image imports arrive asynchronously; insert at the current selection.
-  useEffect(() => {
-    const images = attachments.filter((item) => item.kind === 'image');
-    const added = images.filter(
-      (item) => !previousImages.current.has(item.file) && !item.reference,
-    );
-    previousImages.current = new Set(images.map((item) => item.file));
-    imageCounter.current = Math.max(
-      imageCounter.current,
-      ...images.map((item) => item.reference ?? 0),
-      ...Array.from(draft.matchAll(/\[Image #(\d+)\]/g), (match) => Number(match[1])),
-    );
-    if (!added.length) return;
-    const numbered = new Map(added.map((item) => [item.file, ++imageCounter.current]));
-    const start = textarea.current?.selectionStart ?? draft.length;
-    const end = textarea.current?.selectionEnd ?? start;
-    const tags = `${added.map((item) => `[Image #${numbered.get(item.file)}]`).join(' ')} `;
-    pendingCaret.current = start + tags.length;
-    onAttachments(
-      attachments.map((item) =>
-        item.kind === 'image' && numbered.has(item.file)
-          ? { ...item, reference: numbered.get(item.file) }
-          : item,
-      ),
-    );
-    onDraft(draft.slice(0, start) + tags + draft.slice(end));
-  }, [attachments, draft, onAttachments, onDraft]);
   const query = trigger?.query;
   const skillTrigger = trigger?.mark === '/';
   // Results are searched by the host, a moment after typing settles.
@@ -214,7 +192,38 @@ export function Composer({
     textarea.current?.setSelectionRange(pendingCaret.current, pendingCaret.current);
     pendingCaret.current = undefined;
   }, [draft]);
+  // Follows the @ itself, so the menu stays put while you type what comes after it.
+  const triggerStart = menuOpen ? trigger?.start : undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a changed draft can rewrap the line
+  useLayoutEffect(() => {
+    const box = textarea.current;
+    const area = menuFrame.current;
+    if (triggerStart === undefined || !box || !area) {
+      setAnchor(undefined);
+      return;
+    }
+    const measure = () => {
+      const width = window.innerWidth;
+      setAnchor(
+        placeMenu(
+          caretRect(box, triggerStart),
+          area.getBoundingClientRect(),
+          { width, height: window.innerHeight },
+          Math.min(360, width - 32),
+        ),
+      );
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    box.addEventListener('scroll', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      box.removeEventListener('scroll', measure);
+    };
+  }, [triggerStart, draft]);
   const focusInput = () => textarea.current?.focus();
+  // A new chat's composer is at the top of the page, so its menus have room below.
+  const menuSide = top ? 'bottom' : 'top';
   function readTrigger(element: HTMLTextAreaElement) {
     setTrigger(triggerAt(element.value, element.selectionStart));
   }
@@ -233,8 +242,11 @@ export function Composer({
     if (!attachments.some(same)) onAttachments([...attachments, attachment]);
   }
   function pickAgent(name: string) {
-    onDraft(`@${name} `);
+    if (!trigger) return;
+    const next = withMention(draft, trigger.start, trigger.end, name);
+    onDraft(next.text);
     setTrigger(undefined);
+    pendingCaret.current = next.caret;
     textarea.current?.focus();
   }
   async function addFiles(files: File[]) {
@@ -294,6 +306,12 @@ export function Composer({
     if (session) send({ type: 'setMode', id: session.id, mode: next });
     onMode(agent, next);
   }
+  const guide =
+    modeShown.mode === 'plan'
+      ? ({ key: 'guidedPlanning', label: 'Planning guide', icon: 'plan' } as const)
+      : modeShown.mode === 'ask'
+        ? ({ key: 'richExplanations', label: 'Visual explanations', icon: 'logo' } as const)
+        : undefined;
   const worktree = session ? session.cwd !== session.workspace : Boolean(choice.worktree);
   const blocked = !trusted || !api;
   return (
@@ -301,13 +319,13 @@ export function Composer({
       className={`composer-area pt-2 px-6 pb-2.5 shrink-0 relative [&.top]:pt-3.5 max-[900px]:py-2 max-[900px]:px-3 [.question-dock+&]:pt-0 ${top ? 'top' : ''}`}
       data-mode={modeShown.mode}
     >
-      <div className="relative max-w-[780px] m-auto">
-        {menuOpen && trigger?.mark === '/' ? (
+      <div ref={menuFrame} className="relative max-w-[780px] m-auto">
+        {menuOpen && anchor && trigger?.mark === '/' ? (
           <SkillMenu
             agent={agent}
             catalog={skills[agent]}
             query={trigger.query}
-            below={Boolean(top)}
+            anchor={anchor}
             onPick={(skill) =>
               attach({
                 kind: 'skill',
@@ -322,14 +340,14 @@ export function Composer({
             onClose={() => setDismissed(trigger.start)}
             keyHandler={menuKeys}
           />
-        ) : menuOpen && trigger ? (
+        ) : menuOpen && anchor && trigger ? (
           <ContextMenu
             trigger={trigger}
             results={contextResults}
             project={project}
             sessions={sessions}
             currentId={session?.id}
-            below={Boolean(top)}
+            anchor={anchor}
             leading={trigger.mark === '@' && !draft.slice(0, trigger.start).trim()}
             onAgent={pickAgent}
             onAttach={attach}
@@ -342,27 +360,37 @@ export function Composer({
           />
         ) : null}
         <div
-          data-agent={target ?? agent}
-          className="composer border border-strong rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [&_textarea]:w-full [&_textarea]:pt-2.5 [&_textarea]:px-3 [&_textarea]:pb-1 [&_textarea]:block [&_textarea]:text-[13px] [&_textarea]:leading-[1.55] [&_textarea]:resize-none [&_textarea]:field-sizing-content [&_textarea]:min-h-[52px] [&_textarea]:max-h-[40vh] [&_textarea]:overflow-y-auto [&_textarea:focus-visible]:outline-none in-[.composer-area.top]:[&_textarea]:min-h-24"
+          data-agent={agent}
+          className="composer @container border border-composer-edge rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [&_textarea]:w-full [&_textarea]:pt-2.5 [&_textarea]:px-3 [&_textarea]:pb-1 [&_textarea]:block [&_textarea]:text-[13px] [&_textarea]:leading-[1.55] [&_textarea]:resize-none [&_textarea]:field-sizing-content [&_textarea]:min-h-[52px] [&_textarea]:max-h-[40vh] [&_textarea]:overflow-y-auto [&_textarea:focus-visible]:outline-none in-[.composer-area.top]:[&_textarea]:min-h-24"
         >
-          {session?.mode === 'ask' && session.status === 'completed' ? (
+          {session?.mode === 'plan' &&
+          session.status === 'completed' &&
+          session.plan?.status !== 'ready' &&
+          session.plan?.status !== 'incomplete' ? (
             <div className="flex items-center gap-2 px-2.5 pt-2 text-xs text-muted-foreground">
-              <span className="flex-1">Ask is read-only.</span>
+              <span className="flex-1">Ready to build this?</span>
               <button
                 type="button"
                 className="cursor-pointer text-[var(--link)] bg-transparent p-0 text-xs hover:underline"
                 onClick={() => {
-                  selectMode('agent');
-                  if (!draft.trim()) onDraft('Go ahead and make those changes.');
+                  // For this thread only: your next new thread keeps its own mode.
+                  send({ type: 'setMode', id: session.id, mode: 'auto' });
+                  // What you were typing stays yours to send.
+                  if (!draft.trim())
+                    send({
+                      type: 'send',
+                      id: session.id,
+                      text: 'Implement what you proposed above.',
+                    });
                   focusInput();
                 }}
               >
-                Build in Agent
+                Implement
               </button>
             </div>
           ) : null}
           {attachments.length ? (
-            <div className="flex flex-wrap gap-1 pt-2 px-2.5 pb-0 in-[.user]:pt-0 in-[.user]:px-0 in-[.user]:pb-1.5">
+            <div className="flex flex-wrap items-start gap-1 pt-2 px-2.5 pb-0 in-[.user]:pt-0 in-[.user]:px-0 in-[.user]:pb-1.5">
               {attachments.map((item, index) => (
                 <AttachmentChip
                   // biome-ignore lint/suspicious/noArrayIndexKey: attachments are unique and only append or remove
@@ -370,6 +398,17 @@ export function Composer({
                   attachment={item}
                   muted={missingSkills.includes(item)}
                   onRemove={() => onAttachments(attachments.filter((other) => other !== item))}
+                  onOpen={
+                    item.kind === 'thread' && item.history
+                      ? () =>
+                          send({
+                            type: 'previewContext',
+                            id: item.id,
+                            history: item.history ?? 'recent',
+                            ...(session ? { targetId: session.id } : {}),
+                          })
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -431,11 +470,8 @@ export function Composer({
           <div className="flex justify-between items-center gap-2 pt-1 px-2 pb-2">
             <div className="composer-controls flex items-center gap-0.5 min-w-0 flex-wrap max-[480px]:flex-wrap">
               <Menu
-                label={
-                  session?.provider === 'codex' && session.mode === 'auto' && !session.reportedMode
-                    ? 'Auto requested'
-                    : modeShown.label
-                }
+                label={modeShown.label}
+                side={menuSide}
                 icon={
                   <Icon
                     name={modeShown.mode ? MODE_ICONS[modeShown.mode] : 'agentMode'}
@@ -443,14 +479,19 @@ export function Composer({
                   />
                 }
                 ariaLabel={`Mode: ${modeShown.label}`}
-                className="mode-chip text-muted-foreground in-data-[mode=plan]:bg-plan-tint in-data-[mode=plan]:text-plan in-data-[mode=plan]:enabled:hover:bg-plan-tint in-data-[mode=plan]:enabled:hover:text-plan"
+                title="⇧Tab to change mode"
+                className="mode-chip text-muted-foreground in-data-[mode]:bg-mode-tint in-data-[mode]:text-mode in-data-[mode]:enabled:hover:bg-mode-tint in-data-[mode]:enabled:hover:text-mode in-data-[mode]:[&>span]:text-mode"
                 disabled={modeLocked}
                 onClosed={focusInput}
                 items={AGENT_MODES.map((item) => ({
                   key: item,
                   label: MODE_LABELS[item],
                   description: CAPABILITIES[agentTarget(agent).provider].modes[item],
-                  icon: <Icon name={MODE_ICONS[item]} size={14} />,
+                  icon: (
+                    <span data-mode={item} className="inline-flex text-mode">
+                      <Icon name={MODE_ICONS[item]} size={14} />
+                    </span>
+                  ),
                   selected: modeShown.mode === item,
                   onSelect: () => selectMode(item),
                 }))}
@@ -460,35 +501,69 @@ export function Composer({
                 agent={agent}
                 model={model}
                 active={session?.activeModel}
-                target={target}
                 lockedAgent={Boolean(session)}
-                effort={effort}
-                efforts={efforts}
-                onEffort={selectEffort}
+                side={menuSide}
                 onSelect={selectModel}
                 onRetry={() => send({ type: 'refreshModels' })}
                 onClosed={focusInput}
               />
-              <Menu
-                label={`Thinking: ${THINKING_LABELS[thinking]}`}
-                icon={<Icon name="brain" size={13} />}
-                ariaLabel="Thinking"
+              <EffortMenu
+                effort={effort}
+                efforts={efforts}
                 disabled={modeLocked}
+                side={menuSide}
+                onEffort={selectEffort}
                 onClosed={focusInput}
-                heading={support.reason || 'Thinking'}
-                items={(
-                  [
-                    'default',
-                    ...(support.on ? ['on'] : []),
-                    ...(support.off ? ['off'] : []),
-                  ] as Thinking[]
-                ).map((value) => ({
-                  key: value,
-                  label: THINKING_LABELS[value],
-                  selected: value === thinking,
-                  onSelect: () => selectThinking(value),
-                }))}
               />
+              {target ? (
+                <Hint
+                  label={`Runs ${AGENT_LABELS[target]} on its default model, in a card in this thread. ${AGENT_LABELS[agent]} isn't sent this message.`}
+                >
+                  <span className="inline-flex items-center gap-1 min-h-6 px-1.5 rounded-md bg-muted text-[11.5px] text-foreground">
+                    <span aria-hidden="true">→</span>
+                    <AgentMark agent={target} size={12} />
+                    <span>{AGENT_LABELS[target]}</span>
+                  </span>
+                </Hint>
+              ) : null}
+              {/* The wrapper keeps the reason reachable while the button is disabled. */}
+              <Hint
+                label={`Thinking: ${THINKING_LABELS[thinking]}.${support.reason ? ` ${support.reason}.` : ''}`}
+              >
+                <span className="inline-flex">
+                  <button
+                    type="button"
+                    className="icon-button p-[5px] text-faint enabled:hover:text-foreground aria-pressed:text-foreground aria-pressed:bg-muted disabled:pointer-events-none"
+                    aria-label="Thinking"
+                    aria-pressed={thinking === 'on'}
+                    disabled={modeLocked || (!support.on && !support.off)}
+                    onClick={() => selectThinking(nextThinking(thinking, support))}
+                  >
+                    <Icon name="brain" size={13} />
+                  </button>
+                </span>
+              </Hint>
+              {guide ? (
+                <Hint
+                  label={`${guide.label}: ${preferences[guide.key] ? 'on' : 'off'}. Applies to your next message.`}
+                >
+                  <button
+                    type="button"
+                    className="icon-button p-[5px] text-faint enabled:hover:text-foreground aria-pressed:text-mode"
+                    aria-label={guide.label}
+                    aria-pressed={preferences[guide.key]}
+                    onClick={() =>
+                      send({
+                        type: 'setGuide',
+                        guide: guide.key,
+                        enabled: !preferences[guide.key],
+                      })
+                    }
+                  >
+                    <Icon name={guide.icon} size={13} />
+                  </button>
+                </Hint>
+              ) : null}
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <UsageIndicator
@@ -508,7 +583,7 @@ export function Composer({
               {busy && !canDelegate ? (
                 <button
                   type="button"
-                  className="send-button bg-primary text-primary-foreground size-[26px] p-1 rounded-full shrink-0 enabled:hover:bg-accent-hover [&.stop]:bg-transparent [&.stop]:text-foreground [&.stop]:border-strong in-data-[mode=plan]:[&:not(.stop)]:bg-plan in-data-[mode=plan]:[&:not(.stop)]:text-plan-foreground in-data-[mode=plan]:enabled:hover:[&:not(.stop)]:bg-plan stop"
+                  className="send-button bg-primary text-primary-foreground size-[26px] p-1 rounded-full shrink-0 enabled:hover:bg-accent-hover [&.stop]:bg-transparent [&.stop]:text-foreground [&.stop]:border-strong in-data-[mode]:[&:not(.stop)]:bg-mode in-data-[mode]:[&:not(.stop)]:text-mode-foreground in-data-[mode]:enabled:hover:[&:not(.stop)]:bg-mode stop"
                   aria-label="Stop agent"
                   title="Stop agent"
                   onClick={() => session && send({ type: 'interrupt', id: session.id })}
@@ -518,7 +593,7 @@ export function Composer({
               ) : (
                 <button
                   type="button"
-                  className="send-button bg-primary text-primary-foreground size-[26px] p-1 rounded-full shrink-0 enabled:hover:bg-accent-hover [&.stop]:bg-transparent [&.stop]:text-foreground [&.stop]:border-strong in-data-[mode=plan]:[&:not(.stop)]:bg-plan in-data-[mode=plan]:[&:not(.stop)]:text-plan-foreground in-data-[mode=plan]:enabled:hover:[&:not(.stop)]:bg-plan"
+                  className="send-button bg-primary text-primary-foreground size-[26px] p-1 rounded-full shrink-0 enabled:hover:bg-accent-hover [&.stop]:bg-transparent [&.stop]:text-foreground [&.stop]:border-strong in-data-[mode]:[&:not(.stop)]:bg-mode in-data-[mode]:[&:not(.stop)]:text-mode-foreground in-data-[mode]:enabled:hover:[&:not(.stop)]:bg-mode"
                   aria-label="Send message"
                   title={
                     needsPrompt && target
@@ -545,6 +620,7 @@ export function Composer({
           icon={<Icon name="branch" size={12} />}
           ariaLabel={`Location: ${worktree ? 'worktree' : 'local checkout'}`}
           className="min-h-5 px-1 py-[3px] text-[10.5px]"
+          side={menuSide}
           onClosed={focusInput}
           heading="Where it works"
           items={
@@ -614,7 +690,7 @@ export function Composer({
             </button>
           </output>
         ) : (
-          <span className="self-center">Enter to send · ⇧Tab to change mode</span>
+          <span />
         )}
       </div>
     </div>

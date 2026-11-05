@@ -16,7 +16,37 @@ export function mentionedAgent(text: string): AgentKind | undefined {
   if (!name) return undefined;
   return name === 'codex' ? 'codex' : name === 'claude' ? 'claude' : 'claud2';
 }
+/**
+ * Picking an agent from the @ menu, anywhere in a message. Only a leading mention runs an agent,
+ * so the pick moves there, and it replaces a mention already leading. Your words are kept.
+ */
+export function withMention(
+  text: string,
+  start: number,
+  end: number,
+  name: string,
+): { text: string; caret: number } {
+  const kept = text
+    .slice(0, start)
+    .replace(/^\s*@(?:codex|claude2|claude|claud2)\s+/i, '')
+    .trimStart();
+  const rest = text.slice(end);
+  const prefix = `@${name} `;
+  return {
+    text: prefix + kept + (!kept || /\s$/.test(kept) ? rest.trimStart() : rest),
+    caret: prefix.length + kept.length,
+  };
+}
 /** The provider's own fallback for an unnamed session: the first line of the first prompt. */
+/** A title to show: image references say nothing on their own, so they're left out. */
+export function threadTitle(title: string, empty = 'Image'): string {
+  return (
+    title
+      .replace(/\[Image #\d+\]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim() || empty
+  );
+}
 export function deriveTitle(prompt: string): string {
   const line =
     prompt

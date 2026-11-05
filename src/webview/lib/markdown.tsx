@@ -14,6 +14,8 @@ import remend from 'remend';
 import { send } from '../app/bridge';
 import { Icon } from '../components/icons';
 import { MermaidBlock } from './mermaid-block';
+import { VisualBlock, VisualPlaceholder } from './visual-block';
+import { VISUAL_MAX_SOURCE } from './visual-document';
 
 type Engine = typeof import('./highlighter');
 /** Grammars are large, so they load only once a thread shows a code block. */
@@ -167,6 +169,8 @@ function components(streaming: boolean): Components {
       const language = /language-([\w-]+)/.exec(props.className ?? '')?.[1] ?? '';
       const text = textOf(props.children).replace(/\n$/, '');
       if (language === 'mermaid' && !streaming) return <MermaidBlock source={text} />;
+      if (language === 'visual' && text.length <= VISUAL_MAX_SOURCE)
+        return streaming ? <VisualPlaceholder /> : <VisualBlock source={text} />;
       return (
         <div className="code-block my-[0.9em] border border-subtle rounded-[8px] bg-surface overflow-hidden">
           <div className="flex items-center justify-between pt-0.5 pr-1 pb-0.5 pl-2.5 border-b border-subtle text-[11px] text-faint [&_button]:px-[5px] [&_button]:py-[3px] [&_button]:text-muted-foreground">

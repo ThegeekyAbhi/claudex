@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {
   type Attachment,
+  buildPacket,
   IMAGE_EXTENSION,
   type ImageInput,
   type Session,
@@ -89,6 +90,8 @@ export interface ResolveOptions {
   store: ImageStore;
   sessions: Session[];
   terminal?: (name: string) => string | undefined;
+  /** What the receiving thread has already been sent from each linked thread. */
+  synced?: Record<string, string>;
 }
 /**
  * Turns what you attached into what the agent receives. Files stay as paths so the agent reads
@@ -104,6 +107,7 @@ export async function resolveAttachments(
   const images: ImageInput[] = [];
   const shown: Attachment[] = [];
   const skills: SkillRequest[] = [];
+  const syncs: NonNullable<SessionInput['syncs']> = [];
   for (const attachment of attachments) {
     if (attachment.kind === 'file' || attachment.kind === 'folder') {
       const target = await resolveInside(root, attachment.path);
@@ -120,6 +124,21 @@ export async function resolveAttachments(
       if (attachment.reference)
         lines.push(`Image attachment ${images.length} is [Image #${attachment.reference}].`);
       shown.push(attachment);
+    } else if (attachment.kind === 'thread' && attachment.history) {
+      const thread = options.sessions.find((item) => item.id === attachment.id);
+      if (!thread) throw new Error('The thread you are continuing no longer exists.');
+      const packet = buildPacket(thread, {
+        history: attachment.history,
+        since: options.synced?.[thread.id],
+      });
+      if (!packet.empty) lines.push(packet.text);
+      if (packet.through) syncs.push({ from: thread.id, through: packet.through });
+      shown.push({
+        kind: 'thread',
+        id: thread.id,
+        title: thread.title,
+        history: attachment.history,
+      });
     } else if (attachment.kind === 'thread') {
       const thread = options.sessions.find((item) => item.id === attachment.id);
       if (!thread) throw new Error('An attached thread no longer exists.');
@@ -160,5 +179,6 @@ export async function resolveAttachments(
     ...(images.length ? { images } : {}),
     ...(shown.length ? { attachments: shown } : {}),
     ...(skills.length ? { skills } : {}),
+    ...(syncs.length ? { syncs } : {}),
   };
 }

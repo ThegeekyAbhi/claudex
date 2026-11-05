@@ -6,14 +6,19 @@ export const agentModeEnum = z.enum(AGENT_MODES);
 export const MODE_LABELS: Record<AgentMode, string> = {
   ask: 'Ask',
   plan: 'Plan',
-  agent: 'Agent',
   auto: 'Auto',
 };
 
-/** ⇧Tab order. An unset mode counts as Agent, so the first press always lands somewhere visible. */
+/** Reported for a Codex thread whose approval policy leaves Auto review nothing to do. */
+export const CODEX_OWN_SETTINGS = 'codex-own-settings';
+/** ⇧Tab order. An unset mode goes to Auto, so the first press always lands somewhere visible. */
 export function nextMode(mode: AgentMode | undefined): AgentMode {
-  const index = AGENT_MODES.indexOf(mode ?? 'agent');
-  return AGENT_MODES[(index + 1) % AGENT_MODES.length] ?? 'agent';
+  if (!mode) return 'auto';
+  return AGENT_MODES[(AGENT_MODES.indexOf(mode) + 1) % AGENT_MODES.length] ?? 'auto';
+}
+/** A new chat uses your last choice, or Auto. A choice saved before Agent was removed counts as none. */
+export function newChatMode(stored: unknown): AgentMode {
+  return AGENT_MODES.includes(stored as AgentMode) ? (stored as AgentMode) : 'auto';
 }
 
 /**
@@ -26,7 +31,8 @@ export function modeView(
 ): { label: string; mode?: AgentMode } {
   if (!reported)
     return requested ? { label: MODE_LABELS[requested], mode: requested } : { label: 'Default' };
-  if (reported === 'default') return { label: 'Agent', mode: 'agent' };
+  if (reported === 'default') return { label: 'Manual' };
+  if (reported === CODEX_OWN_SETTINGS) return { label: 'Your Codex settings' };
   if (reported === 'plan') return { label: 'Plan', mode: 'plan' };
   if (reported === 'auto') return { label: 'Auto', mode: 'auto' };
   // Only our Ask pairs dontAsk with edit tools turned off, so your own dontAsk isn't called Ask.

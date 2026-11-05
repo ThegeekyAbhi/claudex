@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
+import { parseAppearance } from '../core/preferences';
 
 /** The secondary side bar accepts extension views from this version on. */
 const SECONDARY_SIDEBAR = { major: 1, minor: 106 };
@@ -85,7 +86,7 @@ export class Surfaces {
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media/tab.svg');
+    panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media/mascot/icon.png');
     const surface = this.attach(panel.webview, 'panel');
     surface.selectedId = id;
     surface.panel = panel;
@@ -113,5 +114,5 @@ export function webviewHtml(
   const fonts = asset('webview.css');
   const style = asset('app.css');
   const script = asset('webview.js');
-  return `<!doctype html><html lang="en" data-surface="${kind}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} data:; font-src ${webview.cspSource};"><link rel="stylesheet" href="${fonts}"><link rel="stylesheet" href="${style}"><title>Agent Workspace</title></head><body><div id="root"></div><script type="module" nonce="${nonce}" src="${script}"></script></body></html>`;
+  return `<!doctype html><html lang="en" data-surface="${kind}" data-appearance="${parseAppearance(vscode.workspace.getConfiguration('agentWorkspace').get('appearance'))}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} data:; font-src ${webview.cspSource};"><link rel="stylesheet" href="${fonts}"><link rel="stylesheet" href="${style}"><title>Claudex</title></head><body><div id="root"></div><script type="module" nonce="${nonce}" src="${script}"></script></body></html>`;
 }

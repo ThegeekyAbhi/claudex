@@ -9,13 +9,20 @@ function colors() {
     document.body.classList.contains('vscode-light') ||
     document.body.classList.contains('vscode-high-contrast-light');
   return {
-    background: token('--vscode-editor-background', light ? '#ffffff' : '#181818'),
-    foreground: token('--vscode-foreground', light ? '#222222' : '#dedede'),
-    border: token(
-      '--vscode-contrastBorder',
-      token('--vscode-panel-border', light ? '#606060' : '#aaaaaa'),
+    // The semantic tokens carry the chosen appearance. The Markdown preview only has VS Code's.
+    background: token(
+      '--canvas',
+      token('--vscode-editor-background', light ? '#ffffff' : '#181818'),
     ),
-    surface: token('--vscode-input-background', light ? '#eeeeee' : '#303030'),
+    foreground: token('--foreground', token('--vscode-foreground', light ? '#222222' : '#dedede')),
+    border: token(
+      '--border-strong',
+      token(
+        '--vscode-contrastBorder',
+        token('--vscode-panel-border', light ? '#606060' : '#aaaaaa'),
+      ),
+    ),
+    surface: token('--raised', token('--vscode-input-background', light ? '#eeeeee' : '#303030')),
   };
 }
 
@@ -69,6 +76,10 @@ export function subscribeDiagramTheme(changed: () => void): () => void {
   observer.observe(document.body, {
     attributes: true,
     attributeFilter: ['class', 'style', 'data-vscode-theme-id'],
+  });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-appearance'],
   });
   observer.observe(document.head, { childList: true, subtree: true, characterData: true });
   return () => observer.disconnect();

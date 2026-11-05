@@ -22,7 +22,7 @@ export function agentLabel(session: AgentRef): string {
 export function agentTarget(agent: AgentKind): { provider: Provider; command?: ClaudeCommand } {
   return agent === 'codex' ? { provider: 'codex' } : { provider: 'claude', command: agent };
 }
-export const AGENT_MODES = ['ask', 'plan', 'agent', 'auto'] as const;
+export const AGENT_MODES = ['ask', 'plan', 'auto'] as const;
 export type AgentMode = (typeof AGENT_MODES)[number];
 export type Status = 'idle' | 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted';
 export const TERMINAL_STATUSES: Status[] = ['completed', 'failed', 'interrupted'];

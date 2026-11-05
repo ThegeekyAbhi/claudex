@@ -17,14 +17,17 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  Gauge,
   GitBranch,
   Globe,
   History,
   Image,
+  ListFilter,
   ListTodo,
   type LucideIcon,
   MessageCircleQuestion,
   MessageSquare,
+  Palette,
   Paperclip,
   Pencil,
   Plus,
@@ -77,6 +80,9 @@ const icons = {
   thread: MessageSquare,
   clip: Paperclip,
   save: Save,
+  gauge: Gauge,
+  palette: Palette,
+  filter: ListFilter,
 } satisfies Record<string, LucideIcon>;
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 15 }: { name: IconName; size?: number }) {

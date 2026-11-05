@@ -14,6 +14,7 @@ import {
   agentLabel,
   agentTarget,
   type BuildChoice,
+  buildPacket,
   CAPABILITIES,
   type Catalog,
   deriveTitle,
@@ -32,11 +33,25 @@ import {
   tailStart,
   thinkingSupport,
 } from '../core/model';
+import {
+  DEFAULT_PREFERENCES,
+  type Preferences,
+  parseAppearance,
+  parseCrossAgentContext,
+} from '../core/preferences';
 import { listClaudeModels, listCodexModels } from '../harness/model-catalog';
 import { createAgentFactory, Sessions } from '../harness/session-manager';
 import { listClaudeSkills, listCodexSkills, setCodexSkillEnabled } from '../harness/skill-catalog';
 import { ImageStore, MAX_ATTACHED_IMAGE } from '../providers/shared/image-store';
 import { resolveInside } from '../providers/shared/paths';
+import {
+  claudeHistorySince,
+  codexHistorySince,
+  readClaudeRecords,
+  readCodexTurns,
+  type TerminalHistory,
+  terminalArgs,
+} from '../providers/terminal';
 import { resolveAttachments } from './attachments';
 import { collectChanges } from './changes';
 import {
@@ -93,11 +108,11 @@ export class WorkspaceController {
   >();
   private cachedDocuments = new Map<string, Awaited<ReturnType<typeof listDocuments>>>();
   private documentWatchers = new Map<string, vscode.FileSystemWatcher>();
-  private terminals = new Map<string, vscode.Terminal>();
+  private terminals = new Map<string, { terminal: vscode.Terminal; openedAt: number }>();
   private bases = new Map<string, string>();
   private plans: PlanStore;
   private subscriptions: vscode.Disposable[] = [];
-  private output = vscode.window.createOutputChannel('Agent Workspace');
+  private output = vscode.window.createOutputChannel('Claudex');
   private statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   constructor(private context: vscode.ExtensionContext) {
     const storage =
@@ -114,9 +129,21 @@ export class WorkspaceController {
       ),
       undefined,
       this.plans,
-      () =>
-        vscode.workspace.getConfiguration('agentWorkspace').get<boolean>('guidedPlanning', true),
+      () => this.preferences().guidedPlanning,
+      () => this.preferences().richExplanations,
     );
+  }
+  private preferences(): Preferences {
+    const config = vscode.workspace.getConfiguration('agentWorkspace');
+    return {
+      appearance: parseAppearance(config.get('appearance')),
+      guidedPlanning: config.get<boolean>('guidedPlanning', DEFAULT_PREFERENCES.guidedPlanning),
+      richExplanations: config.get<boolean>(
+        'richExplanations',
+        DEFAULT_PREFERENCES.richExplanations,
+      ),
+      crossAgentContext: parseCrossAgentContext(config.get('crossAgentContext')),
+    };
   }
   async initialize(): Promise<void> {
     await this.sessions.load();
@@ -129,7 +156,7 @@ export class WorkspaceController {
     this.sessions.on('storageError', (error) => {
       this.output.appendLine(String(error));
       void vscode.window.showErrorMessage(
-        'Agent Workspace could not save session history. Check the output panel.',
+        'Claudex could not save session history. Check the output panel.',
       );
     });
     await vscode.commands.executeCommand(
@@ -163,12 +190,14 @@ export class WorkspaceController {
       vscode.commands.registerCommand('agentWorkspace.new', () => this.compose()),
       vscode.commands.registerCommand('agentWorkspace.refresh', () => this.publish()),
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.publish()),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('agentWorkspace')) void this.publish();
+      }),
       vscode.window.onDidCloseTerminal((terminal) => {
         for (const [id, active] of this.terminals)
-          if (terminal === active) {
+          if (terminal === active.terminal) {
             this.terminals.delete(id);
-            this.sessions.get(id).status = 'interrupted';
-            this.sessions.changed();
+            void this.returnFromTerminal(id, active.openedAt);
           }
       }),
       vscode.workspace.registerTextDocumentContentProvider('agent-workspace-base', {
@@ -176,7 +205,7 @@ export class WorkspaceController {
       }),
     );
     this.watchDocuments();
-    this.statusItem.name = 'Agent Workspace';
+    this.statusItem.name = 'Claudex';
     this.statusItem.command = 'agentWorkspace.open';
     this.updateStatusItem();
     this.statusItem.show();
@@ -296,8 +325,8 @@ export class WorkspaceController {
     ).length;
     this.statusItem.text = active ? `$(sparkle) ${active}` : '$(sparkle)';
     this.statusItem.tooltip = active
-      ? `Agent Workspace: ${active} active ${active === 1 ? 'thread' : 'threads'}`
-      : 'Open Agent Workspace';
+      ? `Claudex: ${active} active ${active === 1 ? 'thread' : 'threads'}`
+      : 'Open Claudex';
   }
   /**
    * Sends only what changed while a thread streams: its tail, and catalog or documents when new.
@@ -340,6 +369,7 @@ export class WorkspaceController {
         sessions,
         project: root ? path.basename(root) : 'Open a local folder',
         trusted: vscode.workspace.isTrusted,
+        preferences: this.preferences(),
         ...(streaming && last.catalog === this.catalogVersion ? {} : { catalog: this.catalog }),
         ...(streaming && last.skills === this.skillsVersion ? {} : { skills: this.skills }),
         ...(streaming && last.documents === documents ? {} : { documents: documents ?? [] }),
@@ -391,13 +421,49 @@ export class WorkspaceController {
     await this.select(undefined);
     await this.open();
   }
-  private async input(attachments: Attachment[] | undefined, root: string): Promise<SessionInput> {
+  private async input(
+    attachments: Attachment[] | undefined,
+    root: string,
+    receiver?: { cwd: string; synced?: Record<string, string> },
+  ): Promise<SessionInput> {
     if (!attachments?.length) return {};
+    for (const attachment of attachments) {
+      if (attachment.kind !== 'thread' || !attachment.history) continue;
+      const source = this.sessions.get(attachment.id);
+      // Two agents editing one checkout at once would trip over each other.
+      if (
+        ['running', 'waiting'].includes(source.status) &&
+        (!receiver || receiver.cwd === source.cwd)
+      )
+        throw new Error(
+          `“${source.title}” is still working. Wait for it or stop it, then continue here.`,
+        );
+    }
     return resolveAttachments(attachments, {
       root,
       store: this.images,
       sessions: this.sessions.sessions,
       terminal: (name) => this.terminalCapture.text(name),
+      synced: receiver?.synced,
+    });
+  }
+  /** Opens exactly what a continue chip will send, as an unsaved Markdown document. */
+  private async previewContext(action: Extract<Action, { type: 'previewContext' }>): Promise<void> {
+    const source = this.sessions.get(action.id);
+    const target = action.targetId
+      ? this.sessions.sessions.find((item) => item.id === action.targetId)
+      : undefined;
+    const packet = buildPacket(source, {
+      history: action.history,
+      since: target?.synced?.[source.id],
+    });
+    const content = packet.empty
+      ? `Nothing new in “${source.title}” since this thread last received it. The chip will send nothing.\n`
+      : `<!-- What the next message will include from “${source.title}”${packet.omitted ? `. ${packet.omitted} older entries were left out to fit the ${action.history} limit` : ''}. Editing this preview changes nothing. -->\n\n${packet.text}\n`;
+    const document = await vscode.workspace.openTextDocument({ content, language: 'markdown' });
+    await vscode.window.showTextDocument(document, {
+      viewColumn: this.surfaces.codeColumn(),
+      preview: true,
     });
   }
   private async searchContext(
@@ -508,7 +574,7 @@ export class WorkspaceController {
           agent: choice.agent,
           model: choice.model,
           effort: choice.effort,
-          mode: choice.mode ?? 'agent',
+          mode: 'auto',
           text,
           draftKey: '',
           parentId: id,
@@ -519,7 +585,7 @@ export class WorkspaceController {
     }
     if (this.terminals.has(id))
       throw new Error('Close this session’s native terminal before resuming rich chat.');
-    await this.sessions.buildPlan(id, choice.mode);
+    await this.sessions.buildPlan(id);
   }
   private async savePlanToWorkspace(id: string): Promise<void> {
     await this.flushPlanEdits(id);
@@ -537,18 +603,23 @@ export class WorkspaceController {
     surface: Surface,
   ): Promise<void> {
     const parent = action.parentId ? this.sessions.get(action.parentId) : undefined;
-    const workspace = await this.chooseWorkspace(parent);
+    const continued = action.continuedFrom ? this.sessions.get(action.continuedFrom) : undefined;
+    if (continued?.observed)
+      throw new Error('A worker can only be continued from its lead thread.');
+    const workspace = continued?.workspace ?? (await this.chooseWorkspace(parent));
     // Checked first, so a bad attachment keeps your draft and creates no thread.
     const input = await this.input(
-      await this.checkSkills(action.agent, action.attachments),
+      await this.checkSkills(action.delegate ?? action.agent, action.attachments),
       workspace,
+      // A new worktree is a separate checkout, so the source may keep working.
+      action.worktree ? { cwd: '' } : undefined,
     );
     const cwd = action.worktree
       ? await vscode.window.withProgress(
           { location: vscode.ProgressLocation.Notification, title: 'Creating agent worktree' },
           () => createWorktree(workspace),
         )
-      : (parent?.cwd ?? workspace);
+      : (continued?.cwd ?? parent?.cwd ?? workspace);
     const target = agentTarget(action.agent);
     const session = this.sessions.create(
       target.provider,
@@ -558,6 +629,7 @@ export class WorkspaceController {
       parent?.id,
       target.command,
     );
+    if (continued) session.continuedFrom = continued.id;
     this.sessions.setModel(
       session.id,
       action.model ?? null,
@@ -566,6 +638,23 @@ export class WorkspaceController {
     );
     if (action.thinking) this.setThinking(session, action.thinking);
     if (action.mode) this.sessions.setMode(session.id, action.mode);
+    // The mentioned agent runs in a card. Your main agent starts when you next message it.
+    if (action.delegate) {
+      await this.delegateFromUser(
+        {
+          type: 'delegate',
+          id: session.id,
+          agent: action.delegate,
+          text: action.text,
+          draftKey: action.draftKey,
+          attachments: action.attachments,
+        },
+        surface,
+      );
+      await this.select(session.id, surface);
+      await this.publish(true);
+      return;
+    }
     void surface.webview.postMessage({ type: 'sent', id: action.draftKey, text: action.text });
     // The turn starts first: nothing here is worth keeping the agent waiting for.
     void this.sessions
@@ -651,6 +740,19 @@ export class WorkspaceController {
       await this.publish();
       return;
     }
+    // Colours and guide choices are your own settings, not workspace actions.
+    if (action.type === 'setAppearance') {
+      await vscode.workspace
+        .getConfiguration('agentWorkspace')
+        .update('appearance', action.appearance, vscode.ConfigurationTarget.Global);
+      return;
+    }
+    if (action.type === 'setGuide') {
+      await vscode.workspace
+        .getConfiguration('agentWorkspace')
+        .update(action.guide, action.enabled, vscode.ConfigurationTarget.Global);
+      return;
+    }
     this.requireTrust();
     switch (action.type) {
       case 'link': {
@@ -714,6 +816,9 @@ export class WorkspaceController {
       case 'refreshModels':
         void this.loadCatalog(true);
         break;
+      case 'previewContext':
+        await this.previewContext(action);
+        break;
       case 'send': {
         const target = this.sessions.get(action.id);
         if (target.observed || ['running', 'waiting'].includes(target.status))
@@ -725,6 +830,7 @@ export class WorkspaceController {
         const input = await this.input(
           await this.checkSkills(agentKind(target), action.attachments),
           target.workspace,
+          target,
         );
         void this.sessions
           .send(action.id, action.text, input)
@@ -734,14 +840,15 @@ export class WorkspaceController {
       }
       case 'interrupt': {
         if (this.terminals.has(action.id)) {
-          this.terminals.get(action.id)?.show();
+          this.terminals.get(action.id)?.terminal.show();
           throw new Error('This session is in a native terminal. Use Ctrl+C there to stop it.');
         }
         await this.sessions.interrupt(action.id);
         break;
       }
       case 'approve':
-        this.sessions.approve(action.id, action.requestId, action.allowed, action.answers);
+        if (action.auto && action.allowed) this.sessions.allowInAuto(action.id, action.requestId);
+        else this.sessions.approve(action.id, action.requestId, action.allowed, action.answers);
         break;
       case 'pin': {
         this.sessions.get(action.id).pinned = action.pinned;
@@ -793,6 +900,9 @@ export class WorkspaceController {
         break;
       case 'terminal':
         await this.terminal(action.id);
+        break;
+      case 'terminalBack':
+        await this.terminalBack(action.id);
         break;
       case 'changes': {
         const session = this.sessions.get(action.id);
@@ -963,7 +1073,7 @@ export class WorkspaceController {
       );
     const existing = this.terminals.get(id);
     if (existing) {
-      existing.show();
+      existing.terminal.show();
       return;
     }
     if (session.status === 'running' || session.status === 'waiting') {
@@ -976,11 +1086,7 @@ export class WorkspaceController {
       await this.sessions.interrupt(id);
     }
     await this.sessions.disconnect(id);
-    const args = session.nativeId
-      ? session.provider === 'codex'
-        ? ['resume', session.nativeId]
-        : ['--resume', session.nativeId]
-      : [];
+    const { args, note } = terminalArgs(session);
     const launcher = launcherFor(session.provider, session.claudeCommand);
     const terminal = vscode.window.createTerminal({
       name: `${agentLabel(session)} · ${session.title}`,
@@ -992,12 +1098,75 @@ export class WorkspaceController {
     session.messages.push({
       id: randomUUID(),
       role: 'notice',
-      text: 'This thread was opened in the native CLI. Terminal activity is not mirrored here. Close the terminal before returning to rich chat; the provider retains its full conversation.',
+      text: `Opened in the ${agentLabel(session)} terminal.${note ? ` ${note}` : ''}`,
     });
-    this.terminals.set(id, terminal);
-    session.status = 'running';
+    this.terminals.set(id, { terminal, openedAt: Date.now() });
+    session.inTerminal = true;
+    session.status = 'idle';
     this.sessions.changed();
     terminal.show();
+  }
+  private async terminalBack(id: string): Promise<void> {
+    const active = this.terminals.get(id);
+    if (!active) return;
+    const choice = await vscode.window.showWarningMessage(
+      'Close this terminal and go back to chat? Anything still running in it stops.',
+      { modal: true },
+      'Close terminal',
+    );
+    if (choice) active.terminal.dispose();
+  }
+  /** Adds what happened in the terminal. The CLI keeps it either way, so a failed read loses nothing. */
+  private async returnFromTerminal(id: string, since: number): Promise<void> {
+    const session = this.sessions.get(id);
+    session.inTerminal = false;
+    this.sessions.changed();
+    const notice = (text: string) =>
+      session.messages.push({ id: randomUUID(), role: 'notice', text });
+    try {
+      const history = await this.terminalHistory(session, since);
+      if (!history.messages.length && !history.tools)
+        notice('Back from the terminal. No new messages.');
+      else {
+        const counts = [
+          `${history.messages.length} message${history.messages.length === 1 ? '' : 's'}`,
+          ...(history.tools ? [`${history.tools} tool call${history.tools === 1 ? '' : 's'}`] : []),
+        ].join(', ');
+        notice(`From terminal: ${counts}. Tool calls aren't shown here.`);
+        for (const message of history.messages)
+          session.messages.push({ id: randomUUID(), ...message });
+      }
+    } catch (error) {
+      this.output.appendLine(String(error));
+      notice(
+        'Couldn’t read the terminal messages. The CLI still has them, and they’ll carry on when you next send.',
+      );
+    }
+    session.updatedAt = Date.now();
+    this.sessions.changed();
+  }
+  private async terminalHistory(session: Session, since: number): Promise<TerminalHistory> {
+    const nativeId = session.nativeId ?? '';
+    if (session.provider === 'codex') {
+      const { executable } = launcherFor('codex');
+      return codexHistorySince(
+        await readCodexTurns(executable, nativeId, session.cwd, since),
+        since,
+      );
+    }
+    const sdk = path.join(
+      this.context.extensionPath,
+      'dist/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs',
+    );
+    const launcher = launcherFor('claude', session.claudeCommand);
+    // A claud2 wrapper sets its folder itself, so the setting is the only other place to look.
+    const folder = vscode.workspace
+      .getConfiguration('agentWorkspace')
+      .get<string>('claud2ConfigDir', '~/.claude-account2')
+      .replace(/^~(?=$|\/)/, homedir());
+    const env =
+      launcher.env ?? (session.claudeCommand === 'claud2' ? { CLAUDE_CONFIG_DIR: folder } : {});
+    return claudeHistorySince(await readClaudeRecords(sdk, nativeId, session.cwd, env), since);
   }
   private async openDiff(id: string, file: string, original?: string): Promise<void> {
     const session = this.sessions.get(id);

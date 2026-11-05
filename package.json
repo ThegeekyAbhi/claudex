@@ -1,9 +1,23 @@
 {
-  "name": "agent-workspace",
-  "displayName": "Agent Workspace",
-  "description": "A local workspace for Codex and Claude sessions, plans, and review.",
+  "name": "claudex",
+  "displayName": "Claudex",
+  "description": "Codex and Claude Code together. Local threads, plans, approvals, and diffs in VS Code.",
   "version": "0.7.0",
-  "publisher": "local-workspace",
+  "publisher": "nerdyabhi",
+  "icon": "media/claudex-icon.png",
+  "galleryBanner": {
+    "color": "#111827",
+    "theme": "dark"
+  },
+  "keywords": ["codex", "claude", "claude-code", "agents", "chat", "planning"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ThegeekyAbhi/vcpm.git"
+  },
+  "homepage": "https://github.com/ThegeekyAbhi/vcpm#readme",
+  "bugs": {
+    "url": "https://github.com/ThegeekyAbhi/vcpm/issues"
+  },
   "license": "MIT",
   "engines": {
     "vscode": "^1.96.0"
@@ -26,38 +40,38 @@
     "commands": [
       {
         "command": "agentWorkspace.open",
-        "title": "Agent Workspace: Open Workspace",
+        "title": "Claudex: Open Workspace",
         "icon": "$(sparkle)"
       },
       {
         "command": "agentWorkspace.openInEditor",
-        "title": "Agent Workspace: Open in Editor",
+        "title": "Claudex: Open in Editor",
         "icon": "$(link-external)"
       },
       {
         "command": "agentWorkspace.new",
-        "title": "Agent Workspace: New Thread",
+        "title": "Claudex: New Thread",
         "icon": "$(add)"
       },
       {
         "command": "agentWorkspace.refresh",
-        "title": "Agent Workspace: Refresh"
+        "title": "Claudex: Refresh"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "agentWorkspace",
-          "title": "Agent Workspace",
-          "icon": "media/workspace.svg",
+          "title": "Claudex",
+          "icon": "media/mascot/icon.png",
           "when": "agentWorkspace.noSecondarySidebar"
         }
       ],
       "secondarySidebar": [
         {
           "id": "agentWorkspaceSecondary",
-          "title": "Agent Workspace",
-          "icon": "media/workspace.svg",
+          "title": "Claudex",
+          "icon": "media/mascot/icon.png",
           "when": "!agentWorkspace.noSecondarySidebar"
         }
       ]
@@ -67,7 +81,8 @@
         {
           "type": "webview",
           "id": "agentWorkspace.chat",
-          "name": "Agent Workspace",
+          "name": "Claudex",
+          "icon": "media/mascot/icon.png",
           "when": "!agentWorkspace.noSecondarySidebar"
         }
       ],
@@ -75,13 +90,14 @@
         {
           "type": "webview",
           "id": "agentWorkspace.chatFallback",
-          "name": "Agent Workspace",
+          "name": "Claudex",
+          "icon": "media/mascot/icon.png",
           "when": "agentWorkspace.noSecondarySidebar"
         }
       ]
     },
     "configuration": {
-      "title": "Agent Workspace",
+      "title": "Claudex",
       "properties": {
         "agentWorkspace.codexPath": {
           "type": "string",
@@ -107,6 +123,39 @@
           "type": "boolean",
           "default": true,
           "description": "Ask agents for clear, evidence-based plans, useful diagrams, and acceptance tests."
+        },
+        "agentWorkspace.richExplanations": {
+          "type": "boolean",
+          "default": true,
+          "description": "In Ask mode, ask agents to add a sandboxed visual when a picture explains something better than prose."
+        },
+        "agentWorkspace.crossAgentContext": {
+          "type": "string",
+          "enum": [
+            "recent",
+            "full",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Send the goal and as much recent history as fits in about 10k tokens.",
+            "Send the goal and as much history as fits in about 75k tokens.",
+            "Send nothing: switching agent moves only your draft, as before."
+          ],
+          "default": "recent",
+          "markdownDescription": "When you continue a thread in another agent, how much of its history goes with your next message, as a chip you can open or remove. Going back to an agent sends only what's new since. Hidden reasoning and approvals never transfer."
+        },
+        "agentWorkspace.appearance": {
+          "type": "string",
+          "enum": [
+            "cursor",
+            "editor"
+          ],
+          "enumDescriptions": [
+            "Cursor's dark colors on any dark theme. Light and high contrast themes still follow the editor.",
+            "Follow the active editor theme everywhere."
+          ],
+          "default": "cursor",
+          "description": "Colors for Claudex."
         }
       }
     },

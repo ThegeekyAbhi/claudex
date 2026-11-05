@@ -79,43 +79,6 @@ function Row({
     </CommandItem>
   );
 }
-/** Keep provider-supported effort levels in one compact, native control. */
-function EffortTrack({
-  agent,
-  effort,
-  efforts,
-  onEffort,
-}: {
-  agent: AgentKind;
-  effort?: string;
-  efforts: string[];
-  onEffort: (effort?: string) => void;
-}) {
-  return (
-    <div data-agent={agent} className="shrink-0 border-t border-subtle px-3 py-2 text-xs">
-      <label className="flex items-center justify-between gap-3">
-        <span className="text-muted-foreground">Reasoning effort</span>
-        <select
-          aria-label="Reasoning effort"
-          value={effort ?? ''}
-          onChange={(event) => onEffort(event.target.value || undefined)}
-          className="min-w-0 rounded border border-strong bg-overlay px-2 py-1 text-xs text-foreground focus-visible:outline focus-visible:outline-2"
-        >
-          <option value="">Model default</option>
-          {efforts.map((level) => (
-            <option key={level} value={level}>
-              {effortLabel(level)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="mt-1 mb-0 text-[11px] text-faint">
-        Higher effort can take longer. Default follows the model’s settings.
-      </p>
-    </div>
-  );
-}
-
 function PaneStatus({ entry, onRetry }: { entry: AgentCatalog; onRetry: () => void }) {
   if (entry.status === 'loading')
     return (
@@ -141,11 +104,8 @@ export function ModelSelector({
   agent,
   model,
   active,
-  target,
   lockedAgent,
-  effort,
-  efforts = [],
-  onEffort,
+  side = 'top',
   onSelect,
   onRetry,
   onClosed,
@@ -154,14 +114,9 @@ export function ModelSelector({
   agent: AgentKind;
   model?: string;
   active?: string;
-  /** Who a leading @mention in the draft will run. Mentions use that agent's default model. */
-  target?: AgentKind;
   /** Set once a thread has started: picking another agent opens a new thread instead. */
   lockedAgent?: boolean;
-  effort?: string;
-  /** The levels the chosen model supports. */
-  efforts?: string[];
-  onEffort?: (effort?: string) => void;
+  side?: 'top' | 'bottom';
   onSelect: (choice: ModelChoice) => void;
   onRetry: () => void;
   onClosed?: () => void;
@@ -194,40 +149,30 @@ export function ModelSelector({
   }
   const newThreadNote = lockedAgent && !searching && pane !== agent;
   const groups = searching ? RAIL : [pane];
-  const shown = target ?? agent;
-  const label = target ? modelLabel(catalog, target) : modelLabel(catalog, agent, model, active);
-  const shownEffort = target ? undefined : effort;
+  const label = modelLabel(catalog, agent, model, active);
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          data-agent={shown}
-          className={`chip gap-[5px] min-h-6 px-1.5 py-[3px] text-[11.5px] text-muted-foreground whitespace-nowrap enabled:hover:text-foreground enabled:hover:bg-muted aria-expanded:text-foreground aria-expanded:bg-muted max-[480px]:in-[.composer-controls]:not-[.mode-chip]:min-w-0 max-[480px]:in-[.composer-controls]:not-[.mode-chip]:shrink ${target ? 'bg-agent-tint enabled:hover:bg-agent-tint' : ''}`}
-          aria-label={`Model: ${AGENT_LABELS[shown]} ${label}${shownEffort ? `, ${shownEffort} effort` : ''}`}
-          title={
-            target
-              ? `Your @mention runs ${AGENT_LABELS[target]} on its default model. This menu applies to messages without a mention.`
-              : undefined
-          }
+          data-agent={agent}
+          className={`chip gap-[5px] min-h-6 px-1.5 py-[3px] text-[11.5px] text-muted-foreground whitespace-nowrap enabled:hover:text-foreground enabled:hover:bg-muted aria-expanded:text-foreground aria-expanded:bg-muted max-[480px]:in-[.composer-controls]:not-[.mode-chip]:min-w-0 max-[480px]:in-[.composer-controls]:not-[.mode-chip]:shrink `}
+          aria-label={`Model: ${AGENT_LABELS[agent]} ${label}`}
         >
-          <AgentMark agent={shown} />
+          <AgentMark agent={agent} />
           {/* The mark names the agent, except that both Claude accounts share one. */}
-          {shown === 'claud2' ? (
-            <span className="text-foreground">{AGENT_LABELS[shown]}</span>
+          {agent === 'claud2' ? (
+            <span className="text-foreground">{AGENT_LABELS[agent]}</span>
           ) : null}
           <span className="text-foreground max-[480px]:min-w-0 max-[480px]:overflow-hidden max-[480px]:text-ellipsis">
             {label}
           </span>
-          {shownEffort ? (
-            <span className="text-faint">· Effort: {effortLabel(shownEffort)}</span>
-          ) : null}
           <Icon name="chevronDown" size={12} />
         </button>
       </PopoverTrigger>
       <PopoverContent
         className="bg-overlay text-foreground border border-strong z-50 rounded-md shadow-md animate-menu-in [transform-origin:var(--radix-popover-content-transform-origin,var(--radix-dropdown-menu-content-transform-origin))] focus:outline-none focus-visible:outline-none motion-reduce:animate-none grid grid-cols-[112px_minmax(0,1fr)] overflow-hidden max-[900px]:grid-cols-[108px_minmax(0,1fr)] h-[min(320px,var(--radix-popover-content-available-height,320px))] w-[min(420px,var(--radix-popover-content-available-width,420px))] p-0 ring-0"
-        side="top"
+        side={side}
         align="start"
         sideOffset={6}
         collisionPadding={8}
@@ -343,9 +288,6 @@ export function ModelSelector({
               );
             })}
           </CommandList>
-          {efforts.length && onEffort && !searching && pane === agent ? (
-            <EffortTrack agent={agent} effort={effort} efforts={efforts} onEffort={onEffort} />
-          ) : null}
         </Command>
       </PopoverContent>
     </Popover>

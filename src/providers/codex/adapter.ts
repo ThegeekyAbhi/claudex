@@ -4,6 +4,7 @@ import { makeDiff, patchFromContent, stripPatchHeader } from '../../core/diff';
 import {
   type Agent,
   type AgentMode,
+  CODEX_OWN_SETTINGS,
   type Delegate,
   type DelegateRequest,
   deriveTitle,
@@ -81,7 +82,9 @@ export function codexTurnSettings(mode: AgentMode | undefined, native?: NativeSe
   return {
     ...(native?.sandbox ? { sandboxPolicy: native.sandbox } : {}),
     ...(native?.approvalPolicy ? { approvalPolicy: native.approvalPolicy } : {}),
-    approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user',
+    // Auto review only sees what an on-request policy surfaces. The policy is yours to change.
+    approvalsReviewer:
+      mode === 'auto' && native?.approvalPolicy === 'on-request' ? 'auto_review' : 'user',
   };
 }
 /** Codex names a skill by its file, so a request without one can't be sent. */
@@ -101,6 +104,7 @@ export class CodexAgent implements Agent {
   private disposed = false;
   private workerThreads = new Set<string>();
   private requestedSkills: SkillRequest[] = [];
+  private ownSettingsNoticed = false;
   private stopWaiter?: { id: string; resolve: () => void; reject: (error: Error) => void };
   private reasoningWithSummary = new Set<string>();
   private pendingFileChanges = new Map<string, FileDiff[]>();
@@ -212,14 +216,27 @@ export class CodexAgent implements Agent {
       },
     };
   }
+  /** Auto can't apply, so the chip mustn't claim it. Said once a thread: it holds every turn. */
+  private reportOwnSettings(): void {
+    this.emit({ type: 'reportedMode', mode: CODEX_OWN_SETTINGS });
+    if (this.ownSettingsNoticed) return;
+    this.ownSettingsNoticed = true;
+    const policy = this.settings?.approvalPolicy;
+    this.emit({
+      type: 'message',
+      message: {
+        id: randomUUID(),
+        role: 'notice',
+        text: `Codex’s approval policy is ${typeof policy === 'string' ? policy : 'custom'}, so Auto review doesn’t apply. Running with your Codex settings.`,
+      },
+    });
+  }
   async send(text: string, images?: ImageInput[], skills?: SkillRequest[]): Promise<void> {
     this.requestedSkills = skills ?? [];
     await this.connect();
     if (!this.rpc) throw new Error('Codex disconnected before the turn started.');
     if (this.session.mode === 'auto' && this.settings?.approvalPolicy !== 'on-request')
-      throw new Error(
-        'Native Auto requires an on-request approval policy. No permissions were changed.',
-      );
+      this.reportOwnSettings();
     const effort = effectiveEffort(this.session);
     const result = await this.rpc.request('turn/start', {
       threadId: this.threadId,
@@ -401,6 +418,7 @@ export class CodexAgent implements Agent {
         title: skill?.name ?? displayCommand(String(item.command ?? '')),
         status: toolStatus(item.status, completed, failed),
         ...(typeof item.durationMs === 'number' ? { durationMs: item.durationMs } : {}),
+        ...(completed && typeof item.exitCode === 'number' ? { exitCode: item.exitCode } : {}),
       };
       this.tool(worker, item.id, tool, item.aggregatedOutput ?? '');
     } else if (item.type === 'fileChange') {

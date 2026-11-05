@@ -9,7 +9,8 @@ import {
 } from '../../../core/model';
 import { send } from '../../app/bridge';
 import { AgentMark, Icon, type IconName } from '../../components/icons';
-import { useImageUrl } from '../images/image-view';
+import { type MenuAnchor, menuAnchorStyle } from '../../lib/caret';
+import { ImagePreview, useImageUrl } from '../images/image-view';
 
 export interface ContextResults {
   requestId: number;
@@ -65,7 +66,7 @@ export function ContextMenu({
   project,
   sessions,
   currentId,
-  below,
+  anchor,
   leading,
   onAgent,
   onAttach,
@@ -78,8 +79,8 @@ export function ContextMenu({
   project: string;
   sessions: Session[];
   currentId?: string;
-  below: boolean;
-  /** At the very start of a message, an @name can run an agent. */
+  anchor: MenuAnchor;
+  /** @ is the first thing in the message, so an agent is the likely pick. */
   leading: boolean;
   onAgent: (name: string) => void;
   onAttach: (attachment: Attachment) => void;
@@ -123,17 +124,15 @@ export function ContextMenu({
     if (view === 'files') return matches;
     if (view === 'threads') return threadRows;
     if (view === 'terminals') return terminalRows;
-    const agents = leading
-      ? AGENTS.filter((item) => item.name.startsWith(query)).map(
-          (item): Row => ({
-            key: `agent:${item.name}`,
-            label: `@${item.name}`,
-            detail: `Run ${AGENT_LABELS[item.agent]}`,
-            agent: item.agent,
-            run: () => onAgent(item.name),
-          }),
-        )
-      : [];
+    const agents = AGENTS.filter((item) => item.name.startsWith(query)).map(
+      (item): Row => ({
+        key: `agent:${item.name}`,
+        label: `@${item.name}`,
+        detail: `Run ${AGENT_LABELS[item.agent]}`,
+        agent: item.agent,
+        run: () => onAgent(item.name),
+      }),
+    );
     const top = query
       ? matches.slice(0, 6)
       : (results?.recent ?? []).slice(0, 3).map((path) => fileRow(path, 'file'));
@@ -171,9 +170,9 @@ export function ContextMenu({
       },
       { key: 'images', label: 'Images', icon: 'image', run: onImages },
     ];
+    // A bare @ mid-sentence is usually context, so Enter shouldn't re-route the whole message.
     return [
-      ...agents,
-      ...top,
+      ...(leading || query ? [...agents, ...top] : [...top, ...agents]),
       ...categories.filter((item) => !query || item.label.toLowerCase().includes(query)),
     ];
   }
@@ -214,10 +213,11 @@ export function ContextMenu({
   const crumbs = highlighted?.split('/') ?? [];
   return (
     <div
-      className={`absolute bottom-[calc(100%+6px)] left-0 z-40 flex items-start gap-1.5 max-w-full [&.below]:bottom-auto [&.below]:top-[calc(100%+6px)] ${below ? 'below' : ''}`}
+      className={`absolute z-40 flex gap-1.5 ${anchor.bottom === undefined ? 'items-start' : 'items-end'}`}
+      style={menuAnchorStyle(anchor)}
     >
       <div
-        className="bg-overlay border border-strong rounded-lg [box-shadow:var(--shadow)] w-[min(420px,100vw-32px)] max-h-80 overflow-y-auto p-1 shrink-0"
+        className="bg-overlay border border-strong rounded-lg [box-shadow:var(--shadow)] w-[min(360px,100vw-32px)] max-h-[var(--menu-max-h)] overflow-y-auto p-1 shrink-0"
         ref={list}
         role="listbox"
         aria-label="Add context"
@@ -275,9 +275,10 @@ export function ContextMenu({
           </div>
         ) : null}
       </div>
-      {highlighted ? (
+      {highlighted && anchor.previewWidth >= 160 ? (
         <div
-          className="bg-overlay border border-strong rounded-lg [box-shadow:var(--shadow)] px-2.5 py-2 text-[11.5px] text-muted-foreground max-w-[280px] overflow-hidden [&>div]:flex [&>div]:items-center [&>div]:gap-[5px] [&>div]:min-h-5 [&>div]:whitespace-nowrap max-[760px]:hidden"
+          style={{ maxWidth: Math.min(280, anchor.previewWidth) }}
+          className="bg-overlay border border-strong rounded-lg [box-shadow:var(--shadow)] px-2.5 py-2 text-[11.5px] text-muted-foreground overflow-hidden [&>div]:flex [&>div]:items-center [&>div]:gap-[5px] [&>div]:min-h-5 [&>div]:whitespace-nowrap max-[760px]:hidden"
           aria-hidden="true"
         >
           <div>
@@ -302,39 +303,75 @@ export function AttachmentChip({
   attachment,
   muted,
   onRemove,
+  onOpen,
 }: {
   attachment: Attachment;
   muted?: boolean;
   onRemove?: () => void;
+  /** Shows what this chip will send. */
+  onOpen?: () => void;
 }) {
   const url = useImageUrl(attachment.kind === 'image' ? attachment.file : undefined);
+  if (attachment.kind === 'image')
+    return (
+      <span
+        className={`attachment-image relative inline-flex shrink-0 ${muted ? 'opacity-50' : ''}`}
+      >
+        <ImagePreview
+          url={url}
+          alt={attachmentLabel(attachment)}
+          className="w-24 h-18 p-1 border border-subtle rounded-md bg-surface overflow-hidden [&_img]:block [&_img]:size-full [&_img]:object-contain"
+        />
+        {onRemove ? (
+          <button
+            type="button"
+            className="absolute top-0.5 right-0.5 p-1 rounded-full bg-surface border border-subtle text-muted-foreground cursor-pointer"
+            aria-label={`Remove ${attachmentLabel(attachment)}`}
+            onClick={onRemove}
+          >
+            <Icon name="close" size={12} />
+          </button>
+        ) : null}
+      </span>
+    );
   const icon: IconName =
     attachment.kind === 'folder'
       ? 'folder'
-      : attachment.kind === 'image'
-        ? 'image'
-        : attachment.kind === 'thread'
-          ? 'thread'
-          : attachment.kind === 'diff'
-            ? 'branch'
-            : attachment.kind === 'terminal'
-              ? 'terminal'
-              : attachment.kind === 'skill'
-                ? 'wrench'
-                : 'file';
+      : attachment.kind === 'thread'
+        ? 'thread'
+        : attachment.kind === 'diff'
+          ? 'branch'
+          : attachment.kind === 'terminal'
+            ? 'terminal'
+            : attachment.kind === 'skill'
+              ? 'wrench'
+              : 'file';
   const title =
     attachment.kind === 'file' || attachment.kind === 'folder'
       ? attachment.path
       : attachment.kind === 'skill'
         ? `Skill you asked for: ${attachment.name}`
-        : attachmentLabel(attachment);
+        : attachment.kind === 'thread' && attachment.history
+          ? `This thread's ${attachment.history} history goes with your message, or only what's new since you last switched. Click to see exactly what will be sent.`
+          : attachmentLabel(attachment);
   return (
     <span
-      className={`attachment-chip inline-flex items-center gap-1 max-w-[220px] min-h-[22px] py-px pr-1 pl-1.5 border border-subtle rounded-md bg-surface text-[11.5px] text-muted-foreground [&>span]:min-w-0 [&>span]:truncate [&>span]:text-foreground [&_img]:size-[18px] [&_img]:object-cover [&_img]:rounded-[3px] [&_button]:p-0.5 [&_button]:text-muted-foreground [&_button]:shrink-0 ${muted ? 'opacity-50' : ''}`}
+      className={`attachment-chip inline-flex items-center gap-1 max-w-[220px] min-h-[22px] py-px pr-1 pl-1.5 border border-subtle rounded-md bg-surface text-[11.5px] text-muted-foreground [&>span]:min-w-0 [&>span]:truncate [&>span]:text-foreground [&>svg]:shrink-0 [&_img]:size-[18px] [&_img]:object-cover [&_img]:rounded-[3px] [&_button]:p-0.5 [&_button]:text-muted-foreground [&_button]:shrink-0 ${muted ? 'opacity-50' : ''}`}
       title={title}
     >
-      {url ? <img src={url} alt="" /> : <Icon name={icon} size={12} />}
-      <span>{attachmentLabel(attachment)}</span>
+      <Icon name={icon} size={12} />
+      {onOpen ? (
+        <button
+          type="button"
+          className="min-w-0 truncate text-foreground! p-0! border-0 bg-transparent cursor-pointer hover:underline"
+          aria-label={`Preview ${attachmentLabel(attachment)}`}
+          onClick={onOpen}
+        >
+          {attachmentLabel(attachment)}
+        </button>
+      ) : (
+        <span>{attachmentLabel(attachment)}</span>
+      )}
       {onRemove ? (
         <button
           type="button"

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  DEFAULT_PREFERENCES,
   type Message,
   mergeSnapshot,
   type Session,
@@ -33,6 +34,7 @@ const base = (session: Session): Snapshot => ({
   documents: [],
   project: 'p',
   trusted: true,
+  preferences: DEFAULT_PREFERENCES,
   catalog: {} as Snapshot['catalog'],
 });
 

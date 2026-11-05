@@ -4,9 +4,12 @@ import {
   AGENT_MODES,
   type AgentEvent,
   CAPABILITIES,
+  CODEX_OWN_SETTINGS,
   chooseNudge,
   modeView,
+  newChatMode,
   nextMode,
+  restoreSessions,
   type Session,
 } from '../src/core/model';
 import { ClaudeAgent, claudeModeOptions } from '../src/providers/claude/adapter';
@@ -29,7 +32,6 @@ test('Claude modes map to its real permission modes', () => {
     disallowedTools: ['Edit', 'Write', 'NotebookEdit'],
   });
   assert.equal(claudeModeOptions('plan').permissionMode, 'plan');
-  assert.equal(claudeModeOptions('agent').permissionMode, 'default');
   assert.equal(claudeModeOptions('auto').permissionMode, 'auto');
 });
 
@@ -41,12 +43,11 @@ test('Codex Ask is read-only with no approvals, whatever the thread started with
 });
 
 test('leaving Ask restores the settings Codex started the thread with', () => {
-  for (const mode of ['agent', 'plan'] as const)
-    assert.deepEqual(codexTurnSettings(mode, native), {
-      sandboxPolicy: native.sandbox,
-      approvalPolicy: 'on-request',
-      approvalsReviewer: 'user',
-    });
+  assert.deepEqual(codexTurnSettings('plan', native), {
+    sandboxPolicy: native.sandbox,
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'user',
+  });
 });
 
 test('Codex Auto keeps the sandbox and only changes who reviews', () => {
@@ -55,6 +56,29 @@ test('Codex Auto keeps the sandbox and only changes who reviews', () => {
     approvalPolicy: 'on-request',
     approvalsReviewer: 'auto_review',
   });
+});
+
+test('Codex Auto without an on-request policy keeps you as the reviewer and your policy', () => {
+  assert.deepEqual(codexTurnSettings('auto', { ...native, approvalPolicy: 'never' }), {
+    sandboxPolicy: native.sandbox,
+    approvalPolicy: 'never',
+    approvalsReviewer: 'user',
+  });
+  assert.equal(modeView('auto', CODEX_OWN_SETTINGS).label, 'Your Codex settings');
+  assert.equal(modeView('auto', CODEX_OWN_SETTINGS).mode, undefined);
+  const session = fakeSession({ mode: 'auto', reportedMode: CODEX_OWN_SETTINGS });
+  assert.equal(chooseNudge(session, 'codex', 'auto', []), undefined);
+});
+
+test('the modes are Ask, Plan and Auto, and an old saved choice starts a new chat in Auto', () => {
+  assert.deepEqual([...AGENT_MODES], ['ask', 'plan', 'auto']);
+  assert.equal(nextMode(undefined), 'auto');
+  assert.equal(nextMode('auto'), 'ask');
+  assert.equal(nextMode('ask'), 'plan');
+  assert.equal(nextMode('plan'), 'auto');
+  assert.equal(newChatMode(undefined), 'auto');
+  assert.equal(newChatMode('agent'), 'auto');
+  assert.equal(newChatMode('plan'), 'plan');
 });
 
 test('no mode ever asks for a bypass or full access', () => {
@@ -67,7 +91,7 @@ test('no mode ever asks for a bypass or full access', () => {
 test('the chip believes what the CLI reported over what was requested', () => {
   assert.equal(modeView(undefined, undefined).label, 'Default');
   assert.equal(modeView('auto', undefined).label, 'Auto');
-  assert.equal(modeView('auto', 'default').label, 'Agent');
+  assert.equal(modeView('auto', 'default').label, 'Manual');
   assert.equal(modeView(undefined, 'auto').label, 'Auto');
   assert.equal(modeView(undefined, 'bypassPermissions').label, 'Bypass');
   assert.equal(modeView(undefined, 'bypassPermissions').mode, undefined);
@@ -130,7 +154,7 @@ test('Claude reports the mode it is really in, and says so when a request was re
   assert.equal(refused.options.permissionMode, 'auto');
   assert.ok(refused.events.some((e) => e.type === 'reportedMode' && e.mode === 'default'));
   const notice = refused.events.find((e) => e.type === 'message' && e.message.role === 'notice');
-  assert.match(JSON.stringify(notice), /Auto isn’t available here, so Claude is running in Agent/);
+  assert.match(JSON.stringify(notice), /Auto isn’t available here, so Claude is running in Manual/);
 
   const honored = await claudeTurn('auto', 'auto');
   assert.ok(!honored.events.some((e) => e.type === 'message' && e.message.role === 'notice'));
@@ -147,7 +171,7 @@ test('Claude in Ask cannot start other agents', async () => {
   const ask = await claudeTurn('ask', 'dontAsk');
   assert.equal(ask.options.mcpServers, undefined);
   assert.deepEqual(ask.options.disallowedTools, ['Edit', 'Write', 'NotebookEdit']);
-  assert.ok((await claudeTurn('agent', 'default')).options.mcpServers);
+  assert.ok((await claudeTurn('auto', 'auto')).options.mcpServers);
 });
 
 function fakeSession(extra: Partial<Session>): Session {
@@ -167,7 +191,8 @@ function fakeSession(extra: Partial<Session>): Session {
 
 test('a new thread may suggest Plan once, and a closed nudge stays closed', () => {
   assert.equal(chooseNudge(undefined, 'codex', undefined, [])?.kind, 'plan');
-  assert.equal(chooseNudge(undefined, 'codex', 'auto', []), undefined);
+  assert.equal(chooseNudge(undefined, 'codex', 'auto', [])?.kind, 'plan');
+  assert.equal(chooseNudge(undefined, 'codex', 'ask', []), undefined);
   assert.equal(chooseNudge(undefined, 'codex', undefined, ['try-plan']), undefined);
   assert.equal(chooseNudge(fakeSession({}), 'claude', undefined, []), undefined);
 });
@@ -182,7 +207,7 @@ test('being near a limit outranks a refused mode, and only one nudge shows', () 
   assert.equal(first?.kind, 'handoff');
   const second = chooseNudge(session, 'claude', 'auto', [first?.key ?? '']);
   assert.equal(second?.kind, 'mode');
-  assert.match(second?.text ?? '', /running in Agent, not Auto/);
+  assert.match(second?.text ?? '', /running in Manual, not Auto/);
   assert.equal(
     chooseNudge(session, 'claude', 'auto', [first?.key ?? '', second?.key ?? '']),
     undefined,
@@ -225,4 +250,27 @@ test('Claude reports its MCP servers, leaving out our own', async () => {
     type: 'runtime',
     runtime: { mcpServers: [{ name: 'figma', status: 'failed' }] },
   });
+});
+
+test('a thread saved in the old Agent mode survives with its ID and no mode', () => {
+  const base = {
+    title: 'Old',
+    provider: 'claude',
+    cwd: '/project',
+    workspace: '/project',
+    status: 'completed',
+    createdAt: 1,
+    updatedAt: 1,
+    messages: [],
+  };
+  const [legacy, unset] = restoreSessions({
+    version: 1,
+    sessions: [
+      { ...base, id: 'legacy', mode: 'agent' },
+      { ...base, id: 'unset' },
+    ],
+  });
+  assert.equal(legacy?.id, 'legacy');
+  assert.equal(legacy?.mode, undefined);
+  assert.equal(unset?.id, 'unset');
 });

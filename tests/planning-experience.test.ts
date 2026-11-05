@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test, { type TestContext } from 'node:test';
-import { actionSchema, type EventSink, thinkingSupport } from '../src/core/model';
+import { actionSchema, type EventSink, nextThinking, thinkingSupport } from '../src/core/model';
 import { PLANNING_GUIDE_VERSION } from '../src/harness/planning-guidance';
 import { Sessions } from '../src/harness/session-manager';
 import { describeClaudeTool } from '../src/providers/tool-format';
@@ -63,7 +63,7 @@ test('native Auto waits for stop, preserves identity, and never grants or replay
   await assert.rejects(manager.resumeInAuto(session.id, 'request'), /transition/);
   await assert.rejects(manager.send(session.id, 'competing'), /transition/);
   assert.throws(() => manager.approve(session.id, 'request', true, {}), /transition/);
-  assert.throws(() => manager.setMode(session.id, 'agent'), /transition/);
+  assert.throws(() => manager.setMode(session.id, 'auto'), /transition/);
   release();
   await transition;
   assert.equal(sent.length, 2);
@@ -209,7 +209,7 @@ test('guided planning preserves user input, records provenance, and excludes imp
   const saved = JSON.parse(await readFile(path.join(storage, 'sessions.json'), 'utf8'));
   assert.equal(saved.sessions[0].messages.at(-1).planningGuideVersion, PLANNING_GUIDE_VERSION);
   emitters[0]({ type: 'status', status: 'completed' });
-  manager.setMode(session.id, 'agent');
+  manager.setMode(session.id, 'auto');
   await manager.send(session.id, 'Implement it');
   assert.equal(sent[2].text, 'Implement it');
 });
@@ -261,4 +261,21 @@ test('known structured skill reads differ from invocation and ambiguous reads', 
     undefined,
   );
   assert.equal(describeClaudeTool('Skill', { skill: 'review' }).skill?.phase, 'invoke');
+});
+
+test('the Thinking toggle only ever picks what the model supports', () => {
+  const both = { on: true, off: true };
+  const onOnly = { on: true, off: false };
+  const offOnly = { on: false, off: true };
+  const neither = { on: false, off: false };
+  assert.equal(nextThinking('default', both), 'on');
+  assert.equal(nextThinking('default', onOnly), 'on');
+  assert.equal(nextThinking('default', offOnly), 'off');
+  assert.equal(nextThinking('on', both), 'off');
+  assert.equal(nextThinking('on', onOnly), 'default');
+  assert.equal(nextThinking('off', both), 'on');
+  assert.equal(nextThinking('off', offOnly), 'default');
+  assert.equal(nextThinking('default', neither), 'default');
+  assert.equal(nextThinking('on', neither), 'default');
+  assert.equal(nextThinking('off', neither), 'default');
 });

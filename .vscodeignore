@@ -15,3 +15,8 @@ dist/**/*.map
 *.vsix
 releases/**
 test-results/**
+
+# Keep design sources, publishing notes, and working documents out of the extension.
+media/claudex-icon-master.png
+docs/marketplace.md
+docs/agent-work/**

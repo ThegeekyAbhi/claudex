@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 export async function run(): Promise<void> {
-  const extension = vscode.extensions.getExtension('local-workspace.agent-workspace');
+  const extension = vscode.extensions.getExtension('nerdyabhi.claudex');
   assert.ok(extension, 'Development extension should be discovered');
   await extension.activate();
   assert.ok(extension.isActive);
@@ -10,8 +10,8 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand('agentWorkspace.open');
   const tabs = vscode.window.tabGroups.all.flatMap((group) => group.tabs);
   assert.ok(
-    tabs.some((tab) => tab.label === 'Agent Workspace'),
-    'Agent Workspace webview should open',
+    tabs.some((tab) => tab.label === 'Claudex'),
+    'Claudex webview should open',
   );
   console.log(
     'HOST_CHECK_PASSED: extension activation, command registration, and webview opening.',

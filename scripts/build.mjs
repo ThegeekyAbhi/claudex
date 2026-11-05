@@ -50,6 +50,7 @@ execFileSync(
 // The SDK must retain its ESM import and assets; ship it next to the CJS extension.
 import { cp, mkdir } from 'node:fs/promises';
 
+await cp('media/mascot', 'dist/mascot', { recursive: true });
 await mkdir('dist/node_modules/@anthropic-ai', { recursive: true });
 await cp(
   'node_modules/@anthropic-ai/claude-agent-sdk',

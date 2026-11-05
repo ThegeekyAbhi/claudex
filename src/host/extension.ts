@@ -7,7 +7,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   try {
     await controller.initialize();
   } catch (error) {
-    await vscode.window.showErrorMessage(`Agent Workspace could not initialize: ${String(error)}`);
+    await vscode.window.showErrorMessage(`Claudex could not initialize: ${String(error)}`);
     throw error;
   }
 }

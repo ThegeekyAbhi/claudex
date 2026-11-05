@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import type { AgentEvent, Session } from '../src/core/model';
+import { CODEX_OWN_SETTINGS } from '../src/core/modes';
 import { CodexAgent } from '../src/providers/codex/adapter';
 import { ImageStore } from '../src/providers/shared/image-store';
 
@@ -167,6 +168,28 @@ test('Codex Off uses none consistently in turn and collaboration settings', asyn
   }
 });
 
+test('Codex Auto with no on-request policy runs on your settings and says so', async () => {
+  const { root, executable } = await fixture(
+    `emit({ method: 'turn/completed', params: { threadId: root, turn: { id: 't1', status: 'completed' } } });`,
+  );
+  const events: AgentEvent[] = [];
+  const agent = new CodexAgent(codexSession(root, { mode: 'auto' }), executable, (event) =>
+    events.push(event),
+  );
+  try {
+    await agent.send('Change it');
+    await untilDone(events);
+    const turn = JSON.parse(await readFile(path.join(root, 'turn.json'), 'utf8'));
+    assert.equal(turn.approvalsReviewer, 'user');
+    assert.equal(turn.approvalPolicy, undefined, 'the policy is never changed for you');
+    assert.ok(events.some((e) => e.type === 'reportedMode' && e.mode === CODEX_OWN_SETTINGS));
+    const notices = events.filter((e) => e.type === 'message' && e.message.role === 'notice');
+    assert.equal(notices.length, 1);
+    assert.match(JSON.stringify(notices[0]), /Auto review doesn’t apply/);
+  } finally {
+    agent.dispose();
+  }
+});
 test('Codex interruption waits for the matching terminal event after the RPC reply', async () => {
   const { root, executable } = await fixture(`
     lines.on('line', line => {
@@ -239,6 +262,7 @@ test('Codex receives the chosen model and effort, and streams thinking, diffs, a
     const command = messages.find((m) => m.id === 'c1');
     assert.equal(command?.tool?.title, 'false');
     assert.equal(command?.tool?.status, 'failed', 'a non-zero exit is not success');
+    assert.equal(command?.tool?.exitCode, 1, 'the exit code is kept exactly as reported');
     const diffs = messages.find((m) => m.id === 'f1')?.tool?.diffs;
     assert.deepEqual(
       diffs?.map((d) => [d.path, d.kind, d.additions, d.deletions]),

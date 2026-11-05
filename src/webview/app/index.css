@@ -8,6 +8,55 @@
 
 @source "../";
 
+/* Eight fixed mascot frames; only the strip's transform changes during playback. */
+.mascot {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.mascot::before {
+  content: "";
+  display: block;
+  width: 800%;
+  height: 100%;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  animation: mascot-frames 1.2s steps(8, end) infinite;
+}
+.mascot-working::before {
+  background-image: url("./mascot/working.png");
+}
+.mascot-thinking::before {
+  background-image: url("./mascot/thinking.png");
+}
+.mascot-planning::before {
+  background-image: url("./mascot/planning.png");
+}
+.mascot-coding::before {
+  background-image: url("./mascot/coding.png");
+}
+.mascot-reading::before {
+  background-image: url("./mascot/reading.png");
+}
+.mascot-attentive::before {
+  width: 100%;
+  background-image: url("./mascot/attentive.png");
+  animation: none;
+}
+@keyframes mascot-frames {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot::before {
+    animation: none;
+  }
+}
+
 /* shadcn's `dark:` follows VS Code's theme, not the operating system's. */
 @custom-variant dark (&:where(
     .vscode-dark,
@@ -20,6 +69,8 @@
 body {
   color-scheme: dark;
   --canvas: var(--vscode-editor-background, #181818);
+  --chrome: var(--vscode-editorGroupHeader-tabsBackground, var(--canvas));
+  --composer-edge: var(--border-strong);
   --surface: var(--vscode-textCodeBlock-background, var(--canvas));
   --raised: var(--vscode-input-background, #242424);
   --overlay: var(--vscode-menu-background, var(--raised));
@@ -46,9 +97,10 @@ body {
   --codex: #8b9bff;
   --shadow: 0 6px 24px var(--vscode-widget-shadow, #0005);
   --mono: var(--vscode-editor-font-family, ui-monospace, "SF Mono", Menlo, monospace);
-  --plan: var(--warning);
-  --plan-text: var(--accent-text);
-  --plan-bg: color-mix(in srgb, var(--warning) 14%, transparent);
+  --mode-ask: var(--link);
+  --mode-plan: var(--warning);
+  --mode-auto: var(--success);
+  --mode-on-fill: var(--canvas);
   --code-foreground: var(--vscode-editor-foreground, var(--foreground));
   --code-background: transparent;
   --code-token-keyword: var(--vscode-symbolIcon-keywordForeground, var(--foreground));
@@ -85,6 +137,54 @@ body.vscode-high-contrast-light {
   --border-strong: var(--vscode-contrastBorder, var(--foreground));
   --claude: var(--foreground);
   --codex: var(--foreground);
+  --mode-ask: var(--foreground);
+  --mode-plan: var(--foreground);
+  --mode-auto: var(--foreground);
+}
+/*
+ * Cursor's dark colours, sampled from Cursor itself, on any dark theme. Light and high contrast
+ * themes keep the editor's, so accessibility themes are never overridden. Syntax and diff colours
+ * still follow the editor.
+ */
+html[data-appearance="cursor"] body.vscode-dark {
+  --canvas: #181818;
+  --chrome: #141414;
+  --surface: #141414;
+  --raised: #1f1f1f;
+  --overlay: #212121;
+  --foreground: #f0f0f0;
+  --code-foreground: #f0f0f0;
+  --muted: #a6a6a6;
+  --faint: #8a8a8a;
+  --border: #242424;
+  --border-strong: #3a3a3a;
+  --composer-edge: #494949;
+  --hover: #ffffff0d;
+  --selection: #ffffff14;
+  --accent: #81a1c1;
+  --accent-hover: #87a6c4;
+  --accent-text: #191c22;
+  --focus: #81a1c1;
+  --link: #81a1c1;
+  --shadow: 0 6px 24px #0009;
+  --mode-ask: #6cb0f5;
+  --mode-plan: #f1b467;
+  --mode-auto: #70b489;
+}
+/* Each mode has its own colour, so you can tell at a glance what the agent is allowed to do. */
+[data-mode] {
+  --mode: var(--accent);
+  --mode-text: var(--mode-on-fill);
+  --mode-tint: color-mix(in srgb, var(--mode) 15%, transparent);
+}
+[data-mode="ask"] {
+  --mode: var(--mode-ask);
+}
+[data-mode="plan"] {
+  --mode: var(--mode-plan);
+}
+[data-mode="auto"] {
+  --mode: var(--mode-auto);
 }
 /* Anything marked with an agent takes that agent's colour. High contrast stays on theme colours. */
 [data-agent] {
@@ -127,11 +227,15 @@ body.vscode-high-contrast-light [data-agent] {
   --color-input: var(--border-strong);
   --color-ring: var(--focus);
   --color-faint: var(--faint);
-  --color-plan: var(--plan);
-  --color-plan-foreground: var(--plan-text);
-  --color-plan-tint: var(--plan-bg);
+  --color-mode: var(--mode);
+  --color-mode-foreground: var(--mode-text);
+  --color-mode-tint: var(--mode-tint);
   --color-warning: var(--warning);
   --color-canvas: var(--canvas);
+  --color-chrome: var(--chrome);
+  --color-composer-edge: var(--composer-edge);
+  --color-mode-auto: var(--mode-auto);
+  --color-mode-auto-foreground: var(--mode-on-fill);
   --color-surface: var(--surface);
   --color-raised: var(--raised);
   --color-overlay: var(--overlay);

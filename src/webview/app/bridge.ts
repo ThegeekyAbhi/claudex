@@ -10,8 +10,10 @@ import type {
   TailMark,
   Thinking,
 } from '../../core/model';
+import { DEFAULT_PREFERENCES } from '../../core/preferences';
+import type { SeenAt } from '../features/threads/tab-state';
+import type { ThreadViewState } from '../features/threads/thread-filter';
 
-export const COMPOSE_DRAFT = '__compose';
 export interface ComposeChoice {
   agent: AgentKind;
   model?: string;
@@ -30,6 +32,13 @@ interface ViewState {
   compose?: ComposeChoice;
   /** Nudges you've closed, so they stay closed. */
   dismissedNudges?: string[];
+  threadView?: ThreadViewState;
+  /** Open thread tabs, for this window. */
+  tabs?: string[];
+  /** The unsent chat showing when no thread is open. */
+  activeDraft?: string;
+  /** When you last saw each thread, to tell what finished while you were elsewhere. */
+  seen?: SeenAt;
 }
 interface HostApi {
   postMessage(action: Action): void;
@@ -73,4 +82,5 @@ export const emptySnapshot: Snapshot = {
   project: 'Your workspace',
   trusted: true,
   catalog: emptyCatalog,
+  preferences: DEFAULT_PREFERENCES,
 };

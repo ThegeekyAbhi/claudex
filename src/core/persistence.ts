@@ -23,6 +23,8 @@ const persistedSession = z.object({
   workspace: z.string(),
   nativeId: z.string().optional(),
   parentId: z.string().optional(),
+  continuedFrom: z.string().optional(),
+  synced: z.record(z.string(), z.string()).optional(),
   observed: z.boolean().optional(),
   delegated: z.boolean().optional(),
   model: z.string().optional(),
@@ -30,7 +32,8 @@ const persistedSession = z.object({
   thinking: z.enum(['default', 'on', 'off']).optional(),
   activeModel: z.string().optional(),
   adaptiveThinking: z.boolean().optional(),
-  mode: agentModeEnum.optional(),
+  // Agent no longer exists. Those threads go back to unset, not Auto, so none gains a new reviewer.
+  mode: z.preprocess((value) => (value === 'agent' ? undefined : value), agentModeEnum.optional()),
   reportedMode: z.string().optional(),
   nativeSettings: z
     .object({
@@ -82,6 +85,7 @@ const persistedSession = z.object({
       startedAt: z.number().optional(),
       endedAt: z.number().optional(),
       planningGuideVersion: z.string().optional(),
+      explainGuideVersion: z.string().optional(),
       tool: z
         .object({
           kind: z.enum(['command', 'read', 'edit', 'search', 'web', 'agent', 'skill', 'other']),
@@ -95,6 +99,7 @@ const persistedSession = z.object({
           captureNote: z.string().optional(),
           workerId: z.string().optional(),
           durationMs: z.number().optional(),
+          exitCode: z.number().optional(),
           skill: z
             .object({
               name: z.string(),

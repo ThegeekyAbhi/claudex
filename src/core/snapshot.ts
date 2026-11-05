@@ -21,11 +21,13 @@ export function sessionsForView(sessions: Session[], selectedId?: string): Sessi
     return { ...summary, messages: [] };
   });
 }
-export interface SnapshotUpdate extends Omit<Snapshot, 'catalog' | 'documents' | 'skills'> {
+export interface SnapshotUpdate
+  extends Omit<Snapshot, 'catalog' | 'documents' | 'skills' | 'preferences'> {
   /** Left out when unchanged since the last update. */
   catalog?: Snapshot['catalog'];
   skills?: Snapshot['skills'];
   documents?: Snapshot['documents'];
+  preferences?: Snapshot['preferences'];
 }
 /** Says that one thread's `messages` holds only its tail, from this index on. */
 export interface TailMark {
@@ -49,6 +51,7 @@ export function mergeSnapshot(
     catalog: update.catalog ?? previous.catalog,
     skills: update.skills ?? previous.skills,
     documents: update.documents ?? previous.documents,
+    preferences: update.preferences ?? previous.preferences,
     sessions: update.sessions.map((session) =>
       tail && known && session.id === tail.id
         ? { ...session, messages: [...known.messages.slice(0, tail.from), ...session.messages] }

@@ -69,7 +69,6 @@ export function claudeModeOptions(mode: AgentMode | undefined): {
 } {
   if (mode === 'ask') return { permissionMode: 'dontAsk', disallowedTools: ASK_DISALLOWED_TOOLS };
   if (mode === 'plan') return { permissionMode: 'plan' };
-  if (mode === 'agent') return { permissionMode: 'default' };
   if (mode === 'auto') return { permissionMode: 'auto' };
   return {};
 }
@@ -328,11 +327,27 @@ export class ClaudeAgent {
         },
         respond: (allowed, answers) => {
           if (!allowed && options.toolUseID) this.declined.add(options.toolUseID);
+          // Allow in Auto changes the mode for what follows, without waiting for the next turn.
+          if (allowed && this.session.mode === 'auto') this.applyMode();
           finish(
             allowed
               ? { behavior: 'allow', updatedInput: questions ? { ...input, answers } : input }
               : { behavior: 'deny', message: 'Declined by the user.' },
           );
+        },
+      });
+    });
+  }
+  /** A failure is reported: the thread must not claim a mode the CLI didn't take. */
+  private applyMode(): void {
+    const next = claudeModeOptions(this.session.mode).permissionMode ?? 'default';
+    void this.query?.setPermissionMode?.(next).catch((error: unknown) => {
+      this.emit({
+        type: 'message',
+        message: {
+          id: randomUUID(),
+          role: 'notice',
+          text: `Could not switch Claude Code to ${next} mode: ${error instanceof Error ? error.message : String(error)}`,
         },
       });
     });
@@ -374,8 +389,7 @@ export class ClaudeAgent {
           });
           return;
         }
-        const next = claudeModeOptions(this.session.mode).permissionMode ?? 'default';
-        void this.query?.setPermissionMode?.(next).catch(() => {});
+        this.applyMode();
         // Answers carry your edited plan when you changed the file.
         finish({
           behavior: 'allow',

@@ -16,7 +16,6 @@ export const CAPABILITIES: Record<Provider, ProviderCapabilities> = {
     modes: {
       ask: 'Reads and answers. Edit tools are off, though commands your Claude settings allow can still run',
       plan: 'Researches and writes a plan before changing anything',
-      agent: 'Reads, edits, and runs commands, asking when Claude requires',
       auto: 'Works on its own. Claude’s classifier decides each request and asks you when unsure',
     },
     skillToggle: false,
@@ -25,7 +24,6 @@ export const CAPABILITIES: Record<Provider, ProviderCapabilities> = {
     modes: {
       ask: 'Reads and answers in a read-only sandbox with no network',
       plan: 'Researches and writes a plan before changing anything',
-      agent: 'Works with this thread’s sandbox and approval settings',
       auto: 'Works in the same sandbox, with a Codex reviewer handling approval requests',
     },
     skillToggle: true,

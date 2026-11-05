@@ -7,6 +7,16 @@ export const THINKING_LABELS: Record<Thinking, string> = {
   off: 'Off',
 };
 
+/**
+ * What one click on the toggle chooses. Every result is one this model supports, or Default,
+ * so the button can't send a choice the host would refuse.
+ */
+export function nextThinking(current: Thinking, support: { on: boolean; off: boolean }): Thinking {
+  if (current === 'on') return support.off ? 'off' : 'default';
+  if (current === 'off') return support.on ? 'on' : 'default';
+  if (support.on) return 'on';
+  return support.off ? 'off' : 'default';
+}
 export function thinkingSupport(provider: Session['provider'], model?: ModelOption) {
   if (!model) return { on: false, off: false, reason: 'Availability unknown' };
   if (provider === 'codex') {

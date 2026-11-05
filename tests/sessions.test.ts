@@ -386,7 +386,7 @@ test('building a plan answers the pending request or starts a turn, and claims n
   });
   await manager.buildPlan(claude.id);
   assert.deepEqual(answers, [true]);
-  assert.equal(claude.mode, 'agent');
+  assert.equal(claude.mode, 'auto');
   assert.equal(required(claude.plan).status, 'approved');
   assert.equal(sent.length, 1, 'an answered request does not send another message');
   assert.ok(sent[0].startsWith('Plan it'));

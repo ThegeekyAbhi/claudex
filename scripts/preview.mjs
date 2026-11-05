@@ -22,7 +22,7 @@ createServer(async (request, response) => {
     response.end(vscodeDefaults);
     return;
   }
-  if (route === '/fixture-images/sample.png') {
+  if (/^\/fixture-images\/sample(?:-2)?\.png$/.test(route)) {
     response.setHeader('Content-Type', 'image/png');
     response.end(Buffer.from(fixtureImage, 'base64'));
     return;
@@ -37,9 +37,10 @@ createServer(async (request, response) => {
     response.end(page.replace('__NONCE__', nonce));
     return;
   }
+  const mascot = /^\/mascot\/[a-z-]+\.(png|gif)$/.test(route);
   const font = /^\/fonts\/[\w-]+\.woff2$/.test(route);
   const chunk = /^\/chunks\/[\w.-]+\.js$/.test(route);
-  if (!font && !chunk && !['/webview.js', '/webview.css', '/app.css'].includes(route)) {
+  if (!mascot && !font && !chunk && !['/webview.js', '/webview.css', '/app.css'].includes(route)) {
     response.writeHead(404);
     response.end();
     return;
@@ -47,7 +48,15 @@ createServer(async (request, response) => {
   try {
     response.setHeader(
       'Content-Type',
-      font ? 'font/woff2' : route.endsWith('.css') ? 'text/css' : 'text/javascript',
+      mascot
+        ? route.endsWith('.gif')
+          ? 'image/gif'
+          : 'image/png'
+        : font
+          ? 'font/woff2'
+          : route.endsWith('.css')
+            ? 'text/css'
+            : 'text/javascript',
     );
     response.end(await readFile(path.join('dist', route.slice(1))));
   } catch {

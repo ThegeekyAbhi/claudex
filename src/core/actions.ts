@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AgentKind } from './agents';
 import { agentModeEnum } from './modes';
+import { APPEARANCES } from './preferences';
 import { attachmentSchema, IMAGE_FILE } from './session';
 
 const agentEnum = z.enum(['codex', 'claude', 'claud2']);
@@ -8,13 +9,18 @@ const optionName = z.string().min(1).max(200);
 const attachments = z.array(attachmentSchema).max(30).optional();
 const thinking = z.enum(['default', 'on', 'off']);
 const buildChoice = {
-  mode: z.enum(['agent', 'auto']).optional(),
   agent: agentEnum.optional(),
   model: optionName.optional(),
   effort: optionName.optional(),
 };
 export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready') }),
+  z.object({ type: z.literal('setAppearance'), appearance: z.enum(APPEARANCES) }),
+  z.object({
+    type: z.literal('setGuide'),
+    guide: z.enum(['guidedPlanning', 'richExplanations']),
+    enabled: z.boolean(),
+  }),
   z.object({ type: z.literal('link'), href: z.string().max(4096) }),
   z.object({ type: z.literal('compose') }),
   z.object({ type: z.literal('openChat'), id: z.string().optional() }),
@@ -29,7 +35,19 @@ export const actionSchema = z.discriminatedUnion('type', [
     parentId: z.string().optional(),
     worktree: z.boolean().optional(),
     mode: agentModeEnum.optional(),
+    /** A first message that mentions an agent: it runs in a card, and `agent` stays the main one. */
+    delegate: agentEnum.optional(),
+    /** The thread this one continues in another agent. Its checkout is used. */
+    continuedFrom: z.string().max(200).optional(),
     attachments,
+  }),
+  z.object({
+    type: z.literal('previewContext'),
+    /** The thread the context comes from. */
+    id: z.string().max(200),
+    history: z.enum(['recent', 'full']),
+    /** The thread that will receive it, if it exists yet, so only what it hasn't seen shows. */
+    targetId: z.string().max(200).optional(),
   }),
   z.object({
     type: z.literal('send'),
@@ -56,6 +74,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resumeInAuto'), id: z.string(), requestId: z.string() }),
   z.object({ type: z.literal('interrupt'), id: z.string() }),
   z.object({ type: z.literal('terminal'), id: z.string() }),
+  z.object({ type: z.literal('terminalBack'), id: z.string() }),
   z.object({ type: z.literal('select'), id: z.string() }),
   z.object({ type: z.literal('rename'), id: z.string() }),
   z.object({ type: z.literal('pin'), id: z.string(), pinned: z.boolean() }),
@@ -65,6 +84,8 @@ export const actionSchema = z.discriminatedUnion('type', [
     id: z.string(),
     requestId: z.string(),
     allowed: z.boolean(),
+    /** Allows this request, then continues in the provider's Auto mode. */
+    auto: z.boolean().optional(),
     answers: z.record(z.string(), z.string()).default({}),
   }),
   z.object({ type: z.literal('document'), path: z.string(), preview: z.boolean().optional() }),
@@ -137,7 +158,6 @@ export const planViewActionSchema = z.discriminatedUnion('type', [
 ]);
 export type PlanViewAction = z.infer<typeof planViewActionSchema>;
 export type BuildChoice = {
-  mode?: 'agent' | 'auto';
   agent?: AgentKind;
   model?: string;
   effort?: string;

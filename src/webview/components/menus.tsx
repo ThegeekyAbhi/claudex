@@ -27,6 +27,22 @@ export function Hint({ label, children }: { label: string; children: ReactElemen
     </Tooltip>
   );
 }
+/** What Auto means, for anyone deciding whether to choose it. */
+export function AutoHelp({ text }: { text: string }) {
+  return (
+    <Hint label={text}>
+      <span
+        role="img"
+        aria-label={`About Auto: ${text}`}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users need the explanation too
+        tabIndex={0}
+        className="inline-flex self-center p-[3px] text-faint hover:text-foreground"
+      >
+        <Icon name="question" size={13} />
+      </span>
+    </Hint>
+  );
+}
 export interface MenuItem {
   key: string;
   label: string;
@@ -44,6 +60,8 @@ export function Menu({
   heading,
   disabled,
   className = '',
+  title,
+  side = 'top',
   onClosed,
 }: {
   label: string;
@@ -53,6 +71,9 @@ export function Menu({
   heading?: string;
   disabled?: boolean;
   className?: string;
+  title?: string;
+  /** Which way it opens. It still flips when there's no room. */
+  side?: 'top' | 'bottom';
   onClosed?: () => void;
 }) {
   return (
@@ -62,6 +83,7 @@ export function Menu({
           type="button"
           className={`chip gap-[5px] min-h-6 px-1.5 py-[3px] text-[11.5px] text-muted-foreground whitespace-nowrap enabled:hover:text-foreground enabled:hover:bg-muted aria-expanded:text-foreground aria-expanded:bg-muted max-[480px]:in-[.composer-controls]:not-[.mode-chip]:min-w-0 max-[480px]:in-[.composer-controls]:not-[.mode-chip]:shrink ${className}`}
           aria-label={ariaLabel}
+          title={title}
         >
           {icon}
           <span className="text-foreground max-[480px]:min-w-0 max-[480px]:overflow-hidden max-[480px]:text-ellipsis">
@@ -72,7 +94,7 @@ export function Menu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         className="bg-overlay text-foreground border border-strong z-40 rounded-lg shadow-md animate-menu-in [transform-origin:var(--radix-popover-content-transform-origin,var(--radix-dropdown-menu-content-transform-origin))] focus:outline-none focus-visible:outline-none motion-reduce:animate-none max-w-[300px] min-w-[200px] p-1"
-        side="top"
+        side={side}
         align="start"
         sideOffset={6}
         collisionPadding={8}
@@ -96,7 +118,7 @@ export function Menu({
               onSelect={item.onSelect}
             >
               {item.icon}
-              <span className="flex-1 min-w-0 flex flex-col text-[12px] [&_small]:text-[11px] [&_small]:text-muted-foreground [&_small]:truncate">
+              <span className="flex-1 min-w-0 flex flex-col text-[12px] [&_small]:text-[11px] [&_small]:text-muted-foreground">
                 <span>{item.label}</span>
                 {item.description ? <small>{item.description}</small> : null}
               </span>
@@ -145,7 +167,7 @@ export function OverflowMenu({
             onSelect={item.onSelect}
           >
             {item.icon}
-            <span className="flex-1 min-w-0 flex flex-col text-[12px] [&_small]:text-[11px] [&_small]:text-muted-foreground [&_small]:truncate">
+            <span className="flex-1 min-w-0 flex flex-col text-[12px] [&_small]:text-[11px] [&_small]:text-muted-foreground">
               {item.label}
             </span>
           </DropdownMenuItem>

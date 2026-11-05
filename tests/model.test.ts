@@ -9,6 +9,7 @@ import {
   parseRunAgent,
   restoreSessions,
   type Session,
+  withMention,
 } from '../src/core/model';
 export function session(id = 'one'): Session {
   return {
@@ -97,6 +98,20 @@ test('titles come from the first meaningful line and are bounded', () => {
   assert.equal(deriveTitle('\n  Fix   the login bug \nmore detail'), 'Fix the login bug');
   assert.equal(deriveTitle('   '), 'New thread');
   assert.ok(deriveTitle('x'.repeat(300)).length <= 60);
+});
+test('picking an agent mid-message moves it to the front and keeps your words', () => {
+  const pick = (text: string, name: string) => {
+    const start = text.indexOf('|');
+    const clean = text.replace('|', '');
+    const end = start + clean.slice(start).search(/\s|$/);
+    return withMention(clean, start, end, name);
+  };
+  assert.deepEqual(pick('use |@cl', 'claude'), { text: '@claude use ', caret: 12 });
+  assert.deepEqual(pick('|@cl', 'claude'), { text: '@claude ', caret: 8 });
+  assert.deepEqual(pick('|@cl fix it', 'codex'), { text: '@codex fix it', caret: 7 });
+  assert.deepEqual(pick('use |@cl it now', 'claude').text, '@claude use it now');
+  assert.deepEqual(pick('@codex use |@cl', 'claude').text, '@claude use ');
+  assert.equal(parseMention(pick('use |@cl it now', 'claude').text)?.agent, 'claude');
 });
 test('only a leading @mention with a task delegates', () => {
   assert.deepEqual(parseMention('@codex fix it\nnow'), { agent: 'codex', prompt: 'fix it\nnow' });

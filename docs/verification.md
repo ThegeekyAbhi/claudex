@@ -46,6 +46,21 @@ Covered: the exact settings each mode sends on each CLI, restoring Codex's setti
 - `skills/list`, `skills/config/write`, and `mcpServer/startupStatus/updated` against your Codex version. They're read from its generated types.
 - The custom editor, and the lazily loaded highlighter, in a real webview.
 
+## Continuing in another agent
+
+Verified on 2026-11-06. `pnpm check` (180 tests) and `pnpm test:ui` passed. Tests cover what the record contains and leaves out, the length limit, escaping its own tags, the delta and the empty delta, the unchanged plain thread attachment, unchanged CLI input without a chip, a sync point kept only after the CLI accepts a message, persistence, and action validation. The UI test checks that switching moves the draft with a chip and sends nothing, that the chip opens a preview, that no Codex model carries over to Claude, and that a linked thread is resumed rather than duplicated.
+
+Existing data, checked on copies of the three local stores (69 threads, 1,261 messages): this build reads each one identically to the previous build, and the previous build reads a store written with the new fields, so going back a version is safe. Copies of the stores and the source were kept before any change.
+
+Live, with Claude Code 2.1.318 and Codex CLI 0.166.0 in Ask mode on a temporary repository, nine checks passed:
+- Codex recalled a codename told only to Claude.
+- Claude resumed its original native session ID and recalled a codename told only to Codex.
+- Claude still recalled its own first codename natively.
+- The next record held only the new Codex turn (722 vs 880 characters), and Claude recalled it.
+- With nothing new, nothing extra was sent.
+
+Not checked live: Claude 2, a new Claude thread started from a Codex one, Plan and Auto modes, the preview in a real VS Code window, and long threads near the limit.
+
 ## Limits of this verification
 
 Real approval clicks with live provider tools, real internal worker delegation, the terminal-to-rich-chat handoff, long-running workloads, and every provider permission subtype still need interactive end-to-end acceptance in VS Code. Their application logic is covered where applicable by automated tests; the full native user workflow has not been certified. Rich transcripts do not backfill messages written in native terminals.

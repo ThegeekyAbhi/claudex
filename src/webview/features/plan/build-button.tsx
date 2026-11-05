@@ -7,7 +7,9 @@ import {
   type Session,
 } from '../../../core/model';
 import { send } from '../../app/bridge';
+import { AutoHelp } from '../../components/menus';
 import { Button } from '../../components/ui/button';
+import { EffortMenu } from '../models/effort-menu';
 import { ModelSelector } from '../models/model-selector';
 export const BuildContext = createContext<{ catalog: Catalog; sessions: Session[] } | null>(null);
 export function BuildButton({
@@ -72,14 +74,16 @@ export function BuildButton({
             catalog={context.catalog}
             agent={selectedAgent}
             model={choice.model}
+            onSelect={(next) => setChoice(next)}
+            onRetry={() => send({ type: 'refreshModels' })}
+          />
+          <EffortMenu
             effort={choice.effort}
             efforts={
               context.catalog[selectedAgent].models.find((item) => item.id === choice.model)
                 ?.efforts ?? []
             }
             onEffort={(effort) => setChoice({ ...choice, effort })}
-            onSelect={(next) => setChoice(next)}
-            onRetry={() => send({ type: 'refreshModels' })}
           />
           {recent.length ? (
             <select
@@ -104,6 +108,7 @@ export function BuildButton({
           ) : null}
         </>
       ) : null}
+      <AutoHelp text="The provider's Auto mode makes the code changes and reviews approvals itself. It can still stop to ask you." />
       <Button
         size="sm"
         className="h-7 px-2 text-xs"

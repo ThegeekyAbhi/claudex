@@ -1,5 +1,5 @@
 import { AGENT_LABELS, type AgentKind, type AgentMode } from './agents';
-import { MODE_LABELS, modeView } from './modes';
+import { CODEX_OWN_SETTINGS, MODE_LABELS, modeView } from './modes';
 import type { Session } from './session';
 
 export type Nudge =
@@ -33,7 +33,8 @@ export function chooseNudge(
       kind: 'handoff',
       text: 'Close to a limit.',
     });
-  if (session && requested && session.reportedMode) {
+  // Your Codex settings already get a notice that says why, and a nudge couldn't add anything.
+  if (session && requested && session.reportedMode && session.reportedMode !== CODEX_OWN_SETTINGS) {
     const actual = modeView(requested, session.reportedMode);
     if (actual.mode !== requested)
       options.push({
@@ -42,7 +43,7 @@ export function chooseNudge(
         text: `${AGENT_LABELS[agent]} is running in ${actual.label}, not ${MODE_LABELS[requested]}.`,
       });
   }
-  if (!session && !requested)
+  if (!session && (!requested || requested === 'auto'))
     options.push({ key: 'try-plan', kind: 'plan', text: 'Try Plan Mode' });
   return options.find((item) => !dismissed.includes(item.key));
 }

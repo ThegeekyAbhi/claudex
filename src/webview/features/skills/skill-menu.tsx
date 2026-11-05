@@ -10,11 +10,12 @@ import {
 import { Icon } from '../../components/icons';
 
 /** The `/` menu. Reads the catalog the host already has, so typing never waits on a CLI. */
+import { type MenuAnchor, menuAnchorStyle } from '../../lib/caret';
 export function SkillMenu({
   agent,
   catalog,
   query,
-  below,
+  anchor,
   onPick,
   onManage,
   onClose,
@@ -23,7 +24,7 @@ export function SkillMenu({
   agent: AgentKind;
   catalog: SkillCatalog;
   query: string;
-  below: boolean;
+  anchor: MenuAnchor;
   onPick: (skill: Skill) => void;
   onManage: () => void;
   onClose: () => void;
@@ -90,10 +91,11 @@ export function SkillMenu({
         : 'Looking for skills…';
   return (
     <div
-      className={`absolute bottom-[calc(100%+6px)] left-0 z-40 flex items-start gap-1.5 max-w-full [&.below]:bottom-auto [&.below]:top-[calc(100%+6px)] ${below ? 'below' : ''}`}
+      className={`absolute z-40 flex gap-1.5 ${anchor.bottom === undefined ? 'items-start' : 'items-end'}`}
+      style={menuAnchorStyle(anchor)}
     >
       <div
-        className="bg-overlay border border-strong rounded-lg [box-shadow:var(--shadow)] w-[min(420px,100vw-32px)] max-h-80 overflow-y-auto p-1 shrink-0"
+        className="bg-overlay border border-strong rounded-lg [box-shadow:var(--shadow)] w-[min(360px,100vw-32px)] max-h-[var(--menu-max-h)] overflow-y-auto p-1 shrink-0"
         ref={list}
         id={menuId}
         role="listbox"

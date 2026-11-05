@@ -69,7 +69,7 @@ test('Build uses the file as you left it', async () => {
   emit({ type: 'status', status: 'completed' });
   await until(() => session.plan?.file);
   await writeFile(session.plan?.file ?? '', '# Plan\n\nEdited by hand.\n');
-  await manager.buildPlan(session.id, 'auto');
+  await manager.buildPlan(session.id);
   assert.match(sent.at(-1) ?? '', /Edited by hand/);
   assert.equal(session.mode, 'auto');
   assert.equal(session.plan?.status, 'approved');
@@ -158,8 +158,10 @@ test('plan titles and summaries come from the Markdown', () => {
 });
 
 test('the plan editor rejects messages it does not know', () => {
-  assert.ok(planViewActionSchema.safeParse({ type: 'planBuild', mode: 'auto' }).success);
-  assert.ok(!planViewActionSchema.safeParse({ type: 'planBuild', mode: 'bypass' }).success);
+  // A build always means Auto, so a message can't name another mode.
+  assert.deepEqual(planViewActionSchema.parse({ type: 'planBuild', mode: 'bypass' }), {
+    type: 'planBuild',
+  });
   assert.ok(!planViewActionSchema.safeParse({ type: 'planBuild', agent: 'gpt' }).success);
   assert.ok(!planViewActionSchema.safeParse({ type: 'send', text: 'x' }).success);
 });

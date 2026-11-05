@@ -1,32 +1,48 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
+  AGENT_KINDS,
+  AGENT_LABELS,
   type AgentKind,
   type AgentMode,
   type Attachment,
   agentKind,
   agentLabel,
   type ChangesResult,
+  continuationLinks,
   emptySkills,
   mergeSnapshot,
+  newChatMode,
   parseMention,
   type Session,
   type Snapshot,
+  threadTitle,
 } from '../../core/model';
 import { AgentMark, Icon } from '../components/icons';
 import { Hint, OverflowMenu } from '../components/menus';
 import type { ContextResults } from '../features/attachments/context-menu';
 import { type PanelTab, SidePanel } from '../features/changes/documents-panel';
 import { Composer } from '../features/composer/composer';
+import { TerminalStrip } from '../features/composer/terminal-strip';
 import { Conversation } from '../features/conversation/conversation';
 import { ImageBase } from '../features/images/image-view';
 import { BuildContext } from '../features/plan/build-button';
 import { pendingQuestion, QuestionCard } from '../features/questions/question-card';
 import { SkillsPanel } from '../features/skills/skills-panel';
+import {
+  DRAFT_TAB,
+  isDraftTab,
+  pruneSeen,
+  reconcileTabs,
+  type SeenAt,
+  tabAfterClosing,
+  threadSignal,
+} from '../features/threads/tab-state';
+import type { ThreadViewState } from '../features/threads/thread-filter';
 import { ThreadSidebar } from '../features/threads/thread-list';
+import { type TabItem, ThreadTabs } from '../features/threads/thread-tabs';
 import {
   api,
-  COMPOSE_DRAFT,
   type ComposeChoice,
   emptyCatalog,
   emptySnapshot,
@@ -55,7 +71,7 @@ function RecentThreads({
       {recent.map((item) => (
         <button type="button" key={item.id} onClick={() => onSelect(item)}>
           <AgentMark agent={agentKind(item)} size={13} />
-          <span>{item.title}</span>
+          <span>{threadTitle(item.title)}</span>
         </button>
       ))}
     </nav>
@@ -75,6 +91,11 @@ export function App() {
   const [dismissedNudges, setDismissedNudges] = useState<string[]>(
     saved.current?.dismissedNudges ?? [],
   );
+  const [threadView, setThreadView] = useState<ThreadViewState>(saved.current?.threadView ?? {});
+  const [tabs, setTabs] = useState<string[]>(saved.current?.tabs ?? []);
+  const [activeDraft, setActiveDraft] = useState(saved.current?.activeDraft ?? DRAFT_TAB);
+  const [seen, setSeen] = useState<SeenAt>(saved.current?.seen ?? {});
+  const [visible, setVisible] = useState(!document.hidden);
   const scroll = useRef<Record<string, number>>(saved.current?.scroll ?? {});
   const [error, setError] = useState('');
   const [panel, setPanel] = useState<PanelTab | null>(null);
@@ -84,6 +105,11 @@ export function App() {
   const [changesLoading, setChangesLoading] = useState(false);
   /** Starting a thread can take seconds, and snapshots keep arriving during it. */
   const starting = useRef(false);
+  /** Tabs just closed, until the host confirms it has moved on from them. */
+  const closing = useRef(new Set<string>());
+  /** The draft whose first message is on its way, so its thread can take over its tab. */
+  const startedDraft = useRef<string | undefined>(undefined);
+  const draftCount = useRef(0);
   const viewState = {
     selectedId,
     drafts,
@@ -91,6 +117,10 @@ export function App() {
     scroll: scroll.current,
     compose: choice,
     dismissedNudges,
+    threadView,
+    tabs,
+    activeDraft,
+    seen,
   };
   const stateRef = useRef(viewState);
   stateRef.current = viewState;
@@ -106,7 +136,11 @@ export function App() {
         });
         if (message.imageBase) setImageBase(message.imageBase);
         if (!starting.current) setSubmitted(false);
-        setSelectedId(message.selectedId);
+        // A snapshot sent before you closed a tab must not reopen it.
+        if (!message.selectedId || !closing.current.has(message.selectedId)) {
+          closing.current.clear();
+          setSelectedId(message.selectedId);
+        }
       }
       if (message.type === 'sent') {
         const delivered = (text = '') =>
@@ -121,6 +155,7 @@ export function App() {
       if (message.type === 'error') {
         setError(message.text);
         starting.current = false;
+        startedDraft.current = undefined;
         setSubmitted(false);
         setChangesLoading(false);
       }
@@ -154,8 +189,25 @@ export function App() {
       scroll: scroll.current,
       compose: choice,
       dismissedNudges,
+      threadView,
+      tabs,
+      activeDraft,
+      seen,
     });
-  }, [selectedId, drafts, attachments, choice, dismissedNudges]);
+  }, [
+    selectedId,
+    drafts,
+    attachments,
+    choice,
+    dismissedNudges,
+    threadView,
+    tabs,
+    activeDraft,
+    seen,
+  ]);
+  useEffect(() => {
+    document.documentElement.dataset.appearance = snapshot.preferences.appearance;
+  }, [snapshot.preferences.appearance]);
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -172,7 +224,7 @@ export function App() {
   const parent = session?.parentId
     ? snapshot.sessions.find((item) => item.id === session.parentId)
     : undefined;
-  const draftKey = session?.id ?? COMPOSE_DRAFT;
+  const draftKey = session?.id ?? activeDraft;
   const draft = drafts[draftKey] ?? '';
   const attached = attachments[draftKey] ?? [];
   const attachedField = attached.length ? { attachments: attached } : {};
@@ -191,21 +243,126 @@ export function App() {
     if (panel === 'changes') requestChanges();
   }, [panel, requestChanges, status]);
   function select(item: Session) {
+    closing.current.delete(item.id);
     setHistoryOpen(false);
     setSelectedId(item.id);
     setError('');
     send({ type: 'select', id: item.id });
   }
-  function rememberMode(agent: AgentKind, mode: AgentMode) {
-    setChoice((current) => ({ ...current, modes: { ...current.modes, [agent]: mode } }));
+  const known = new Set(snapshot.sessions.map((item) => item.id));
+  const activeKey = session?.id ?? activeDraft;
+  const openKeys = reconcileTabs(
+    tabs,
+    activeKey,
+    known,
+    session ? startedDraft.current : undefined,
+  );
+  const tabItems = openKeys.flatMap((key): TabItem[] => {
+    if (isDraftTab(key)) return [{ kind: 'draft', key, text: drafts[key] ?? '' }];
+    const item = snapshot.sessions.find((other) => other.id === key);
+    return item ? [{ kind: 'thread', key, session: item }] : [];
+  });
+  const threadChildren = new Map<string, Session[]>();
+  for (const item of snapshot.sessions)
+    if (item.parentId)
+      threadChildren.set(item.parentId, [...(threadChildren.get(item.parentId) ?? []), item]);
+  const openList = openKeys.join('\n');
+  // Sessions are empty until the first snapshot, which must not read as every tab being closed.
+  const loaded = snapshot.sessions.length > 0;
+  useEffect(() => {
+    if (loaded || session) setTabs(openList ? openList.split('\n') : []);
+    if (session) startedDraft.current = undefined;
+  }, [openList, loaded, session]);
+  const seenId = session?.id;
+  const seenAt = session?.updatedAt;
+  const seenRunning = session?.status === 'running';
+  // While a thread streams, its first look is enough: leaving it mid-turn must still count later.
+  useEffect(() => {
+    if (!seenId || seenAt === undefined || !visible) return;
+    setSeen((current) =>
+      seenRunning && current[seenId] !== undefined ? current : { ...current, [seenId]: seenAt },
+    );
+  }, [seenId, seenAt, seenRunning, visible]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only needed when threads come or go
+  useEffect(() => {
+    if (loaded) setSeen((current) => pruneSeen(current, known));
+  }, [loaded, snapshot.sessions.length]);
+  useEffect(() => {
+    const listener = () => setVisible(!document.hidden);
+    document.addEventListener('visibilitychange', listener);
+    return () => document.removeEventListener('visibilitychange', listener);
+  }, []);
+  function activate(item: TabItem) {
+    if (item.kind === 'thread') select(item.session);
+    else openDraft(item.key);
   }
-  function compose(next?: Partial<ComposeChoice>, carry?: string) {
+  function openDraft(key: string) {
     setHistoryOpen(false);
     setError('');
     setSelectedId(undefined);
-    setChoice((current) => ({ ...current, parentId: undefined, worktree: false, ...next }));
-    if (carry !== undefined) setDrafts((current) => ({ ...current, [COMPOSE_DRAFT]: carry }));
+    setActiveDraft(key);
     send({ type: 'compose' });
+  }
+  function closeTab(item: TabItem) {
+    const rest = openKeys.filter((key) => key !== item.key);
+    setTabs(rest);
+    if (item.kind === 'draft') {
+      setDrafts(({ [item.key]: _closed, ...current }) => current);
+      setAttachments(({ [item.key]: _closed, ...current }) => current);
+    }
+    if (item.key !== activeKey) return;
+    if (item.kind === 'thread') closing.current.add(item.key);
+    const next = tabItems.find((tab) => tab.key === tabAfterClosing(openKeys, item.key));
+    if (next) activate(next);
+    else compose();
+  }
+  function rememberMode(agent: AgentKind, mode: AgentMode) {
+    setChoice((current) => ({ ...current, modes: { ...current.modes, [agent]: mode } }));
+  }
+  /** Always a new tab: whatever you've typed elsewhere stays in its own tab, sent or not. */
+  function compose(next?: Partial<ComposeChoice>, carry?: string, attach?: Attachment[]) {
+    const key = `${DRAFT_TAB}:${Date.now()}-${++draftCount.current}`;
+    setTabs([...openKeys, key]);
+    setChoice((current) => ({ ...current, parentId: undefined, worktree: false, ...next }));
+    if (carry !== undefined) setDrafts((current) => ({ ...current, [key]: carry }));
+    if (attach?.length) setAttachments((current) => ({ ...current, [key]: attach }));
+    openDraft(key);
+  }
+  /**
+   * Moves your draft to another agent with this thread's history as a chip you can open or
+   * remove. Going back to an agent that already has a linked thread resumes that thread, and it
+   * receives only what happened since. Nothing is sent until you press Enter.
+   */
+  function continueIn(source: Session, next: { agent: AgentKind; model?: string }) {
+    const text = drafts[source.id] ?? '';
+    setDrafts((current) => ({ ...current, [source.id]: '' }));
+    const history = snapshot.preferences.crossAgentContext;
+    // Another agent's model and effort mean nothing here: start from that agent's own default.
+    const fresh = { agent: next.agent, model: next.model, effort: undefined, thinking: undefined };
+    if (history === 'off') {
+      compose(fresh, text);
+      return;
+    }
+    const chip: Attachment = { kind: 'thread', id: source.id, title: source.title, history };
+    const linked = continuationLinks(source, snapshot.sessions).find(
+      (item) => agentKind(item) === next.agent,
+    );
+    if (!linked) {
+      compose(fresh, text, [chip]);
+      return;
+    }
+    const withChip = (current: Attachment[] = []) => [
+      ...current.filter((item) => !(item.kind === 'thread' && item.id === source.id)),
+      chip,
+    ];
+    setDrafts((current) => ({
+      ...current,
+      [linked.id]: [current[linked.id], text].filter((part) => part?.trim()).join('\n\n'),
+    }));
+    setAttachments((current) => ({ ...current, [linked.id]: withChip(current[linked.id]) }));
+    if (next.model && next.model !== linked.model)
+      send({ type: 'setModel', id: linked.id, model: next.model, effort: null });
+    select(linked);
   }
   function submit() {
     if (!draft.trim() || !api) return;
@@ -236,24 +393,25 @@ export function App() {
     }
     if (submitted) return;
     starting.current = true;
+    startedDraft.current = draftKey;
     setSubmitted(true);
     setChoice((current) => ({ ...current, worktree: false, parentId: undefined }));
+    // The chip is what links a new thread to the one it continues: remove it and nothing is linked.
+    const continuing = attached.find((item) => item.kind === 'thread' && item.history);
     send({
       type: 'start',
-      agent: mention?.agent ?? choice.agent,
+      agent: choice.agent,
       text: mention?.prompt ?? draft,
+      ...(mention ? { delegate: mention.agent } : {}),
       draftKey,
       ...attachedField,
-      ...(mention
-        ? {}
-        : {
-            ...(choice.model ? { model: choice.model } : {}),
-            ...(choice.effort ? { effort: choice.effort } : {}),
-            ...(choice.thinking ? { thinking: choice.thinking } : {}),
-            ...(choice.modes?.[choice.agent] ? { mode: choice.modes[choice.agent] } : {}),
-          }),
+      mode: newChatMode(choice.modes?.[choice.agent]),
+      ...(choice.model ? { model: choice.model } : {}),
+      ...(choice.effort ? { effort: choice.effort } : {}),
+      ...(choice.thinking ? { thinking: choice.thinking } : {}),
       ...(choice.worktree ? { worktree: true } : {}),
       ...(choice.parentId ? { parentId: choice.parentId } : {}),
+      ...(continuing?.kind === 'thread' ? { continuedFrom: continuing.id } : {}),
     });
   }
   const asking = pendingQuestion(session, snapshot.sessions);
@@ -270,46 +428,27 @@ export function App() {
             className={`workspace grid grid-cols-[minmax(0,1fr)_280px_232px] h-dvh overflow-hidden border-l border-strong [&.hide-documents]:grid-cols-[minmax(0,1fr)_232px] [&.panel-changes]:grid-cols-[minmax(320px,1fr)_minmax(320px,42%)_232px] max-[900px]:grid-cols-[minmax(0,1fr)] max-[900px]:[&.hide-documents]:grid-cols-[minmax(0,1fr)] max-[900px]:[&.panel-changes]:grid-cols-[minmax(0,1fr)] [[data-surface=view]_&]:border-l-0 ${panel ? `panel-${panel}` : 'hide-documents'} ${historyOpen ? 'show-history' : ''}`}
           >
             <main className="main min-w-0 min-h-0 flex flex-col relative">
-              <header className="h-10 shrink-0 border-b border-subtle flex items-center gap-2 pr-2 pl-4">
-                {session ? (
-                  <div className="flex-1 min-w-0 flex items-center gap-1.5 text-muted-foreground max-[480px]:[&>.chevron]:hidden">
-                    <AgentMark agent={agentKind(session)} />
-                    {parent ? (
-                      <>
-                        <button
-                          type="button"
-                          className="px-1 py-[3px] text-[12px] text-muted-foreground max-w-[30%] block truncate shrink max-[480px]:hidden"
-                          title={parent.title}
-                          onClick={() => select(parent)}
-                        >
-                          {parent.title}
-                        </button>
-                        <Icon name="chevron" size={10} />
-                      </>
-                    ) : null}
+              <header className="h-10 shrink-0 bg-chrome flex items-center">
+                <ThreadTabs
+                  items={tabItems}
+                  activeKey={activeKey}
+                  signalOf={(item) => threadSignal(item, threadChildren, seen)}
+                  onActivate={activate}
+                  onClose={closeTab}
+                  onRename={(item) => send({ type: 'rename', id: item.id })}
+                />
+                <div className="flex shrink-0 items-center h-full pl-1 pr-2 border-b border-l border-subtle">
+                  <Hint label="New chat">
                     <button
                       type="button"
-                      className="session-name min-w-0 px-1 py-[3px] text-foreground text-[13px] font-medium block truncate disabled:opacity-100"
-                      title="Rename this thread"
-                      disabled={session.observed}
-                      onClick={() => send({ type: 'rename', id: session.id })}
+                      className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-expanded:text-foreground in-[.question-card]:size-[22px] in-[.question-card]:p-0"
+                      aria-label="New chat"
+                      disabled={!snapshot.trusted}
+                      onClick={() => compose()}
                     >
-                      {session.title}
+                      <Icon name="plus" />
                     </button>
-                    {session.status !== 'idle' && session.status !== 'completed' ? (
-                      <span
-                        className={`text-[10px] py-px text-muted-foreground shrink-0 [&.running]:text-foreground [&.waiting]:text-warning [&.failed]:text-error max-[480px]:hidden ${session.status}`}
-                      >
-                        {session.status}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="flex-1 min-w-0 flex items-center gap-1.5 text-muted-foreground max-[480px]:[&>.chevron]:hidden">
-                    <span className="text-[12px]">{snapshot.project}</span>
-                  </div>
-                )}
-                <div className="flex shrink-0">
+                  </Hint>
                   <button
                     type="button"
                     className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-expanded:text-foreground in-[.question-card]:size-[22px] in-[.question-card]:p-0 hidden max-[900px]:inline-flex"
@@ -320,6 +459,30 @@ export function App() {
                   >
                     <Icon name="history" />
                   </button>
+                  {session && !session.observed ? (
+                    <Hint
+                      label={
+                        session.inTerminal
+                          ? 'Show terminal'
+                          : session.nativeId
+                            ? `Open in the ${agentLabel(session)} terminal`
+                            : `Send ${agentLabel(session)} a message first, then this thread can open in its terminal`
+                      }
+                    >
+                      <span className="inline-flex">
+                        <button
+                          type="button"
+                          className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-pressed:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                          aria-label="Open in terminal"
+                          aria-pressed={Boolean(session.inTerminal)}
+                          disabled={!session.nativeId}
+                          onClick={() => send({ type: 'terminal', id: session.id })}
+                        >
+                          <Icon name="terminal" />
+                        </button>
+                      </span>
+                    </Hint>
+                  ) : null}
                   <Hint label="Changes">
                     <button
                       type="button"
@@ -335,12 +498,16 @@ export function App() {
                     items={[
                       ...(session && !session.observed
                         ? [
-                            {
-                              key: 'terminal',
-                              label: 'Open in native terminal',
-                              icon: <Icon name="terminal" size={14} />,
-                              onSelect: () => send({ type: 'terminal', id: session.id }),
-                            },
+                            ...(snapshot.preferences.crossAgentContext !== 'off'
+                              ? AGENT_KINDS.filter((kind) => kind !== agentKind(session)).map(
+                                  (kind) => ({
+                                    key: `continue-${kind}`,
+                                    label: `Continue in ${AGENT_LABELS[kind]}`,
+                                    icon: <Icon name="swap" size={14} />,
+                                    onSelect: () => continueIn(session, { agent: kind }),
+                                  }),
+                                )
+                              : []),
                             {
                               key: 'handoff',
                               label: 'Hand off to another agent',
@@ -361,21 +528,54 @@ export function App() {
                         icon: <Icon name="wrench" size={14} />,
                         onSelect: () => setSkillsOpen(true),
                       },
+                      {
+                        key: 'appearance',
+                        label:
+                          snapshot.preferences.appearance === 'cursor'
+                            ? 'Use editor theme colors'
+                            : 'Use Cursor dark colors',
+                        icon: <Icon name="palette" size={14} />,
+                        onSelect: () =>
+                          send({
+                            type: 'setAppearance',
+                            appearance:
+                              snapshot.preferences.appearance === 'cursor' ? 'editor' : 'cursor',
+                          }),
+                      },
                     ]}
                   />
-                  <Hint label="New thread">
-                    <button
-                      type="button"
-                      className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-expanded:text-foreground in-[.question-card]:size-[22px] in-[.question-card]:p-0"
-                      aria-label="New thread"
-                      disabled={!snapshot.trusted}
-                      onClick={() => compose()}
-                    >
-                      <Icon name="plus" />
-                    </button>
-                  </Hint>
                 </div>
               </header>
+              {parent ? (
+                <div className="shrink-0 flex items-center gap-1 px-3 py-1 border-b border-subtle text-[11.5px] text-muted-foreground">
+                  <span>Subagent of</span>
+                  <button
+                    type="button"
+                    className="min-w-0 px-1 py-px text-muted-foreground block truncate"
+                    title={parent.title}
+                    onClick={() => select(parent)}
+                  >
+                    {threadTitle(parent.title)}
+                  </button>
+                </div>
+              ) : null}
+              {session && !parent && continuationLinks(session, snapshot.sessions).length ? (
+                <div className="shrink-0 flex items-center gap-1 px-3 py-1 border-b border-subtle text-[11.5px] text-muted-foreground min-w-0 overflow-hidden">
+                  <Icon name="swap" size={12} />
+                  {continuationLinks(session, snapshot.sessions).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="min-w-0 px-1 py-px text-muted-foreground block truncate"
+                      title={item.title}
+                      onClick={() => select(item)}
+                    >
+                      {item.id === session.continuedFrom ? 'Continued from' : 'Continued in'}{' '}
+                      {agentLabel(item)}: {threadTitle(item.title)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               {!snapshot.trusted ? (
                 <div className="text-[12px] px-4 py-2 bg-surface border-b border-subtle wrap-anywhere">
                   Trust this folder in VS Code to start local agents and view project documents.
@@ -432,8 +632,11 @@ export function App() {
                     </button>
                   ) : null}
                 </div>
+              ) : session?.inTerminal ? (
+                <TerminalStrip id={session.id} label={agentLabel(session)} />
               ) : (
                 <Composer
+                  preferences={snapshot.preferences}
                   catalog={catalog}
                   skills={snapshot.skills ?? emptySkills}
                   onManageSkills={() => setSkillsOpen(true)}
@@ -462,7 +665,9 @@ export function App() {
                   focusKey={draftKey}
                   onDraft={(text) => setDrafts((current) => ({ ...current, [draftKey]: text }))}
                   onChoice={(next, carry) => {
-                    if (carry) {
+                    if (carry && session?.messages.length && !session.observed)
+                      continueIn(session, next);
+                    else if (carry) {
                       compose(next, draft);
                       setDrafts((current) => ({ ...current, [draftKey]: '' }));
                     } else setChoice(next);
@@ -496,7 +701,14 @@ export function App() {
                 }}
               />
             ) : null}
-            <ThreadSidebar snapshot={snapshot} selectedId={session?.id} onSelect={select} />
+            <ThreadSidebar
+              snapshot={snapshot}
+              selectedId={session?.id}
+              onSelect={select}
+              seen={seen}
+              view={threadView}
+              onView={setThreadView}
+            />
           </div>
           {skillsOpen ? (
             <SkillsPanel

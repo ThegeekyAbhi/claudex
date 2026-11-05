@@ -45,6 +45,14 @@ Limits that keep this from becoming a delegation loop: every agent-initiated cal
 
 `thread/resume` has no `dynamicTools` parameter, so `run_agent` on a resumed Codex thread depends on Codex restoring the thread's tools. A `run_agent` call with no delegate available is refused, not approved.
 
+## Continuing in another agent
+
+No CLI can resume another CLI's native session, and this extension does not write either CLI's session files. Continuing instead sends a record built by `src/core/session-packet.ts` from the transcript this extension already stores: your messages, agent replies, tool lines with the provider-reported status and exit code, the tail of a failed command's output, files from reported or observed diffs, and the plan. Thinking summaries stay behind. The record is wrapped in `<context_from_another_agent>`, says it is history rather than instructions, and escapes any copy of its own tags inside it. It keeps the first message and as much of the latest as fits the chosen limit, and says how much it left out.
+
+It travels as a `thread` attachment with `history` set, through the same `SessionInput.context` path as other attachments, so system prompts, modes, tools, and every request field stay as they were. Without the chip each CLI receives exactly what it did before. A thread attachment without `history` still sends only the last reply.
+
+`continuedFrom` links the new thread to its source. `synced` records, per linked thread, the last of its messages this thread has been sent; it is written only after the CLI accepts the message. Going back to a linked thread resumes its native session and sends only later messages; nothing new sends nothing. All three fields are optional, so earlier versions still load a store that has them.
+
 ## Files and permissions
 
 Webview actions are checked with a discriminated Zod schema, and `run_agent` arguments with their own. Native file links are confined to the selected checkout after realpath resolution; Markdown preview actions are restricted to `docs/agent-work/*.md`. Symlink escapes are rejected and symlinked documents are not indexed. External links support HTTP(S) only. Scripts and command links in agent Markdown are not executable; raw HTML and remote images are not rendered. The webview has a restrictive CSP and uses bundled assets.
@@ -66,8 +74,9 @@ Each adapter maps a mode to its CLI's real settings. `src/core/capabilities.ts` 
 | unset | nothing sent, so `permissions.defaultMode` applies | nothing sent |
 | Ask | `dontAsk`, `disallowedTools: Edit, Write, NotebookEdit`, no `run_agent` server | `readOnly` sandbox, no network, `approvalPolicy: never`, `run_agent` refused |
 | Plan | `plan` | `collaborationMode: plan` with the thread's original settings |
-| Agent | `default` | the thread's original settings, `collaborationMode: default` |
-| Auto | `auto` | the thread's original settings, `approvalsReviewer: auto_review` |
+| Auto | `auto` | the thread's original settings, `approvalsReviewer: auto_review` when `approvalPolicy` is `on-request`; otherwise `user`, with a notice and the chip showing **Your Codex settings** |
+
+A saved `mode: 'agent'` from an earlier version loads as unset, and the session keeps its ID.
 
 Codex keeps these settings from turn to turn, so the thread's original `approvalPolicy`, `approvalsReviewer`, and `sandbox` are captured once from the start response and stored with the session. Every explicit mode restates them, which is what lets a thread leave Ask. Claude runs one query per turn, so it needs none of this.
 
@@ -77,7 +86,7 @@ The composer shows `init.permissionMode` when Claude reports one. If that differ
 
 Plan mode uses each provider's own feature. A finished plan is written by the extension to `<storage>/plans/<title>_<id>.plan.md`, because plan mode can't write files itself. It stays ordinary Markdown. A failed write costs only the file: the plan stays in the thread, with a notice.
 
-`*.plan.md` opens in a `CustomTextEditorProvider` (`src/host/plan-editor.ts`) that renders it, and **Open as text** is VS Code's own editor on the same file. Its messages are validated by `planViewActionSchema`. A plan file with no owning thread can be read but not built.
+`*.plan.md` opens in VS Code's Markdown preview (`markdown.showPreview`), and **Open as text** is VS Code's own editor on the same file. A plan file with no owning thread can be read but not built.
 
 **Build** saves any open edits and reads the file when clicked.
 
