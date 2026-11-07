@@ -8,9 +8,11 @@ execFileSync(
   [
     'package',
     '--no-dependencies',
-    '--allow-missing-repository',
+    '--githubBranch',
+    'main',
     '--out',
     `releases/${name}-${version}.vsix`,
+    ...process.argv.slice(2),
   ],
   { stdio: 'inherit' },
 );

@@ -9,7 +9,7 @@ import type {
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { makeDiff, patchFromHunks } from '../../core/diff';
+import { makeDiff, patchFromHunks } from '../../shared/domain/diff';
 import {
   type AgentMode,
   type Delegate,
@@ -19,17 +19,18 @@ import {
   MODE_LABELS,
   modeView,
   parseRunAgent,
-  RUN_AGENT_DESCRIPTION,
   RUN_AGENT_TOOL,
   runAgentApprovalTitle,
+  runAgentDescription,
   runAgentInput,
+  runAgentNames,
   runAgentResultText,
   type Session,
   type SkillRequest,
   type Status,
   type ToolInfo,
   type TranscriptEvent,
-} from '../../core/model';
+} from '../../shared/model';
 import { claudeToolDiffs, describeClaudeTool, resultText } from '../tool-format';
 import { claudeContextTokens, claudeLimits } from '../usage';
 import { readClaudeTitle } from './title';
@@ -111,9 +112,9 @@ export class ClaudeAgent {
       tools: [
         tool(
           RUN_AGENT_TOOL,
-          RUN_AGENT_DESCRIPTION,
+          runAgentDescription(),
           {
-            agent: z.enum(['codex', 'claude', 'claude2']),
+            agent: z.enum(runAgentNames()),
             prompt: runAgentInput.shape.prompt,
             model: runAgentInput.shape.model,
             effort: runAgentInput.shape.effort,
@@ -306,7 +307,7 @@ export class ClaudeAgent {
         return;
       }
       if (name === 'ExitPlanMode') {
-        void this.requestPlanApproval(input, options.toolUseID, finish);
+        void this.requestPlanApproval(input, options.toolUseID, finish, options.signal);
         return;
       }
       const runAgent = name === RUN_AGENT_FULL_NAME ? this.parseRunAgent(input) : undefined;
@@ -368,12 +369,29 @@ export class ClaudeAgent {
     input: Record<string, unknown>,
     toolUseId: string | undefined,
     finish: (result: PermissionResult) => void,
+    signal: AbortSignal,
   ): Promise<void> {
     const text = await this.planText(input);
+    if (signal.aborted) return;
+    if (!text.trim()) {
+      this.emit({
+        type: 'message',
+        message: {
+          id: randomUUID(),
+          role: 'notice',
+          text: 'Claude did not share its plan. Ask it to present the plan before implementing.',
+        },
+      });
+      finish({
+        behavior: 'deny',
+        message: 'Share the finished plan text before asking to leave plan mode.',
+      });
+      return;
+    }
     this.emit({
       type: 'plan',
       final: true,
-      text: text || 'Claude asked to leave plan mode but did not share the plan’s text.',
+      text,
     });
     this.emit({
       type: 'approval',

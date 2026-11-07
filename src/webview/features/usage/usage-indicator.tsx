@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
-import { modeView, type Session, type Usage, type UsageLimit } from '../../../core/model';
+import { modeView, type Session, type Usage, type UsageLimit } from '../../../shared/model';
 
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 const RADIUS = 6;
@@ -91,6 +91,12 @@ export function UsageIndicator({
 }) {
   const [open, setOpen] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: close when switching threads
+  useEffect(() => {
+    setOpen(false);
+    window.clearTimeout(timer.current);
+  }, [session?.id]);
   const usage: Usage | undefined = session?.usage;
   const details = session ? threadDetails(session) : undefined;
   if (!usage && !details?.worthShowing) return null;
@@ -120,7 +126,7 @@ export function UsageIndicator({
     contextPercent !== undefined
       ? `Context ${Math.round(contextPercent)}% used`
       : limits.length
-        ? `Plan limit ${Math.round(highestLimit)}% used`
+        ? `Account limit ${Math.round(highestLimit)}% used`
         : 'Thread details',
     ...limits.map((limit) => `${limit.label} limit ${Math.round(limit.usedPercent)}% used`),
     ...(failed.length ? [`${failed.length} MCP server needs attention`] : []),
@@ -165,7 +171,7 @@ export function UsageIndicator({
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="bg-overlay text-foreground border border-strong z-50 rounded-md shadow-md animate-menu-in [transform-origin:var(--radix-popover-content-transform-origin,var(--radix-dropdown-menu-content-transform-origin))] focus:outline-none focus-visible:outline-none motion-reduce:animate-none text-[11.5px] [&_section]:px-[11px] [&_section]:py-[9px] [&_section]:flex [&_section]:flex-col [&_section]:gap-[5px] [&_section+section]:border-t [&_section+section]:border-subtle [&_small]:text-[10.5px] [&_small]:text-faint [&_footer]:pt-[5px] [&_footer]:px-[11px] [&_footer]:pb-[7px] [&_footer]:border-t [&_footer]:border-subtle [&_footer]:text-[10.5px] [&_footer]:text-faint w-[236px] p-0 ring-0"
+        className="bg-overlay text-foreground border border-strong z-50 rounded-md shadow-md animate-menu-in [transform-origin:var(--radix-popover-content-transform-origin,var(--radix-dropdown-menu-content-transform-origin))] focus:outline-none focus-visible:outline-none motion-reduce:animate-none text-[11.5px] [&_section]:px-[11px] [&_section]:py-2 [&_section]:flex [&_section]:flex-col [&_section]:gap-1 [&_section+section]:border-t [&_section+section]:border-subtle [&_small]:text-[10.5px] [&_small]:text-faint [&_footer]:pt-[5px] [&_footer]:px-[11px] [&_footer]:pb-[7px] [&_footer]:border-t [&_footer]:border-subtle [&_footer]:text-[10.5px] [&_footer]:text-faint w-[224px] max-w-[calc(100vw-16px)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0 ring-0"
         side="top"
         align="end"
         sideOffset={6}
@@ -178,25 +184,31 @@ export function UsageIndicator({
         {context && contextPercent !== undefined ? (
           <section>
             <div className="flex justify-between gap-2 tabular-nums text-muted-foreground [&_strong]:font-[450] [&_strong]:text-foreground">
-              <strong>Context</strong>
+              <strong>
+                Context{' '}
+                <span className="ml-1 text-[10px] text-faint font-normal">
+                  {compact.format(context.used)} / {compact.format(context.max)}
+                </span>
+              </strong>
               <span>{Math.round(contextPercent)}%</span>
             </div>
             <Bar percent={contextPercent} label="Context used" />
-            <small>
-              {compact.format(context.used)} of {compact.format(context.max)} tokens
-            </small>
           </section>
         ) : null}
         {limits.length ? (
           <section>
             {limits.map((limit) => (
-              <div className="flex flex-col gap-[5px] [&+&]:mt-1.5" key={limit.id}>
+              <div className="flex flex-col gap-1 [&+&]:mt-2" key={limit.id}>
                 <div className="flex justify-between gap-2 tabular-nums text-muted-foreground [&_strong]:font-[450] [&_strong]:text-foreground">
-                  <strong>{limit.label} limit</strong>
+                  <strong>
+                    {limit.label}{' '}
+                    <span className="ml-1 text-[10px] font-normal text-faint">
+                      {resetText(limit, now)?.replace(/^Resets /, '')}
+                    </span>
+                  </strong>
                   <span>{Math.round(limit.usedPercent)}%</span>
                 </div>
                 <Bar percent={limit.usedPercent} label={`${limit.label} limit used`} />
-                {resetText(limit, now) ? <small>{resetText(limit, now)}</small> : null}
               </div>
             ))}
           </section>
@@ -206,29 +218,39 @@ export function UsageIndicator({
             <p>
               {(contextPercent ?? 0) >= WARN
                 ? 'This thread is nearly full. Hand off to carry on in a fresh thread, from a summary you review.'
-                : 'You are close to this plan limit. Hand off to carry on with another agent.'}
+                : 'You are close to this account limit. Hand off to carry on with another agent.'}
             </p>
             <button type="button" onClick={onHandOff}>
               Hand off to another agent
             </button>
           </section>
         ) : null}
-        {details?.rows.length ? (
-          <section className="grid gap-1">
-            {details.rows.map((row) => (
-              <div key={row.label} className="flex justify-between gap-3 text-[11px]">
-                <span className="text-muted-foreground">{row.label}</span>
-                <span
-                  className={`min-w-0 truncate text-right ${row.warn ? 'text-[var(--warning)]' : 'text-foreground'}`}
-                  title={row.value}
-                >
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </section>
+        {failed.length ? (
+          <p className="m-0 px-3 py-2 text-[11px] text-warning wrap-anywhere">
+            {failed.map((item) => `${item.name}: ${item.status}`).join(', ')}
+          </p>
         ) : null}
-        {usage ? <footer>Reported {ago(usage.updatedAt, now)}</footer> : null}
+        <details className="border-t border-subtle px-3 py-2 text-[11px]">
+          <summary className="cursor-pointer text-muted-foreground">Details</summary>
+          {details?.rows.length ? (
+            <div className="grid gap-1 mt-2">
+              {details.rows.map((row) => (
+                <div key={row.label} className="flex justify-between gap-3 text-[11px]">
+                  <span className="text-muted-foreground">{row.label}</span>
+                  <span
+                    className={`min-w-0 wrap-anywhere text-right ${row.warn ? 'text-[var(--warning)]' : 'text-foreground'}`}
+                    title={row.value}
+                  >
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {usage ? (
+            <p className="mb-0 mt-2 text-[10px] text-faint">Reported {ago(usage.updatedAt, now)}</p>
+          ) : null}
+        </details>
       </PopoverContent>
     </Popover>
   );

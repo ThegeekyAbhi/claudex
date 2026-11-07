@@ -30,15 +30,30 @@ The shipped SDK version is pinned to 0.3.318; live smoke testing used Claude Cod
 
 Sources: [CLI reference](https://code.claude.com/docs/en/cli-reference), [SDK permissions](https://code.claude.com/docs/en/agent-sdk/permissions), [authentication and credential boundaries](https://code.claude.com/docs/en/legal-and-compliance).
 
-## Second Claude launcher
+## Agent profiles
 
-Shell aliases do not exist for a process launched by VS Code. The `claud2` agent resolves, in order: an explicit `agentWorkspace.claud2Path`; a `claud2` or `claude2` executable; or the primary `claude` executable with `CLAUDE_CONFIG_DIR` set to `agentWorkspace.claud2ConfigDir` (default `~/.claude-account2`) when that folder exists. The extension passes the folder path and never reads credentials from it.
+Agents are profiles (`src/shared/domain/profiles.ts`): a provider (`claude` or `codex`, the two adapters), an optional home folder and an optional executable.
+
+**Where profiles come from** (`src/extension/launcher.ts`):
+- the built-ins `claude` and `codex`
+- `agentWorkspace.profiles`
+- the pre-profile second Claude account, `claud2`. It is listed only when saved threads use it, a `claud2`/`claude2` executable exists, or the old settings are set. A wrapper is run as-is; otherwise `claude` runs with `CLAUDE_CONFIG_DIR` set to the old folder.
+
+**Checks:**
+- Detection runs `--version` on activation and when a related setting changes. It reports `ready`, `missingCli` or `missingFolder` and never installs anything.
+- Labels, @mentions, the `run_agent` enum and the agent rail are built from the current list. The host and the webview share it through each snapshot.
+- Webview actions must name a profile that exists. Starting one also requires that it can run.
+- A home folder is passed as `CLAUDE_CONFIG_DIR` (the SDK `env`) or `CODEX_HOME` (the app-server process env). Built-ins get no extra environment. A missing folder is an error, never a fallback to the default account.
+
+**Saving:**
+- Threads save `profileId` only for non-built-in profiles, so built-in threads keep the earlier format. The older `claudeCommand: "claud2"` is read as `profileId: "claud2"` and written back alongside it, so an older Claudex still runs those threads on the second account.
+- Profile edits go through VS Code's input boxes and folder picker, and only change the `agentWorkspace.profiles` setting. The webview names an action and never a path, except a suggested folder, which the host checks against its own list. No credential is read, copied or stored. Signing in is the CLI's own flow in a terminal.
 
 ## Running another agent
 
 There are two ways to start one, and both create an ordinary provider session as a child thread:
 
-- **The user types `@codex …`, `@claude …`, or `@claude2 …`** at the start of a message. This is the user's own instruction, so it starts directly.
+- **The user types `@codex …`, `@claude …`, or a profile's handle** at the start of a message. This is the user's own instruction, so it starts directly.
 - **An agent calls the `run_agent` tool.** Claude receives it as an in-process SDK MCP server with an `always_ask` policy, so it reaches `canUseTool` even where settings allow all MCP tools. Codex receives it through `dynamicTools` on `thread/start` and the `item/tool/call` request; the adapter emits an approval before doing anything. Declining starts nothing and tells the caller it was declined.
 
 Limits that keep this from becoming a delegation loop: every agent-initiated call needs its own approval; a delegated session is not given the tool, so delegation cannot chain; the extension never sends a child's output to anything except the waiting `run_agent` call; and a typed @mention's result reaches the parent only if the user adds it to their next message. Stopping a lead stops its running delegates. Child approvals appear in the child and inline on the lead's card. The caller receives the provider-reported turn status alongside the child's final message, so a failed or interrupted child is reported as such.
@@ -47,7 +62,7 @@ Limits that keep this from becoming a delegation loop: every agent-initiated cal
 
 ## Continuing in another agent
 
-No CLI can resume another CLI's native session, and this extension does not write either CLI's session files. Continuing instead sends a record built by `src/core/session-packet.ts` from the transcript this extension already stores: your messages, agent replies, tool lines with the provider-reported status and exit code, the tail of a failed command's output, files from reported or observed diffs, and the plan. Thinking summaries stay behind. The record is wrapped in `<context_from_another_agent>`, says it is history rather than instructions, and escapes any copy of its own tags inside it. It keeps the first message and as much of the latest as fits the chosen limit, and says how much it left out.
+No CLI can resume another CLI's native session, and this extension does not write either CLI's session files. Continuing instead sends a record built by `src/shared/domain/session-packet.ts` from the transcript this extension already stores: your messages, agent replies, tool lines with the provider-reported status and exit code, the tail of a failed command's output, files from reported or observed diffs, and the plan. Thinking summaries stay behind. The record is wrapped in `<context_from_another_agent>`, says it is history rather than instructions, and escapes any copy of its own tags inside it. It keeps the first message and as much of the latest as fits the chosen limit, and says how much it left out.
 
 It travels as a `thread` attachment with `history` set, through the same `SessionInput.context` path as other attachments, so system prompts, modes, tools, and every request field stay as they were. Without the chip each CLI receives exactly what it did before. A thread attachment without `history` still sends only the last reply.
 
@@ -67,7 +82,7 @@ The UI runs as a webview view in the secondary side bar (`agentWorkspace.chat`),
 
 ## Modes
 
-Each adapter maps a mode to its CLI's real settings. `src/core/capabilities.ts` describes what each CLI supports as data, so the UI never branches on provider name. It lives in `core` because the webview reads it.
+Each adapter maps a mode to its CLI's real settings. `src/shared/domain/capabilities.ts` describes what each CLI supports as data, so the UI never branches on provider name. It lives in `shared` because the webview reads it.
 
 | Mode | Claude | Codex (`turn/start`) |
 | --- | --- | --- |
@@ -98,7 +113,7 @@ Text typed while a plan waits goes back as the denial message, so Claude revises
 
 ## Skills
 
-`src/harness/skill-catalog.ts` reads what each CLI reports. No turn runs and no quota is used.
+`src/application/catalogs/skill-catalog.ts` reads what each CLI reports. No turn runs and no quota is used.
 
 - **Claude:** `query.supportedCommands()` on an idle session with `settingSources: user, project, local`, leaving out `builtin` entries. It reports no source or path, so none is shown.
 - **Codex:** `skills/list`, with malformed entries reported as problems. `skills/config/write` turns one on or off.
@@ -124,16 +139,17 @@ A window whose reset time has passed is hidden, since it no longer describes the
 
 ## Staying out of the way
 
-The extension doesn't sit between you and the CLI. Nothing is awaited between Send and the provider call except attachment reads you asked for. While a thread streams, an update carries that thread's tail, and catalogs or documents only when they changed. Shiki loads as its own chunk the first time code appears, and falls back to plain code if that fails. `tests/streaming.test.ts` guards these.
+The extension doesn't sit between you and the CLI. Nothing is awaited between Send and the provider call except attachment reads you asked for. While a thread streams, an update carries that thread's tail, and catalogs or documents only when they changed. Shiki loads as its own chunk the first time code appears, and falls back to plain code if that fails. `tests/unit/shared/protocol/snapshot.test.ts` and `tests/integration/application/sessions/turn-lifecycle.test.ts` guard these.
 
 ## Source layout
 
-Dependencies point inward: `webview`, `host`, and `harness` depend on `core`, and `core` depends on nothing.
+Dependencies point inward: `webview`, `extension`, `application`, `infrastructure`, and `providers` depend on `shared`; `shared` has no dependency on those layers.
 
-- `src/core`: the domain, with no Node or VS Code APIs. Schemas, events, modes, capabilities, skills, nudges.
+- `src/shared`: the domain, with no Node or VS Code APIs. Schemas, events, modes, capabilities, skills, nudges.
 - `src/providers`: one adapter per CLI.
-- `src/harness`: sessions and catalogs.
-- `src/host`: VS Code activation, controller, surfaces, plans, documents.
+- `src/application`: session use cases and model/skill catalogs.
+- `src/infrastructure`: Git execution, file observation, and worktree operations.
+- `src/extension`: VS Code activation, controller, surfaces, plans, documents.
 - `src/webview`: `app`, `features`, `components/ui` (shadcn), `lib`.
 
 ## Webview components

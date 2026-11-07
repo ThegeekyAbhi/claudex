@@ -1,3 +1,4 @@
+import { DEFAULT_PREFERENCES } from '../../shared/domain/preferences';
 import type {
   Action,
   AgentKind,
@@ -9,8 +10,7 @@ import type {
   SnapshotUpdate,
   TailMark,
   Thinking,
-} from '../../core/model';
-import { DEFAULT_PREFERENCES } from '../../core/preferences';
+} from '../../shared/model';
 import type { SeenAt } from '../features/threads/tab-state';
 import type { ThreadViewState } from '../features/threads/thread-filter';
 
@@ -24,8 +24,9 @@ export interface ComposeChoice {
   /** Your last explicit mode per agent, for new threads. */
   modes?: Partial<Record<AgentKind, AgentMode>>;
 }
-interface ViewState {
+export interface ViewState {
   selectedId?: string;
+  accountsActive?: boolean;
   drafts: Record<string, string>;
   attachments?: Record<string, Attachment[]>;
   scroll: Record<string, number>;
@@ -43,7 +44,8 @@ interface ViewState {
 interface HostApi {
   postMessage(action: Action): void;
   getState(): ViewState | undefined;
-  setState(state: ViewState): void;
+  /** Returns the state it was given, as VS Code does. */
+  setState(state: ViewState): ViewState;
 }
 declare const acquireVsCodeApi: undefined | (() => HostApi);
 export const api: HostApi | undefined =
@@ -51,7 +53,17 @@ export const api: HostApi | undefined =
 export function send(action: Action): void {
   api?.postMessage(action);
 }
+export interface ProfileResult {
+  type: 'profileResult';
+  requestId: string;
+  id?: string;
+  folder?: string;
+  token?: string;
+  cancelled?: boolean;
+  error?: string;
+}
 export type HostMessage =
+  | ProfileResult
   | {
       type: 'snapshot';
       snapshot: SnapshotUpdate;
@@ -71,11 +83,8 @@ export type HostMessage =
       recent: string[];
       terminals: string[];
     };
-export const emptyCatalog: Catalog = {
-  codex: { status: 'loading', models: [] },
-  claude: { status: 'loading', models: [] },
-  claud2: { status: 'loading', models: [] },
-};
+/** Before the host's first snapshot. Profiles it hasn't listed yet read as loading. */
+export const emptyCatalog: Catalog = {};
 export const emptySnapshot: Snapshot = {
   sessions: [],
   documents: [],

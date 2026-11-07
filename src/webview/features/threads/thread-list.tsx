@@ -5,7 +5,7 @@ import {
   type Session,
   type Snapshot,
   threadTitle,
-} from '../../../core/model';
+} from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { AgentMark, Icon } from '../../components/icons';
 import { Hint, OverflowMenu } from '../../components/menus';

@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
-import { parsePatch } from '../../../core/diff';
-import type { ChangesResult, FileDiff } from '../../../core/model';
+import { parsePatch } from '../../../shared/domain/diff';
+import type { ChangesResult, FileDiff } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
 

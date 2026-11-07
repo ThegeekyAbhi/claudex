@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
-import type { Approval, Question, Session } from '../../../core/model';
+import type { Approval, Question, Session } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
 

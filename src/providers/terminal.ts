@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import type { Session } from '../core/model';
-import { effectiveEffort } from '../core/thinking';
+import { effectiveEffort } from '../shared/domain/thinking';
+import type { Session } from '../shared/model';
 import { JsonRpc } from './process';
 
 /**
@@ -164,6 +164,7 @@ export async function readCodexTurns(
   threadId: string,
   cwd: string,
   since: number,
+  env?: Record<string, string>,
 ): Promise<unknown[]> {
   const rpc = new JsonRpc(
     executable,
@@ -171,6 +172,7 @@ export async function readCodexTurns(
     cwd,
     () => {},
     () => {},
+    env,
   );
   try {
     await rpc.request('initialize', {

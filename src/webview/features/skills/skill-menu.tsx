@@ -1,12 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import {
-  AGENT_LABELS,
   type AgentKind,
+  profileLabel,
   SKILL_SOURCE_LABELS,
   type Skill,
   type SkillCatalog,
   searchSkills,
-} from '../../../core/model';
+} from '../../../shared/model';
 import { Icon } from '../../components/icons';
 
 /** The `/` menu. Reads the catalog the host already has, so typing never waits on a CLI. */
@@ -83,11 +83,11 @@ export function SkillMenu({
   }, [menuId, active]);
   const empty =
     catalog.status === 'error'
-      ? `Couldn’t read ${AGENT_LABELS[agent]}’s skills.`
+      ? `Couldn’t read ${profileLabel(agent)}’s skills.`
       : catalog.status === 'ready'
         ? query
           ? 'No matching skills.'
-          : `${AGENT_LABELS[agent]} has no skills here yet.`
+          : `${profileLabel(agent)} has no skills here yet.`
         : 'Looking for skills…';
   return (
     <div

@@ -15,19 +15,19 @@
    - **Threads:** finished subagents collapse into an **N earlier** row under their parent. **Running only** in the Chats header narrows the list to threads with work going on. Failed and interrupted threads stay visible, and search looks through everything. **Needs you** and **Running** sit at the top of Chats, above the threads sorted by time.
    - **Thinking:** choose Default, On, or Off beside the model picker. Off appears only when disabling thinking is verified for that model; reasoning effort and expandable summaries are separate controls. Default preserves native thinking configuration.
    - **Skills:** type `/` to search your skills, and pick one to add a removable chip. A chip means you asked for it. Only a real tool call from the CLI reads "Used skill". Open **… → Skills** to browse each agent's skills, open a `SKILL.md`, or turn Codex skills on and off.
-4. Type `@` to attach context: recent and searched files, folders, past threads, a terminal's last command (where shell integration is on), the branch diff with main, or images. `#` goes straight to files. An `@codex`, `@claude`, or `@claude2` at the very start of a message still runs that agent as a child thread.
+4. Type `@` to attach context: recent and searched files, folders, past threads, a terminal's last command (where shell integration is on), the branch diff with main, or images. `#` goes straight to files. An `@codex`, `@claude`, or any profile's handle (such as `@claude-work`) at the very start of a message still runs that agent as a child thread.
 5. Paste images, attach them with the paperclip, or pick them from `@`. Images Codex generates appear in the thread, and open full size on click.
 6. When an agent asks you something, the questions dock on the message box, one at a time. Press a letter to pick, Enter to continue, and Esc to skip; skipping tells the agent you declined.
 7. The compact labels and ring beside the paperclip show reported context, 5-hour, and weekly usage when available. Hover for reset times, your plan's limits, the thread's real mode, the skills you asked for, its MCP servers, and its instruction files. A failed MCP server adds an amber dot. It stays hidden until a CLI reports numbers, and offers a handoff when a thread or limit is nearly full. Changes apply from the next turn. Picking a different agent on a started thread continues it there (below).
 3. New threads work in your open folder. Choose **New worktree** in the location menu for one thread, or **Continue in a new worktree** later. Worktrees start from committed HEAD and do not copy uncommitted files. The extension never cleans up or merges worktrees.
 4. Follow the work in the thread: thinking, commands, and reads collapse into a summary when a turn ends, and diffs stay visible. In Git checkouts, shell edits also appear as **Observed file changes**, compared against the files as they were before the turn and after each command. Existing uncommitted edits are excluded; concurrent edits can be included, so these observations do not establish authorship. Capture excludes ignored files and symlinks and is bounded to 10,000 files, 256 KiB per file, and 32 MiB total; binary, skipped, or unavailable content is identified. Shell renames appear as a deletion and an addition. Historical command diffs are not reconstructed. Approval cards offer **Allow once**, **Decline**, and answers to supported agent questions. Eligible native tool requests also offer **Allow in Auto**: this allows that one request, then continues in the provider's Auto mode. Claude Code switches straight away; Codex applies it from its next turn and requires an on-request approval policy. Provider restrictions still apply.
 5. **Run another agent** either way:
-   - Start a message with `@codex`, `@claude`, or `@claude2`, or pick one from the `@` menu anywhere in a message, which moves it to the front and keeps your words. A name you type mid-sentence and don't pick stays plain text. It runs straight away in a card, under the agent you had selected, which isn't sent the message. Each card shows who asked and in what words. Its result is added to your next message only if you choose **Add this result**.
+   - Start a message with `@codex`, `@claude`, or a profile's handle, or pick one from the `@` menu anywhere in a message, which moves it to the front and keeps your words. A name you type mid-sentence and don't pick stays plain text. It runs straight away in a card, under the agent you had selected, which isn't sent the message. Each card shows who asked and in what words. Its result is added to your next message only if you choose **Add this result**.
    - Ask in plain words: "run a Codex agent and tell it to review this." The agent calls its `run_agent` tool, you approve the prompt, the other agent runs as a child thread, and its final message goes back to the agent that asked.
 
    Child threads appear on an inline card and nested in the sidebar. Their approvals appear on the card too. Each one is a normal session you can open and message. Both agents share the folder unless you started in a worktree, so avoid overlapping edits.
 6. Open **Changes** in the header to see every uncommitted change in the thread's checkout, read from Git. Each file opens in VS Code's diff editor.
-   - **Continue in another agent:** pick another agent in the model menu, or use **… → Continue in Codex / Claude / Claude 2**. Your draft moves with a **Context from …** chip; click it to see exactly what will be sent, or remove it. Nothing goes until you press Enter. The other agent receives your messages, its replies, commands with their reported status and exit codes, files changed, and the plan, kept by this extension and built with no extra model call. Going back to an agent that already has a linked thread resumes that same native session and sends only what happened since. Hidden reasoning, provider-side context, and approvals never transfer, and a thread still working in the same checkout must finish or be stopped first. `agentWorkspace.crossAgentContext` chooses `recent` (about 10k tokens, the default), `full` (about 75k), or `off`, which moves only your draft as before. The history goes to the other provider, so mind what your project allows.
+   - **Continue in another agent:** pick another agent in the model menu, or use **… → Continue in** another agent or profile. Your draft moves with a **Context from …** chip; click it to see exactly what will be sent, or remove it. Nothing goes until you press Enter. The other agent receives your messages, its replies, commands with their reported status and exit codes, files changed, and the plan, kept by this extension and built with no extra model call. Going back to an agent that already has a linked thread resumes that same native session and sends only what happened since. Hidden reasoning, provider-side context, and approvals never transfer, and a thread still working in the same checkout must finish or be stopped first. `agentWorkspace.crossAgentContext` chooses `recent` (about 10k tokens, the default), `full` (about 75k), or `off`, which moves only your draft as before. The history goes to the other provider, so mind what your project allows.
 7. Use **Docs** for plans, task briefs, reviews, and handoffs in `docs/agent-work/`. Agents can write there too, and the list updates itself. A handoff opens the other provider with an editable draft that is never sent automatically.
 8. Use the terminal button in the top bar to continue a thread in the native CLI, in the same mode and on the same model where the CLI has a flag for it (Codex has none for Plan, and the thread says so). A running turn is stopped first, after asking. Send at least one message first so a provider session ID exists. While it's open, the composer offers **Show terminal** and **Back to chat**. When it closes, what happened there is added to the chat under a "From terminal" notice.
 
@@ -80,6 +80,37 @@ Claudex is developed and tested on macOS. Windows, Linux, remote workspaces, and
 
 The source code is MIT licensed; see [LICENSE](../LICENSE). A built VSIX also bundles the Claude Agent SDK, which is under Anthropic's own terms, not MIT; see [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
-## Two Claude accounts
+## Agents and profiles
 
-**Claude 2** works without setup if you use an alias like `claude2='CLAUDE_CONFIG_DIR=~/.claude-account2 claude'`. VS Code cannot see shell aliases, so the extension runs `claude` with that folder as `CLAUDE_CONFIG_DIR`. Use `agentWorkspace.claud2ConfigDir` if your folder differs. A `claud2` or `claude2` executable on your PATH takes priority, as does an explicit `agentWorkspace.claud2Path`. Existing threads keep their launcher, including when resumed in the native terminal.
+Claudex finds `claude` and `codex` on your PATH (and in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) and runs `--version` on each. Both always appear in the agent menu. One that isn't installed is dimmed, says why, and can't be started or mentioned. `agentWorkspace.claudePath` and `agentWorkspace.codexPath` point at another binary.
+
+A **profile** is another account for one of those CLIs: the same binary run with its own home folder. That folder is `CLAUDE_CONFIG_DIR` for Claude Code and `CODEX_HOME` for Codex. Add as many as you like:
+
+- **Agent menu → Add profile.** Folders that already look like an account (`~/.claude-*` or `~/.codex-*` with settings, sign-in or history in them) are offered first. Otherwise you get a new empty folder or pick one.
+- Name it anything and **Rename** it later. Its handle (`@claude-work`) is fixed, because threads remember it.
+- **Sign in** opens the CLI in a terminal with that profile's folder, so you sign in with the CLI's own flow. Claudex never sees the credentials.
+- **Remove** deletes only the profile entry. The folder stays, and so do its threads, which say they can't continue until you add the handle again.
+
+Everything is stored in `agentWorkspace.profiles`, which you can also edit by hand:
+
+```json
+"agentWorkspace.profiles": [
+  { "id": "claude-work", "name": "Work", "provider": "claude", "configDir": "~/.claude-work" },
+  { "id": "codex-client", "name": "Client", "provider": "codex", "configDir": "~/.codex-client" }
+]
+```
+
+**What each profile keeps to itself** is everything in its home folder:
+- sign-in
+- `settings.json` and permission rules
+- personal skills, plugins and MCP servers
+- `.claude.json` (for Claude)
+- session history
+
+What every profile shares is what lives in the project: `CLAUDE.md`, `AGENTS.md`, and the repo's `.claude/` folder.
+
+So a new profile starts with none of your personal skills. The Skills panel shows which skills another profile of the same CLI has that this one doesn't, with **Open folder** to copy or link the ones you want. Claudex never copies or links them itself.
+
+A thread runs on the profile it started with, including when resumed in the native terminal, since its history is in that profile's folder. A profile whose folder has gone stops with an error rather than running on your default account.
+
+**Shell aliases** such as `claude2='CLAUDE_CONFIG_DIR=~/.claude-account2 claude'` are invisible to VS Code, so add that folder as a profile. Threads from before profiles still run as **Claude 2** (`@claude2`). That profile is listed when old threads use it, when a `claud2`/`claude2` executable exists, or when `agentWorkspace.claud2Path`/`claud2ConfigDir` is set. **Save** in its menu turns it into a normal profile you can rename.
