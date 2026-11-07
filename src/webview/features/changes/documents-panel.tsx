@@ -1,4 +1,4 @@
-import type { ChangesResult, Session, Snapshot } from '../../../core/model';
+import type { ChangesResult, Session, Snapshot } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
 import { ChangesView } from './diff-view';

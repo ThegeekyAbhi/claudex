@@ -1,4 +1,4 @@
-import type { Session } from '../../../core/model';
+import type { Session } from '../../../shared/model';
 
 export type MascotActivity =
   | 'working'

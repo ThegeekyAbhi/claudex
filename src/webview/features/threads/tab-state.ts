@@ -35,6 +35,7 @@ export function threadSignal<T extends SignalNode>(
   return isUnread(item, seen) ? 'unread' : undefined;
 }
 /** A chat that hasn't started has a tab too. Its key doubles as the key of its draft. */
+export const ACCOUNTS_TAB = '__accounts';
 export const DRAFT_TAB = '__compose';
 export function isDraftTab(key: string): boolean {
   return key === DRAFT_TAB || key.startsWith(`${DRAFT_TAB}:`);
@@ -49,9 +50,9 @@ export function reconcileTabs(
   known: Set<string>,
   replacing?: string,
 ): string[] {
-  const kept = tabs.filter((key) => isDraftTab(key) || known.has(key));
+  const kept = tabs.filter((key) => key === ACCOUNTS_TAB || isDraftTab(key) || known.has(key));
   if (!activeKey || kept.includes(activeKey)) return kept;
-  if (!isDraftTab(activeKey) && !known.has(activeKey)) return kept;
+  if (activeKey !== ACCOUNTS_TAB && !isDraftTab(activeKey) && !known.has(activeKey)) return kept;
   return replacing && kept.includes(replacing)
     ? kept.map((key) => (key === replacing ? activeKey : key))
     : [...kept, activeKey];

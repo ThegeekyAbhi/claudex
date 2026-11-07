@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { makeDiff, patchFromContent, patchFromEdit } from '../core/diff';
-import type { FileDiff, SkillRequest, ToolInfo, ToolKind } from '../core/model';
+import { makeDiff, patchFromContent, patchFromEdit } from '../shared/domain/diff';
+import type { FileDiff, SkillRequest, ToolInfo, ToolKind } from '../shared/model';
 
 /** Removes the shell wrapper Codex reports, so `/bin/zsh -lc 'pnpm test'` reads as `pnpm test`. */
 export function displayCommand(command: string): string {

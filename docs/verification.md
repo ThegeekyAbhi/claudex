@@ -59,7 +59,7 @@ Live, with Claude Code 2.1.318 and Codex CLI 0.166.0 in Ask mode on a temporary 
 - The next record held only the new Codex turn (722 vs 880 characters), and Claude recalled it.
 - With nothing new, nothing extra was sent.
 
-Not checked live: Claude 2, a new Claude thread started from a Codex one, Plan and Auto modes, the preview in a real VS Code window, and long threads near the limit.
+Not checked live: Claude 2 and other profiles (including a Codex profile with its own `CODEX_HOME`), a new Claude thread started from a Codex one, Plan and Auto modes, the preview in a real VS Code window, and long threads near the limit.
 
 ## Limits of this verification
 
@@ -80,3 +80,24 @@ code --new-window --disable-extensions --disable-workspace-trust \
 ```
 
 Create the temporary test project folder first. Run GUI tests only with the owner’s authorization. The checked VSIX is intended for **Extensions: Install from VSIX…** in VS Code.
+
+## Test layout verification (2026-11-07)
+
+`pnpm check` passed after reorganizing the tests: **244 tests passed, 0 failed,
+0 cancelled, 0 skipped, 0 todo**, with lint, typecheck, and production build passing.
+The baseline was 240 tests; the four existing UI-context unit tests now run in the
+normal suite. Node v24.15.0 expands the quoted recursive test glob.
+
+- `tests/unit/` mirrors source paths for pure tests without real filesystem, process,
+  or network work. Run `node --import tsx --test "tests/unit/**/*.test.ts"`.
+- `tests/integration/` mirrors source paths for filesystem, Git, persistence, fake CLI,
+  and bundler coverage. Run `node --import tsx --test "tests/integration/**/*.test.ts"`.
+- `tests/architecture/boundaries.test.ts` scans the actual source tree. A temporary
+  forbidden Node import made it fail; the probe was removed before the passing check.
+- `tests/fixtures/host-route-fixture.ts` supplies shared fake routes.
+- `tests/host/host-suite.ts` remains a separate VS Code suite;
+  `node scripts/build-host-test.mjs` passed. No GUI host launch was performed.
+
+See [the test restructure notes](restructure/tests.md) for the complete module map,
+assertion counts, retained mixed-module coverage, and Git staging details. No live
+provider smoke tests or UI browser suite ran for this restructure.

@@ -59,3 +59,7 @@ Developed and tested on macOS. Windows, Linux, and remote workspaces have not ye
 ## License
 
 [MIT](LICENSE). The bundled Claude Agent SDK has [separate terms](THIRD_PARTY_NOTICES.md).
+
+## Repository
+
+Source and issue tracking live at [thegeekyabhi/claudex](https://github.com/thegeekyabhi/claudex). The repository is private; these links require access.

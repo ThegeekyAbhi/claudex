@@ -1,10 +1,11 @@
 import {
   agentKind,
   type BuildChoice,
+  canBuildPlan,
   planSummary,
   planTitle,
   type Session,
-} from '../../../core/model';
+} from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
 import { Button } from '../../components/ui/button';
@@ -14,15 +15,13 @@ import { BuildButton } from './build-button';
 
 const NOTE = {
   incomplete: 'The turn ended before this plan was finished',
-  approved: 'Build started',
+  approved: 'Implementation requested',
 } as const;
 /** The plan in the transcript. Reading and editing it happens in the editor, in the center. */
 export function PlanCard({ session }: { session: Session }) {
   const plan = session.plan;
   const build = (choice: BuildChoice) => send({ type: 'buildPlan', id: session.id, ...choice });
-  const pending = session.approval?.kind === 'plan';
-  const busy = (session.status === 'running' || session.status === 'waiting') && !pending;
-  const offered = plan?.status === 'ready' || plan?.status === 'incomplete';
+  const offered = canBuildPlan(session);
   const activity = mascotActivity(session);
   if (!plan) return null;
   if (plan.status === 'drafting')
@@ -63,8 +62,13 @@ export function PlanCard({ session }: { session: Session }) {
             View Plan
           </Button>
         ) : null}
+        {plan.status === 'incomplete' ? (
+          <span className="mr-auto text-xs text-muted-foreground">
+            Continue planning in the message box.
+          </span>
+        ) : null}
         {offered ? (
-          <BuildButton agent={agentKind(session)} disabled={busy} onBuild={build} />
+          <BuildButton agent={agentKind(session)} disabled={!offered} onBuild={build} />
         ) : null}
       </div>
     </section>

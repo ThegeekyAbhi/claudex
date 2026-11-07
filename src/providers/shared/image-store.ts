@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { IMAGE_FILE, type ImageInput } from '../../core/model';
+import { IMAGE_FILE, type ImageInput } from '../../shared/model';
 
 /** What this extension accepts from you. Generated images may be larger. */
 export const MAX_ATTACHED_IMAGE = 10 * 1024 * 1024;

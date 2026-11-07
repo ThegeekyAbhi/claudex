@@ -186,14 +186,13 @@ html[data-appearance="cursor"] body.vscode-dark {
 [data-mode="auto"] {
   --mode: var(--mode-auto);
 }
-/* Anything marked with an agent takes that agent's colour. High contrast stays on theme colours. */
+/* Anything marked with an agent's CLI takes its colour, so every profile of one CLI matches. High contrast stays on theme colours. */
 [data-agent] {
   --agent: var(--foreground);
   --agent-tint: color-mix(in srgb, var(--agent) 15%, transparent);
   --agent-edge: color-mix(in srgb, var(--agent) 55%, transparent);
 }
-[data-agent="claude"],
-[data-agent="claud2"] {
+[data-agent="claude"] {
   --agent: var(--claude);
 }
 [data-agent="codex"] {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { agentKind, type Session, threadTitle } from '../../../core/model';
+import { agentKind, type Session, threadTitle } from '../../../shared/model';
 import { AgentMark, Icon } from '../../components/icons';
 import { SIGNAL_LABELS, type ThreadSignal } from './tab-state';
 
@@ -36,6 +36,7 @@ export function SignalMark({ signal }: { signal: ThreadSignal }) {
   );
 }
 export type TabItem =
+  | { kind: 'accounts'; key: string }
   | { kind: 'thread'; key: string; session: Session }
   /** A chat that hasn't started. `text` is what you've typed so far. */
   | { kind: 'draft'; key: string; text: string };
@@ -97,9 +98,18 @@ export function ThreadTabs({
         const signal = session ? signalOf(session) : undefined;
         const title = session
           ? threadTitle(session.title)
-          : threadTitle(item.kind === 'draft' ? (item.text.split('\n')[0] ?? '') : '', 'New chat');
+          : item.kind === 'accounts'
+            ? 'Accounts'
+            : threadTitle(
+                item.kind === 'draft' ? (item.text.split('\n')[0] ?? '') : '',
+                'New chat',
+              );
         // Your only, empty new chat has nothing to close.
-        const closable = session || items.length > 1 || (item.kind === 'draft' && item.text.trim());
+        const closable =
+          item.kind === 'accounts' ||
+          session ||
+          items.length > 1 ||
+          (item.kind === 'draft' && item.text.trim());
         return (
           <div
             key={item.key}
@@ -124,7 +134,7 @@ export function ThreadTabs({
                 {session ? (
                   <AgentMark agent={agentKind(session)} size={12} />
                 ) : (
-                  <Icon name="thread" size={12} />
+                  <Icon name={item.kind === 'accounts' ? 'agent' : 'thread'} size={12} />
                 )}
               </span>
               <span className={`min-w-0 truncate ${active && session ? 'session-name' : ''}`}>
@@ -137,11 +147,13 @@ export function ThreadTabs({
                 type="button"
                 aria-label={`Close ${title}`}
                 title={
-                  !session
-                    ? 'Close and discard this unsent chat'
-                    : session.status === 'running' || session.status === 'waiting'
-                      ? 'Close tab. The agent keeps going, and the thread stays in Chats.'
-                      : 'Close tab. The thread stays in Chats.'
+                  item.kind === 'accounts'
+                    ? 'Close Accounts'
+                    : !session
+                      ? 'Close and discard this unsent chat'
+                      : session.status === 'running' || session.status === 'waiting'
+                        ? 'Close tab. The agent keeps going, and the thread stays in Chats.'
+                        : 'Close tab. The thread stays in Chats.'
                 }
                 className={`${CLOSE} ${active ? '' : 'opacity-0 group-hover:opacity-100'}`}
                 onClick={() => onClose(item)}

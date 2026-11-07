@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import {
-  AGENT_KINDS,
-  AGENT_LABELS,
   type AgentKind,
   agentTarget,
   CAPABILITIES,
+  missingSkills,
+  profileLabel,
+  profileProvider,
+  runnableProfiles,
   SKILL_SOURCE_LABELS,
   type SkillCatalogs,
   searchSkills,
-} from '../../../core/model';
+  skillsFor,
+} from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { AgentMark } from '../../components/icons';
 import { Button } from '../../components/ui/button';
@@ -26,8 +29,23 @@ export function SkillsPanel({
 }) {
   const [agent, setAgent] = useState(initialAgent);
   const [search, setSearch] = useState('');
-  const catalog = catalogs[agent];
+  const catalog = skillsFor(catalogs, agent);
   useEffect(() => send({ type: 'refreshSkills', agent }), [agent]);
+  // Other profiles of the same CLI, so what this one is missing can be shown.
+  const siblings = runnableProfiles().filter(
+    (profile) => profile.id !== agent && profile.provider === profileProvider(agent),
+  );
+  const siblingIds = siblings.map((profile) => profile.id).join(' ');
+  useEffect(() => {
+    for (const id of siblingIds.split(' ').filter(Boolean))
+      send({ type: 'refreshSkills', agent: id });
+  }, [siblingIds]);
+  const gaps = siblings
+    .map((profile) => ({
+      profile,
+      missing: missingSkills(skillsFor(catalogs, profile.id), skillsFor(catalogs, agent)),
+    }))
+    .filter((gap) => gap.missing.length);
   const canToggle = CAPABILITIES[agentTarget(agent).provider].skillToggle;
   const needle = search.toLowerCase();
   const rows = catalog.skills.filter((skill) =>
@@ -43,20 +61,51 @@ export function SkillsPanel({
       >
         <DialogTitle className="text-[13px] font-semibold">Skills</DialogTitle>
         <div role="tablist" aria-label="Agent" className="flex gap-1">
-          {AGENT_KINDS.map((item) => (
-            <Button
-              key={item}
-              role="tab"
-              aria-selected={item === agent}
-              variant={item === agent ? 'secondary' : 'ghost'}
-              size="xs"
-              className="cursor-pointer"
-              onClick={() => setAgent(item)}
-            >
-              <AgentMark agent={item} /> {AGENT_LABELS[item]}
-            </Button>
-          ))}
+          {runnableProfiles()
+            .map((profile) => profile.id)
+            .map((item) => (
+              <Button
+                key={item}
+                role="tab"
+                aria-selected={item === agent}
+                variant={item === agent ? 'secondary' : 'ghost'}
+                size="xs"
+                className="cursor-pointer"
+                onClick={() => setAgent(item)}
+              >
+                <AgentMark agent={item} /> {profileLabel(item)}
+              </Button>
+            ))}
         </div>
+        {gaps.map(({ profile, missing }) => (
+          <div
+            key={profile.id}
+            role="note"
+            className="flex items-start gap-2 rounded-md border border-[var(--border)] px-2 py-1.5 text-[11.5px] text-muted-foreground"
+          >
+            <span className="min-w-0 flex-1 whitespace-normal">
+              {missing.length} {missing.length === 1 ? 'skill' : 'skills'} in {profile.label}{' '}
+              {missing.length === 1 ? 'isn’t' : 'aren’t'} in {profileLabel(agent)}:{' '}
+              <span className="text-foreground">
+                {missing
+                  .slice(0, 6)
+                  .map((skill) => skill.name)
+                  .join(', ')}
+                {missing.length > 6 ? `, and ${missing.length - 6} more` : ''}
+              </span>
+              . Each profile has its own skills folder; copy or link the ones you want.
+            </span>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="shrink-0 cursor-pointer"
+              title={`Show ${profileLabel(agent)}’s skills folder`}
+              onClick={() => send({ type: 'openProfileFolder', id: agent, folder: 'skills' })}
+            >
+              Open folder
+            </Button>
+          </div>
+        ))}
         <input
           aria-label="Search skills"
           placeholder="Search skills…"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import {
   Command,
   CommandEmpty,
@@ -9,13 +9,20 @@ import {
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
-  AGENT_LABELS,
   type AgentCatalog,
   type AgentKind,
+  type AgentProfile,
+  allProfiles,
   type Catalog,
+  canRun,
+  catalogFor,
+  findProfile,
   type ModelOption,
-} from '../../../core/model';
+  profileLabel,
+  profileProvider,
+} from '../../../shared/model';
 import { AgentMark, Icon } from '../../components/icons';
+import { AccountsNavigation } from '../accounts/navigation';
 
 export function effortLabel(effort: string): string {
   if (effort === 'xhigh') return 'Extra high';
@@ -26,8 +33,10 @@ export interface ModelChoice {
   model?: string;
 }
 const DEFAULT_DESCRIPTION = 'Whatever this CLI is configured to use';
-/** Your order, top to bottom. */
-const RAIL: AgentKind[] = ['claude', 'claud2', 'codex'];
+/** Claude's profiles, then Codex's, as the host orders them. Missing CLIs stay listed, dimmed. */
+function railAgents(): AgentKind[] {
+  return allProfiles().map((profile) => profile.id);
+}
 function rowKey(agent: AgentKind, model?: string): string {
   return `${agent}:${model ?? 'default'}`;
 }
@@ -43,9 +52,10 @@ export function modelLabel(
   model?: string,
   active?: string,
 ): string {
-  if (model) return catalog[agent].models.find((item) => item.id === model)?.label ?? model;
+  if (model)
+    return catalogFor(catalog, agent).models.find((item) => item.id === model)?.label ?? model;
   if (!active) return 'Default';
-  return catalog[agent].models.find((item) => item.id === active)?.label ?? active;
+  return catalogFor(catalog, agent).models.find((item) => item.id === active)?.label ?? active;
 }
 function Row({
   agent,
@@ -63,7 +73,7 @@ function Row({
   return (
     <CommandItem
       value={rowKey(agent, model?.id)}
-      keywords={[AGENT_LABELS[agent], label, model?.id ?? 'default']}
+      keywords={[profileLabel(agent), label, model?.id ?? 'default']}
       onSelect={() => onChoose({ agent, model: model?.id })}
       className="menu-item flex items-center justify-start gap-2 w-full min-h-[26px] px-2 rounded-sm cursor-default text-left select-none outline-none data-[selected=true]:bg-agent-tint data-highlighted:bg-muted data-[active=true]:bg-muted [&.category>svg:last-child]:text-faint py-1 text-xs"
     >
@@ -79,7 +89,24 @@ function Row({
     </CommandItem>
   );
 }
-function PaneStatus({ entry, onRetry }: { entry: AgentCatalog; onRetry: () => void }) {
+function PaneStatus({
+  entry,
+  profile,
+  onRetry,
+}: {
+  entry: AgentCatalog;
+  profile?: AgentProfile;
+  onRetry: () => void;
+}) {
+  if (profile && !canRun(profile))
+    return (
+      <div className="flex flex-col gap-1 p-[7px] text-[11.5px] text-muted-foreground">
+        <span className="text-foreground">
+          {profile.status === 'missingCli' ? 'Not installed' : 'Not set up'}
+        </span>
+        <span className="whitespace-normal">{profile.problem}</span>
+      </div>
+    );
   if (entry.status === 'loading')
     return (
       <div className="flex items-center gap-[7px] p-[7px] text-[11.5px] text-muted-foreground">
@@ -97,6 +124,18 @@ function PaneStatus({ entry, onRetry }: { entry: AgentCatalog; onRetry: () => vo
       </div>
     );
   return null;
+}
+const FOOTER_BUTTON =
+  'shrink-0 px-1 py-px rounded-sm text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer';
+function ProfileActions({ profile, onManage }: { profile: AgentProfile; onManage: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-2 py-1 text-[11px] text-faint">
+      <span className="truncate">@{profile.id}</span>
+      <button type="button" className={FOOTER_BUTTON} onClick={onManage}>
+        Manage account
+      </button>
+    </div>
+  );
 }
 /** Agents on the left, that agent's models on the right. Searching looks across all agents. */
 export function ModelSelector({
@@ -121,6 +160,7 @@ export function ModelSelector({
   onRetry: () => void;
   onClosed?: () => void;
 }) {
+  const openAccounts = useContext(AccountsNavigation);
   const [open, setOpen] = useState(false);
   const [pane, setPane] = useState(agent);
   const [query, setQuery] = useState('');
@@ -134,7 +174,7 @@ export function ModelSelector({
     setPane(agent);
     setQuery('');
     setHighlight(selectedKey);
-    const selected = catalog[agent].models.find((item) => item.id === model);
+    const selected = catalogFor(catalog, agent).models.find((item) => item.id === model);
     setExpanded(Boolean(selected && isOlderModel(agent, selected)));
   }, [open]);
   function switchPane(next: AgentKind) {
@@ -147,22 +187,29 @@ export function ModelSelector({
     setOpen(false);
     onSelect(choice);
   }
+  const rail = railAgents();
+  const paneProfile = findProfile(pane);
   const newThreadNote = lockedAgent && !searching && pane !== agent;
-  const groups = searching ? RAIL : [pane];
+  const runnable = (id: AgentKind) => {
+    const profile = findProfile(id);
+    return !profile || canRun(profile);
+  };
+  // A profile that can't run has no models to pick, so only its status shows.
+  const groups = searching ? rail.filter(runnable) : [pane];
   const label = modelLabel(catalog, agent, model, active);
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          data-agent={agent}
+          data-agent={profileProvider(agent)}
           className={`chip gap-[5px] min-h-6 px-1.5 py-[3px] text-[11.5px] text-muted-foreground whitespace-nowrap enabled:hover:text-foreground enabled:hover:bg-muted aria-expanded:text-foreground aria-expanded:bg-muted max-[480px]:in-[.composer-controls]:not-[.mode-chip]:min-w-0 max-[480px]:in-[.composer-controls]:not-[.mode-chip]:shrink `}
-          aria-label={`Model: ${AGENT_LABELS[agent]} ${label}`}
+          aria-label={`Model: ${profileLabel(agent)} ${label}`}
         >
           <AgentMark agent={agent} />
-          {/* The mark names the agent, except that both Claude accounts share one. */}
-          {agent === 'claud2' ? (
-            <span className="text-foreground">{AGENT_LABELS[agent]}</span>
+          {/* The mark names the CLI, so a second profile of it also shows its name. */}
+          {!findProfile(agent)?.builtin ? (
+            <span className="text-foreground">{profileLabel(agent)}</span>
           ) : null}
           <span className="text-foreground max-[480px]:min-w-0 max-[480px]:overflow-hidden max-[480px]:text-ellipsis">
             {label}
@@ -189,25 +236,41 @@ export function ModelSelector({
           aria-label="Agents"
           aria-orientation="vertical"
         >
-          {RAIL.map((item) => (
+          {rail.map((item) => (
             <button
               type="button"
               role="tab"
               tabIndex={0}
               key={item}
               aria-selected={!searching && item === pane}
-              data-agent={item}
+              data-agent={profileProvider(item)}
               className="rail-item justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[12px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-agent-tint aria-selected:text-foreground aria-selected:enabled:hover:bg-agent-tint max-[900px]:gap-[5px] max-[900px]:px-[5px]"
-              aria-label={AGENT_LABELS[item]}
+              aria-label={profileLabel(item)}
+              title={findProfile(item)?.problem}
               onClick={() => switchPane(item)}
             >
               <AgentMark agent={item} />
-              <span className="min-w-0 truncate">{AGENT_LABELS[item]}</span>
-              {catalog[item].status === 'error' ? (
+              <span className={`min-w-0 truncate ${runnable(item) ? '' : 'opacity-50'}`}>
+                {profileLabel(item)}
+              </span>
+              {runnable(item) && catalogFor(catalog, item).status === 'error' ? (
                 <span className="status-dot size-1.5 rounded-full bg-muted-foreground shrink-0 inline-block [&.quiet]:bg-faint [&.quiet]:opacity-50 [&.waiting]:bg-warning [&.failed]:bg-error in-[.rail-item]:ml-auto failed" />
               ) : null}
             </button>
           ))}
+          <span className="flex-1" />
+          <button
+            type="button"
+            className="rail-item justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[11.5px] text-muted-foreground enabled:hover:text-foreground"
+            title="Add another account for Claude Code or Codex, with its own folder"
+            onClick={() => {
+              setOpen(false);
+              openAccounts(undefined, true);
+            }}
+          >
+            <Icon name="plus" size={12} />
+            <span className="min-w-0 truncate">Add profile</span>
+          </button>
         </div>
         <Command
           className="flex flex-col min-w-0 min-h-0 rounded-none bg-transparent"
@@ -219,8 +282,8 @@ export function ModelSelector({
             if (searching || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
             event.preventDefault();
             const step = event.key === 'ArrowRight' ? 1 : -1;
-            const index = RAIL.indexOf(pane) + step + RAIL.length;
-            switchPane(RAIL[index % RAIL.length]);
+            const index = rail.indexOf(pane) + step + rail.length;
+            switchPane(rail[index % rail.length]);
           }}
         >
           <CommandInput
@@ -232,7 +295,7 @@ export function ModelSelector({
           />
           {newThreadNote ? (
             <div className="px-2.5 py-[5px] text-[11px] text-warning border-b border-subtle shrink-0">
-              Picking {AGENT_LABELS[pane]} opens a new thread.
+              Picking {profileLabel(pane)} opens a new thread.
             </div>
           ) : null}
           <CommandList className="flex-1 min-h-0 overflow-y-auto p-1 scroll-py-1 border-b border-subtle max-h-none">
@@ -240,15 +303,24 @@ export function ModelSelector({
               No matching models.
             </CommandEmpty>
             {groups.map((group) => {
-              const models = catalog[group].models;
+              if (!runnable(group))
+                return (
+                  <PaneStatus
+                    key={group}
+                    entry={catalogFor(catalog, group)}
+                    profile={findProfile(group)}
+                    onRetry={onRetry}
+                  />
+                );
+              const models = catalogFor(catalog, group).models;
               const older = models.filter((item) => isOlderModel(group, item));
               const primary = models.filter((item) => !isOlderModel(group, item));
               const rows = searching || expanded ? [...primary, ...older] : primary;
               return (
                 <CommandGroup
                   key={group}
-                  heading={searching ? AGENT_LABELS[group] : undefined}
-                  data-agent={group}
+                  heading={searching ? profileLabel(group) : undefined}
+                  data-agent={profileProvider(group)}
                   className="menu-group"
                 >
                   <Row
@@ -283,11 +355,22 @@ export function ModelSelector({
                       <span className="text-[11px] text-faint tabular-nums">{older.length}</span>
                     </CommandItem>
                   ) : null}
-                  {!searching ? <PaneStatus entry={catalog[group]} onRetry={onRetry} /> : null}
+                  {!searching ? (
+                    <PaneStatus entry={catalogFor(catalog, group)} onRetry={onRetry} />
+                  ) : null}
                 </CommandGroup>
               );
             })}
           </CommandList>
+          {paneProfile && !searching ? (
+            <ProfileActions
+              profile={paneProfile}
+              onManage={() => {
+                setOpen(false);
+                openAccounts(paneProfile.id);
+              }}
+            />
+          ) : null}
         </Command>
       </PopoverContent>
     </Popover>

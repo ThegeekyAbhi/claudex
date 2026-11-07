@@ -23,8 +23,14 @@ export class JsonRpc {
     cwd: string,
     private onMessage: (message: RpcMessage) => void,
     private onClose: (error: Error) => void,
+    /** Added to the environment, such as CODEX_HOME for a profile's own folder. */
+    env?: Record<string, string>,
   ) {
-    this.child = spawn(executable, args, { cwd, stdio: 'pipe', env: process.env });
+    this.child = spawn(executable, args, {
+      cwd,
+      stdio: 'pipe',
+      env: env ? { ...process.env, ...env } : process.env,
+    });
     this.child.stdin.on('error', (error) => this.fail(error));
     this.child.stderr.on('data', (data) => {
       this.stderr = (this.stderr + String(data)).slice(-8000);

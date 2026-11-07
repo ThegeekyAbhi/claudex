@@ -1,319 +1,81 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  AGENT_LABELS,
-  AGENT_MODES,
-  type AgentKind,
-  type AgentMode,
-  type Attachment,
-  agentKind,
-  agentTarget,
   attachmentLabel,
-  CAPABILITIES,
-  type Catalog,
-  chooseNudge,
-  MODE_LABELS,
-  mentionedAgent,
-  modeView,
-  newChatMode,
   nextMode,
-  nextThinking,
-  type Preferences,
-  parseMention,
-  type Session,
-  type SkillCatalogs,
-  sameSkill,
-  THINKING_LABELS,
-  type Thinking,
-  thinkingSupport,
-  withMention,
-} from '../../../core/model';
-import { api, type ComposeChoice, send } from '../../app/bridge';
-import { AgentMark, Icon, type IconName } from '../../components/icons';
-import { Hint, Menu } from '../../components/menus';
-import { caretRect, type MenuAnchor, placeMenu } from '../../lib/caret';
-import {
-  AttachmentChip,
-  ContextMenu,
-  type ContextResults,
-  requestContext,
-  type Trigger,
-  triggerAt,
-} from '../attachments/context-menu';
-import { EffortMenu } from '../models/effort-menu';
-import { ModelSelector } from '../models/model-selector';
+  profileLabel,
+  profileProvider,
+  skillsFor,
+} from '../../../shared/model';
+import { send } from '../../app/bridge';
+import { Icon } from '../../components/icons';
+import { AttachmentChip, ContextMenu } from '../attachments/context-menu';
 import { SkillMenu } from '../skills/skill-menu';
 import { UsageIndicator } from '../usage/usage-indicator';
+import { ComposerCaption } from './caption';
+import { ComposerControls } from './controls';
+import type { ComposerProps } from './types';
+import { useComposer } from './use-composer';
 
-function modelOption(catalog: Catalog, agent: AgentKind, model?: string) {
-  const models = catalog[agent].models;
-  return model
-    ? models.find((item) => item.id === model || item.resolvedModel === model)
-    : models.find((item) => item.isDefault);
-}
-function effortsFor(catalog: Catalog, agent: AgentKind, model?: string): string[] {
-  return modelOption(catalog, agent, model)?.efforts ?? [];
-}
-function keepEffort(
-  catalog: Catalog,
-  agent: AgentKind,
-  model: string | undefined,
-  effort: string | undefined,
-) {
-  return effort && effortsFor(catalog, agent, model).includes(effort) ? effort : undefined;
-}
-function readFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-const MODE_ICONS: Record<AgentMode, IconName> = {
-  ask: 'question',
-  plan: 'plan',
-  auto: 'autoMode',
-};
-export function Composer({
-  catalog,
-  skills,
-  onManageSkills,
-  session,
-  sessions,
-  project,
-  choice,
-  draft,
-  attachments,
-  draftKey,
-  busy,
-  trusted,
-  focusKey,
-  top,
-  contextResults,
-  onDraft,
-  onAttachments,
-  onChoice,
-  onMode,
-  dismissedNudges,
-  onDismissNudge,
-  onSubmit,
-  onError,
-  preferences,
-}: {
-  catalog: Catalog;
-  skills: SkillCatalogs;
-  onManageSkills: () => void;
-  session?: Session;
-  sessions: Session[];
-  project: string;
-  /** Used until a thread exists. */
-  choice: ComposeChoice;
-  draft: string;
-  attachments: Attachment[];
-  draftKey: string;
-  busy: boolean;
-  trusted: boolean;
-  focusKey: string;
-  /** At the top of a new thread, so menus open downward. */
-  top?: boolean;
-  contextResults?: ContextResults;
-  onDraft: (text: string) => void;
-  onAttachments: (attachments: Attachment[]) => void;
-  onChoice: (choice: ComposeChoice, carryDraft?: boolean) => void;
-  /** Remembers an explicit choice for this agent's next new thread. */
-  onMode: (agent: AgentKind, mode: AgentMode) => void;
-  dismissedNudges: string[];
-  onDismissNudge: (key: string) => void;
-  onSubmit: () => void;
-  onError: (text: string) => void;
-  preferences: Preferences;
-}) {
-  const textarea = useRef<HTMLTextAreaElement>(null);
-  const [trigger, setTrigger] = useState<Trigger>();
-  /** Escape hides the menu until the text changes. */
-  const [dismissed, setDismissed] = useState<number>();
-  const menuKeys = useRef<((event: React.KeyboardEvent) => boolean) | null>(null);
-  const menuFrame = useRef<HTMLDivElement>(null);
-  const [anchor, setAnchor] = useState<MenuAnchor>();
-  const requestId = useRef(0);
-  const pendingCaret = useRef<number | undefined>(undefined);
-  const agent = session ? agentKind(session) : choice.agent;
-  const model = session ? session.model : choice.model;
-  const effort = session ? session.effort : choice.effort;
-  const requestedMode = session ? session.mode : newChatMode(choice.modes?.[agent]);
-  const nudge = chooseNudge(session, agent, requestedMode, dismissedNudges);
-  const modeLocked = busy || Boolean(session?.transition) || session?.status === 'waiting';
-  const thinking = (session ? session.thinking : choice.thinking) ?? 'default';
-  const support = thinkingSupport(
-    agentTarget(agent).provider,
-    modelOption(catalog, agent, model ?? session?.activeModel),
-  );
-  const modeShown = modeView(requestedMode, session?.reportedMode);
-  const efforts = effortsFor(catalog, agent, model);
-  const mention = parseMention(draft);
-  const canDelegate = Boolean(session && mention && !session.observed);
-  const target = session?.observed ? undefined : mentionedAgent(draft);
-  // The pill already names the target, so a bare mention must not send to the current agent.
-  const needsPrompt = Boolean(target && !mention);
-  // Only a catalog that has finished loading can say a skill is missing.
-  const missingSkills =
-    skills[agent].status === 'ready'
-      ? attachments.filter(
-          (item) =>
-            item.kind === 'skill' &&
-            !skills[agent].skills.some((skill) => skill.enabled && sameSkill(skill, item)),
-        )
-      : [];
-  const menuOpen = Boolean(trigger) && dismissed !== trigger?.start;
-  const noImages =
-    attachments.some((item) => item.kind === 'image') &&
-    modelOption(catalog, mention?.agent ?? agent, mention ? undefined : model)?.images === false;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focusing follows a change of thread
-  useEffect(() => {
-    textarea.current?.focus();
-  }, [focusKey]);
-  const query = trigger?.query;
-  const skillTrigger = trigger?.mark === '/';
-  // Results are searched by the host, a moment after typing settles.
-  useEffect(() => {
-    if (query === undefined || !menuOpen || skillTrigger) return;
-    const id = ++requestId.current;
-    const timer = setTimeout(() => requestContext(id, query), query ? 80 : 0);
-    return () => clearTimeout(timer);
-  }, [query, menuOpen, skillTrigger]);
-  // Refreshed behind the menu, which shows what's already known straight away.
-  useEffect(() => {
-    if (skillTrigger && menuOpen) send({ type: 'refreshSkills', agent });
-  }, [skillTrigger, menuOpen, agent]);
-  // In the same commit as the text, so a key pressed right after a pick cannot land before it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: this follows the draft changing
-  useLayoutEffect(() => {
-    if (pendingCaret.current === undefined) return;
-    textarea.current?.setSelectionRange(pendingCaret.current, pendingCaret.current);
-    pendingCaret.current = undefined;
-  }, [draft]);
-  // Follows the @ itself, so the menu stays put while you type what comes after it.
-  const triggerStart = menuOpen ? trigger?.start : undefined;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a changed draft can rewrap the line
-  useLayoutEffect(() => {
-    const box = textarea.current;
-    const area = menuFrame.current;
-    if (triggerStart === undefined || !box || !area) {
-      setAnchor(undefined);
-      return;
-    }
-    const measure = () => {
-      const width = window.innerWidth;
-      setAnchor(
-        placeMenu(
-          caretRect(box, triggerStart),
-          area.getBoundingClientRect(),
-          { width, height: window.innerHeight },
-          Math.min(360, width - 32),
-        ),
-      );
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    box.addEventListener('scroll', measure);
-    return () => {
-      window.removeEventListener('resize', measure);
-      box.removeEventListener('scroll', measure);
-    };
-  }, [triggerStart, draft]);
-  const focusInput = () => textarea.current?.focus();
-  // A new chat's composer is at the top of the page, so its menus have room below.
-  const menuSide = top ? 'bottom' : 'top';
-  function readTrigger(element: HTMLTextAreaElement) {
-    setTrigger(triggerAt(element.value, element.selectionStart));
-  }
-  function removeToken() {
-    if (!trigger) return draft;
-    const next = `${draft.slice(0, trigger.start)}${draft.slice(trigger.end)}`;
-    onDraft(next);
-    setTrigger(undefined);
-    pendingCaret.current = trigger.start;
-    textarea.current?.focus();
-    return next;
-  }
-  function attach(attachment: Attachment) {
-    removeToken();
-    const same = (item: Attachment) => JSON.stringify(item) === JSON.stringify(attachment);
-    if (!attachments.some(same)) onAttachments([...attachments, attachment]);
-  }
-  function pickAgent(name: string) {
-    if (!trigger) return;
-    const next = withMention(draft, trigger.start, trigger.end, name);
-    onDraft(next.text);
-    setTrigger(undefined);
-    pendingCaret.current = next.caret;
-    textarea.current?.focus();
-  }
-  async function addFiles(files: File[]) {
-    for (const file of files) {
-      if (file.size > 10 * 1024 * 1024) {
-        onError(`${file.name} is larger than the 10 MB limit.`);
-        continue;
-      }
-      send({
-        type: 'attachImage',
-        draftKey,
-        name: file.name || 'Pasted image.png',
-        data: await readFile(file),
-      });
-    }
-  }
-  function selectModel(next: { agent: AgentKind; model?: string }) {
-    if (session && next.agent !== agent) {
-      // A provider session cannot change agent, so the draft moves to a new thread.
-      onChoice({ agent: next.agent, model: next.model }, true);
-      return;
-    }
-    const nextEffort = keepEffort(catalog, next.agent, next.model, effort);
-    if (session)
-      send({
-        type: 'setModel',
-        id: session.id,
-        model: next.model ?? null,
-        effort: nextEffort ?? null,
-      });
-    else {
-      const available = thinkingSupport(
-        agentTarget(next.agent).provider,
-        modelOption(catalog, next.agent, next.model),
-      );
-      const keep = thinking === 'default' || (thinking === 'on' ? available.on : available.off);
-      onChoice({
-        ...choice,
-        agent: next.agent,
-        model: next.model,
-        effort: nextEffort,
-        thinking: keep ? thinking : 'default',
-      });
-      if (!keep) onError('Thinking reset to Default for the new model.');
-    }
-  }
-  function selectEffort(next?: string) {
-    if (session)
-      send({ type: 'setModel', id: session.id, model: model ?? null, effort: next ?? null });
-    else onChoice({ ...choice, effort: next });
-  }
-  function selectThinking(next: Thinking) {
-    if (session) send({ type: 'setThinking', id: session.id, thinking: next });
-    else onChoice({ ...choice, thinking: next });
-  }
-  function selectMode(next: AgentMode) {
-    if (session) send({ type: 'setMode', id: session.id, mode: next });
-    onMode(agent, next);
-  }
-  const guide =
-    modeShown.mode === 'plan'
-      ? ({ key: 'guidedPlanning', label: 'Planning guide', icon: 'plan' } as const)
-      : modeShown.mode === 'ask'
-        ? ({ key: 'richExplanations', label: 'Visual explanations', icon: 'logo' } as const)
-        : undefined;
-  const worktree = session ? session.cwd !== session.workspace : Boolean(choice.worktree);
-  const blocked = !trusted || !api;
+export function Composer(props: ComposerProps) {
+  const {
+    catalog,
+    skills,
+    onManageSkills,
+    session,
+    sessions,
+    project,
+    choice,
+    draft,
+    attachments,
+    draftKey,
+    busy,
+    top,
+    contextResults,
+    onDraft,
+    onAttachments,
+    onChoice,
+    onDismissNudge,
+    onSubmit,
+    preferences,
+  } = props;
+  const {
+    agent,
+    model,
+    effort,
+    nudge,
+    modeLocked,
+    thinking,
+    support,
+    modeShown,
+    efforts,
+    mention,
+    canDelegate,
+    target,
+    needsPrompt,
+    missingSkills,
+    noImages,
+    focusInput,
+    menuSide,
+    selectModel,
+    selectEffort,
+    selectThinking,
+    selectMode,
+    guide,
+    worktree,
+    blocked,
+    textarea,
+    trigger,
+    setTrigger,
+    setDismissed,
+    menuKeys,
+    menuFrame,
+    anchor,
+    menuOpen,
+    readTrigger,
+    removeToken,
+    attach,
+    pickAgent,
+    addFiles,
+  } = useComposer(props);
   return (
     <div
       className={`composer-area pt-2 px-6 pb-2.5 shrink-0 relative [&.top]:pt-3.5 max-[900px]:py-2 max-[900px]:px-3 [.question-dock+&]:pt-0 ${top ? 'top' : ''}`}
@@ -323,7 +85,7 @@ export function Composer({
         {menuOpen && anchor && trigger?.mark === '/' ? (
           <SkillMenu
             agent={agent}
-            catalog={skills[agent]}
+            catalog={skillsFor(skills, agent)}
             query={trigger.query}
             anchor={anchor}
             onPick={(skill) =>
@@ -360,35 +122,9 @@ export function Composer({
           />
         ) : null}
         <div
-          data-agent={agent}
+          data-agent={profileProvider(agent)}
           className="composer @container border border-composer-edge rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [&_textarea]:w-full [&_textarea]:pt-2.5 [&_textarea]:px-3 [&_textarea]:pb-1 [&_textarea]:block [&_textarea]:text-[13px] [&_textarea]:leading-[1.55] [&_textarea]:resize-none [&_textarea]:field-sizing-content [&_textarea]:min-h-[52px] [&_textarea]:max-h-[40vh] [&_textarea]:overflow-y-auto [&_textarea:focus-visible]:outline-none in-[.composer-area.top]:[&_textarea]:min-h-24"
         >
-          {session?.mode === 'plan' &&
-          session.status === 'completed' &&
-          session.plan?.status !== 'ready' &&
-          session.plan?.status !== 'incomplete' ? (
-            <div className="flex items-center gap-2 px-2.5 pt-2 text-xs text-muted-foreground">
-              <span className="flex-1">Ready to build this?</span>
-              <button
-                type="button"
-                className="cursor-pointer text-[var(--link)] bg-transparent p-0 text-xs hover:underline"
-                onClick={() => {
-                  // For this thread only: your next new thread keeps its own mode.
-                  send({ type: 'setMode', id: session.id, mode: 'auto' });
-                  // What you were typing stays yours to send.
-                  if (!draft.trim())
-                    send({
-                      type: 'send',
-                      id: session.id,
-                      text: 'Implement what you proposed above.',
-                    });
-                  focusInput();
-                }}
-              >
-                Implement
-              </button>
-            </div>
-          ) : null}
           {attachments.length ? (
             <div className="flex flex-wrap items-start gap-1 pt-2 px-2.5 pb-0 in-[.user]:pt-0 in-[.user]:px-0 in-[.user]:pb-1.5">
               {attachments.map((item, index) => (
@@ -458,7 +194,7 @@ export function Composer({
           />
           {missingSkills.length ? (
             <div className="mt-0.5 mx-2.5 text-[11.5px] text-warning" role="alert">
-              {AGENT_LABELS[agent]} doesn’t have {missingSkills.map(attachmentLabel).join(', ')}.
+              {profileLabel(agent)} doesn’t have {missingSkills.map(attachmentLabel).join(', ')}.
               Remove it or switch agent.
             </div>
           ) : null}
@@ -469,101 +205,27 @@ export function Composer({
           ) : null}
           <div className="flex justify-between items-center gap-2 pt-1 px-2 pb-2">
             <div className="composer-controls flex items-center gap-0.5 min-w-0 flex-wrap max-[480px]:flex-wrap">
-              <Menu
-                label={modeShown.label}
-                side={menuSide}
-                icon={
-                  <Icon
-                    name={modeShown.mode ? MODE_ICONS[modeShown.mode] : 'agentMode'}
-                    size={13}
-                  />
-                }
-                ariaLabel={`Mode: ${modeShown.label}`}
-                title="⇧Tab to change mode"
-                className="mode-chip text-muted-foreground in-data-[mode]:bg-mode-tint in-data-[mode]:text-mode in-data-[mode]:enabled:hover:bg-mode-tint in-data-[mode]:enabled:hover:text-mode in-data-[mode]:[&>span]:text-mode"
-                disabled={modeLocked}
-                onClosed={focusInput}
-                items={AGENT_MODES.map((item) => ({
-                  key: item,
-                  label: MODE_LABELS[item],
-                  description: CAPABILITIES[agentTarget(agent).provider].modes[item],
-                  icon: (
-                    <span data-mode={item} className="inline-flex text-mode">
-                      <Icon name={MODE_ICONS[item]} size={14} />
-                    </span>
-                  ),
-                  selected: modeShown.mode === item,
-                  onSelect: () => selectMode(item),
-                }))}
-              />
-              <ModelSelector
+              <ComposerControls
                 catalog={catalog}
+                session={session}
+                preferences={preferences}
                 agent={agent}
                 model={model}
-                active={session?.activeModel}
-                lockedAgent={Boolean(session)}
-                side={menuSide}
-                onSelect={selectModel}
-                onRetry={() => send({ type: 'refreshModels' })}
-                onClosed={focusInput}
-              />
-              <EffortMenu
                 effort={effort}
+                modeLocked={modeLocked}
+                thinking={thinking}
+                support={support}
+                modeShown={modeShown}
                 efforts={efforts}
-                disabled={modeLocked}
-                side={menuSide}
-                onEffort={selectEffort}
-                onClosed={focusInput}
+                target={target}
+                focusInput={focusInput}
+                menuSide={menuSide}
+                selectModel={selectModel}
+                selectEffort={selectEffort}
+                selectThinking={selectThinking}
+                selectMode={selectMode}
+                guide={guide}
               />
-              {target ? (
-                <Hint
-                  label={`Runs ${AGENT_LABELS[target]} on its default model, in a card in this thread. ${AGENT_LABELS[agent]} isn't sent this message.`}
-                >
-                  <span className="inline-flex items-center gap-1 min-h-6 px-1.5 rounded-md bg-muted text-[11.5px] text-foreground">
-                    <span aria-hidden="true">→</span>
-                    <AgentMark agent={target} size={12} />
-                    <span>{AGENT_LABELS[target]}</span>
-                  </span>
-                </Hint>
-              ) : null}
-              {/* The wrapper keeps the reason reachable while the button is disabled. */}
-              <Hint
-                label={`Thinking: ${THINKING_LABELS[thinking]}.${support.reason ? ` ${support.reason}.` : ''}`}
-              >
-                <span className="inline-flex">
-                  <button
-                    type="button"
-                    className="icon-button p-[5px] text-faint enabled:hover:text-foreground aria-pressed:text-foreground aria-pressed:bg-muted disabled:pointer-events-none"
-                    aria-label="Thinking"
-                    aria-pressed={thinking === 'on'}
-                    disabled={modeLocked || (!support.on && !support.off)}
-                    onClick={() => selectThinking(nextThinking(thinking, support))}
-                  >
-                    <Icon name="brain" size={13} />
-                  </button>
-                </span>
-              </Hint>
-              {guide ? (
-                <Hint
-                  label={`${guide.label}: ${preferences[guide.key] ? 'on' : 'off'}. Applies to your next message.`}
-                >
-                  <button
-                    type="button"
-                    className="icon-button p-[5px] text-faint enabled:hover:text-foreground aria-pressed:text-mode"
-                    aria-label={guide.label}
-                    aria-pressed={preferences[guide.key]}
-                    onClick={() =>
-                      send({
-                        type: 'setGuide',
-                        guide: guide.key,
-                        enabled: !preferences[guide.key],
-                      })
-                    }
-                  >
-                    <Icon name={guide.icon} size={13} />
-                  </button>
-                </Hint>
-              ) : null}
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <UsageIndicator
@@ -597,9 +259,9 @@ export function Composer({
                   aria-label="Send message"
                   title={
                     needsPrompt && target
-                      ? `Add a prompt for ${AGENT_LABELS[target]}`
+                      ? `Add a prompt for ${profileLabel(target)}`
                       : canDelegate
-                        ? `Run ${AGENT_LABELS[mention?.agent ?? 'codex']}`
+                        ? `Run ${profileLabel(mention?.agent ?? 'codex')}`
                         : 'Send · Enter'
                   }
                   disabled={
@@ -614,85 +276,17 @@ export function Composer({
           </div>
         </div>
       </div>
-      <div className="composer-caption flex items-center justify-between gap-3 text-muted-foreground text-[10.5px] max-w-[780px] mt-1.5 mx-auto mb-0 [&>span]:truncate max-[480px]:[&>span:last-child]:hidden">
-        <Menu
-          label={worktree ? 'Worktree' : 'Local'}
-          icon={<Icon name="branch" size={12} />}
-          ariaLabel={`Location: ${worktree ? 'worktree' : 'local checkout'}`}
-          className="min-h-5 px-1 py-[3px] text-[10.5px]"
-          side={menuSide}
-          onClosed={focusInput}
-          heading="Where it works"
-          items={
-            session
-              ? [
-                  {
-                    key: 'current',
-                    label: worktree ? 'This worktree' : 'Local checkout',
-                    description: session.cwd,
-                    selected: true,
-                    onSelect: () => {},
-                  },
-                  {
-                    key: 'worktree',
-                    label: 'Continue in a new worktree',
-                    description: 'Opens a linked thread from committed HEAD',
-                    onSelect: () => send({ type: 'worktree', id: session.id }),
-                  },
-                ]
-              : [
-                  {
-                    key: 'local',
-                    label: 'Local checkout',
-                    description: 'Works in your open folder',
-                    selected: !choice.worktree,
-                    onSelect: () => onChoice({ ...choice, worktree: false }),
-                  },
-                  {
-                    key: 'worktree',
-                    label: 'New worktree',
-                    description: 'Starts from committed HEAD',
-                    selected: Boolean(choice.worktree),
-                    onSelect: () => onChoice({ ...choice, worktree: true }),
-                  },
-                ]
-          }
-        />
-        {nudge ? (
-          <output className="inline-flex items-center gap-[5px] px-2 py-px border border-subtle rounded-full text-[10.5px] text-muted-foreground [&_kbd]:text-[10.5px] [&_kbd]:text-faint">
-            {nudge.kind === 'plan' ? (
-              <button
-                type="button"
-                className="cursor-pointer bg-transparent p-0 text-inherit"
-                onClick={() => selectMode('plan')}
-              >
-                {nudge.text} <kbd>⇧Tab</kbd>
-              </button>
-            ) : (
-              <span>{nudge.text}</span>
-            )}
-            {nudge.kind === 'handoff' && session ? (
-              <button
-                type="button"
-                className="cursor-pointer bg-transparent p-0 text-[var(--link)] hover:underline"
-                onClick={() => send({ type: 'handoff', id: session.id })}
-              >
-                Hand off
-              </button>
-            ) : null}
-            <button
-              type="button"
-              aria-label={`Dismiss: ${nudge.text}`}
-              className="cursor-pointer bg-transparent p-0 opacity-60 hover:opacity-100"
-              onClick={() => onDismissNudge(nudge.key)}
-            >
-              <Icon name="close" size={10} />
-            </button>
-          </output>
-        ) : (
-          <span />
-        )}
-      </div>
+      <ComposerCaption
+        session={session}
+        choice={choice}
+        onChoice={onChoice}
+        onDismissNudge={onDismissNudge}
+        nudge={nudge}
+        focusInput={focusInput}
+        menuSide={menuSide}
+        selectMode={selectMode}
+        worktree={worktree}
+      />
     </div>
   );
 }

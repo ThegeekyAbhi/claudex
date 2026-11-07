@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AGENT_LABELS,
   type AgentKind,
   type Attachment,
   attachmentLabel,
   IMAGE_EXTENSION,
+  LEGACY_SECOND_CLAUDE,
+  profileLabel,
+  runnableProfiles,
   type Session,
-} from '../../../core/model';
+} from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { AgentMark, Icon, type IconName } from '../../components/icons';
 import { type MenuAnchor, menuAnchorStyle } from '../../lib/caret';
@@ -18,11 +20,13 @@ export interface ContextResults {
   recent: string[];
   terminals: string[];
 }
-const AGENTS: { name: string; agent: AgentKind }[] = [
-  { name: 'claude', agent: 'claude' },
-  { name: 'claude2', agent: 'claud2' },
-  { name: 'codex', agent: 'codex' },
-];
+/** Agents you can @mention now. The old second Claude keeps the name people already type. */
+function mentionable(): { name: string; agent: AgentKind }[] {
+  return runnableProfiles().map((profile) => ({
+    name: profile.id === LEGACY_SECOND_CLAUDE ? 'claude2' : profile.id,
+    agent: profile.id,
+  }));
+}
 export interface Trigger {
   mark: '@' | '#' | '/';
   query: string;
@@ -124,15 +128,20 @@ export function ContextMenu({
     if (view === 'files') return matches;
     if (view === 'threads') return threadRows;
     if (view === 'terminals') return terminalRows;
-    const agents = AGENTS.filter((item) => item.name.startsWith(query)).map(
-      (item): Row => ({
-        key: `agent:${item.name}`,
-        label: `@${item.name}`,
-        detail: `Run ${AGENT_LABELS[item.agent]}`,
-        agent: item.agent,
-        run: () => onAgent(item.name),
-      }),
-    );
+    const agents = mentionable()
+      .filter(
+        (item) =>
+          item.name.startsWith(query.toLowerCase()) || item.agent.startsWith(query.toLowerCase()),
+      )
+      .map(
+        (item): Row => ({
+          key: `agent:${item.name}`,
+          label: `@${item.name}`,
+          detail: `Run ${profileLabel(item.agent)}`,
+          agent: item.agent,
+          run: () => onAgent(item.name),
+        }),
+      );
     const top = query
       ? matches.slice(0, 6)
       : (results?.recent ?? []).slice(0, 3).map((path) => fileRow(path, 'file'));

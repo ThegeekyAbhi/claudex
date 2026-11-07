@@ -4,8 +4,9 @@ import {
   agentKind,
   type BuildChoice,
   type Catalog,
+  catalogFor,
   type Session,
-} from '../../../core/model';
+} from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { AutoHelp } from '../../components/menus';
 import { Button } from '../../components/ui/button';
@@ -42,7 +43,9 @@ export function BuildButton({
       .filter(
         (item) =>
           !item.model ||
-          context.catalog[agentKind(item)].models.some((model) => model.id === item.model),
+          catalogFor(context.catalog, agentKind(item)).models.some(
+            (model) => model.id === item.model,
+          ),
       )
       .slice()
       .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -80,8 +83,9 @@ export function BuildButton({
           <EffortMenu
             effort={choice.effort}
             efforts={
-              context.catalog[selectedAgent].models.find((item) => item.id === choice.model)
-                ?.efforts ?? []
+              catalogFor(context.catalog, selectedAgent).models.find(
+                (item) => item.id === choice.model,
+              )?.efforts ?? []
             }
             onEffort={(effort) => setChoice({ ...choice, effort })}
           />

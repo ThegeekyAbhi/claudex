@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from 'react';
-import type { MessageImage } from '../../../core/model';
+import type { MessageImage } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
 import {

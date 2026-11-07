@@ -1,4 +1,4 @@
-import type { Session } from '../../../core/model';
+import type { Session } from '../../../shared/model';
 
 export type ThreadNode = Pick<Session, 'id' | 'parentId' | 'status' | 'inTerminal'>;
 export type ThreadChildren<T extends ThreadNode> = Map<string, T[]>;

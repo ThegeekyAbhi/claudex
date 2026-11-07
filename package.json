@@ -2,7 +2,7 @@
   "name": "claudex",
   "displayName": "Claudex",
   "description": "Codex and Claude Code together. Local threads, plans, approvals, and diffs in VS Code.",
-  "version": "0.7.0",
+  "version": "0.8.3",
   "publisher": "nerdyabhi",
   "icon": "media/claudex-icon.png",
   "galleryBanner": {
@@ -12,11 +12,11 @@
   "keywords": ["codex", "claude", "claude-code", "agents", "chat", "planning"],
   "repository": {
     "type": "git",
-    "url": "https://github.com/ThegeekyAbhi/vcpm.git"
+    "url": "https://github.com/thegeekyabhi/claudex.git"
   },
-  "homepage": "https://github.com/ThegeekyAbhi/vcpm#readme",
+  "homepage": "https://github.com/thegeekyabhi/claudex#readme",
   "bugs": {
-    "url": "https://github.com/ThegeekyAbhi/vcpm/issues"
+    "url": "https://github.com/thegeekyabhi/claudex/issues"
   },
   "license": "MIT",
   "engines": {
@@ -27,7 +27,8 @@
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onWebviewPanel:agentWorkspace"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -56,6 +57,90 @@
       {
         "command": "agentWorkspace.refresh",
         "title": "Claudex: Refresh"
+      },
+      {
+        "command": "agentWorkspace.checkAgents",
+        "title": "Claudex: Check Installed Agents"
+      },
+      {
+        "command": "agentWorkspace.signIn",
+        "title": "Claudex: Sign In to an Agent"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "getStarted",
+        "title": "Get started with Claudex",
+        "description": "Run Claude Code and Codex side by side in VS Code, with your own accounts.",
+        "steps": [
+          {
+            "id": "open",
+            "title": "Open Claudex",
+            "description": "Your chat and threads live in the side bar.\n[Open Claudex](command:agentWorkspace.open)",
+            "media": {
+              "markdown": "media/walkthrough/open.md"
+            },
+            "completionEvents": [
+              "onCommand:agentWorkspace.open",
+              "onView:agentWorkspace.chat"
+            ]
+          },
+          {
+            "id": "install",
+            "title": "Install Claude Code or Codex",
+            "description": "Claudex runs the CLIs on this machine. Install at least one, then check.\n[Check my agents](command:agentWorkspace.checkAgents)",
+            "media": {
+              "markdown": "media/walkthrough/install.md"
+            },
+            "completionEvents": [
+              "onCommand:agentWorkspace.checkAgents"
+            ]
+          },
+          {
+            "id": "signIn",
+            "title": "Sign in",
+            "description": "Sign in once in the CLI's own terminal. Claudex never sees your credentials.\n[Sign in to Claude Code](command:agentWorkspace.signIn?%5B%22claude%22%5D)\n[Sign in to Codex](command:agentWorkspace.signIn?%5B%22codex%22%5D)",
+            "media": {
+              "markdown": "media/walkthrough/sign-in.md"
+            },
+            "completionEvents": [
+              "onCommand:agentWorkspace.signIn"
+            ]
+          },
+          {
+            "id": "firstChat",
+            "title": "Start your first thread",
+            "description": "Pick an agent, write a message and press Enter.\n[Start a thread](command:agentWorkspace.new)",
+            "media": {
+              "markdown": "media/walkthrough/first-chat.md"
+            },
+            "completionEvents": [
+              "onCommand:agentWorkspace.new"
+            ]
+          },
+          {
+            "id": "modes",
+            "title": "Ask, Plan and Auto",
+            "description": "Press ⇧Tab in the message box to choose how much the agent may do.",
+            "media": {
+              "markdown": "media/walkthrough/modes.md"
+            },
+            "completionEvents": [
+              "onStepSelected"
+            ]
+          },
+          {
+            "id": "together",
+            "title": "Use both agents together",
+            "description": "@mention an agent, attach files with #, and hand a thread to the other agent.",
+            "media": {
+              "markdown": "media/walkthrough/together.md"
+            },
+            "completionEvents": [
+              "onStepSelected"
+            ]
+          }
+        ]
       }
     ],
     "viewsContainers": {
@@ -109,14 +194,43 @@
           "default": "claude",
           "description": "Claude Code executable name or absolute path."
         },
+        "agentWorkspace.profiles": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "Extra accounts for Claude Code or Codex. Each one runs the installed CLI with its own home folder (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`), so its settings, skills, plugins, MCP servers, sign-in and history are separate. `claude` and `codex` are always available when installed. Use the agent menu's **Add profile** to fill this in.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "provider"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,23}$",
+                "markdownDescription": "Fixed handle for `@mentions`, such as `claude-work`. Changing it disconnects threads that used the old one."
+              },
+              "name": { "type": "string", "description": "Shown in the agent menu. Rename it freely." },
+              "provider": { "type": "string", "enum": ["claude", "codex"] },
+              "configDir": {
+                "type": "string",
+                "markdownDescription": "This account's home folder, such as `~/.claude-work`. Becomes `CLAUDE_CONFIG_DIR` or `CODEX_HOME`. Leave unset for the CLI's default."
+              },
+              "executable": {
+                "type": "string",
+                "description": "An executable to run instead of the installed CLI. Shell aliases aren't executables."
+              }
+            }
+          }
+        },
         "agentWorkspace.claud2Path": {
           "type": "string",
           "default": "claud2",
+          "markdownDeprecationMessage": "Use `agentWorkspace.profiles`. Still read for the old Claude 2 profile.",
           "description": "Second Claude Code executable or wrapper path. Shell aliases and command arguments are not executable paths."
         },
         "agentWorkspace.claud2ConfigDir": {
           "type": "string",
           "default": "~/.claude-account2",
+          "markdownDeprecationMessage": "Use `agentWorkspace.profiles`. Still read for the old Claude 2 profile.",
           "description": "Used when no second Claude executable is found: runs Claude Code with this folder as CLAUDE_CONFIG_DIR, the same as an alias like claude2='CLAUDE_CONFIG_DIR=~/.claude-account2 claude'."
         },
         "agentWorkspace.guidedPlanning": {
@@ -181,7 +295,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "package": "pnpm build && node scripts/package.mjs",
     "preview": "node scripts/preview.mjs",

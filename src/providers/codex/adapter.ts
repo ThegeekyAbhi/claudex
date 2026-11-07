@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { makeDiff, patchFromContent, stripPatchHeader } from '../../core/diff';
+import { makeDiff, patchFromContent, stripPatchHeader } from '../../shared/domain/diff';
+import { effectiveEffort } from '../../shared/domain/thinking';
 import {
   type Agent,
   type AgentMode,
@@ -15,18 +16,17 @@ import {
   type NativeSettings,
   parseRunAgent,
   type Question,
-  RUN_AGENT_DESCRIPTION,
-  RUN_AGENT_JSON_SCHEMA,
   RUN_AGENT_TOOL,
   runAgentApprovalTitle,
+  runAgentDescription,
+  runAgentJsonSchema,
   runAgentResultText,
   type Session,
   type SkillRequest,
   type Status,
   type ToolInfo,
   type TranscriptEvent,
-} from '../../core/model';
-import { effectiveEffort } from '../../core/thinking';
+} from '../../shared/model';
 import { JsonRpc, type RpcMessage } from '../process';
 import type { ImageStore } from '../shared/image-store';
 import { resolveInside } from '../shared/paths';
@@ -59,6 +59,8 @@ const WORKER_TOOL_TITLES: Record<string, string> = {
   closeAgent: 'Closed a worker',
 };
 export interface CodexOptions {
+  /** Extra environment for the CLI, such as CODEX_HOME for a profile's own folder. */
+  env?: Record<string, string>;
   delegate?: Delegate;
   skills?: () => SkillRequest[];
   images?: ImageStore;
@@ -135,6 +137,7 @@ export class CodexAgent implements Agent {
           this.emit({ type: 'status', status: 'failed' });
         }
       },
+      this.options.env,
     );
     const rpc = this.rpc;
     this.ready = (async () => {
@@ -153,8 +156,8 @@ export class CodexAgent implements Agent {
                     {
                       type: 'function',
                       name: RUN_AGENT_TOOL,
-                      description: RUN_AGENT_DESCRIPTION,
-                      inputSchema: RUN_AGENT_JSON_SCHEMA,
+                      description: runAgentDescription(),
+                      inputSchema: runAgentJsonSchema(),
                     },
                   ],
                 }

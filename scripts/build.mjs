@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 await rm('dist/chunks', { recursive: true, force: true });
 await Promise.all([
   build({
-    entryPoints: ['src/host/extension.ts'],
+    entryPoints: ['src/extension/extension.ts'],
     bundle: true,
     platform: 'node',
     format: 'cjs',
