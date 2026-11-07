@@ -112,6 +112,7 @@ export function ProfileForm({
         <label className="block space-y-1.5 text-xs">
           Account folder
           <select
+            aria-label="Account folder"
             className={FIELD}
             value={source}
             onChange={(event) => setSource(event.target.value)}

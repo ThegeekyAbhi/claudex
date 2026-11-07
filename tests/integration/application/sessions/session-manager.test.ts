@@ -442,3 +442,21 @@ test('context reaches the agent but stays out of the transcript', async () => {
   assert.deepEqual(session.messages[0].attachments, attachments);
   await manager.dispose();
 });
+test('a delegation whose child cannot start fails at once instead of waiting forever', async () => {
+  const storage = await mkdtemp(path.join(tmpdir(), 'aw-delegate-fail-'));
+  const manager = new Sessions(storage, (session) => ({
+    send: async () => {
+      if (session.delegated) throw new Error('The CLI is not installed.');
+    },
+    interrupt: async () => {},
+    dispose() {},
+  }));
+  const lead = manager.create('codex', storage, storage, 'Lead');
+  const result = await manager.delegate(lead.id, { agent: 'claude', prompt: 'Review' });
+  assert.equal(result.status, 'failed');
+  assert.match(
+    manager.get(result.sessionId).messages.find((item) => item.role === 'notice')?.text ?? '',
+    /not installed/,
+  );
+  await manager.dispose();
+});

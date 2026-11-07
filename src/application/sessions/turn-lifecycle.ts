@@ -189,6 +189,9 @@ export class TurnLifecycle {
       session.approval = pending;
       session.status = 'waiting';
     }
+    // A turn run here is in the CLI's transcript too; only what's recorded after it is new.
+    if (TERMINAL_STATUSES.includes(session.status) && event.type === 'status' && session.nativeId)
+      session.nativeSyncedAt = Date.now();
     if (TERMINAL_STATUSES.includes(session.status) && event.type === 'status')
       this.deps.delegation.notifySettled(session.id);
     this.deps.changed();

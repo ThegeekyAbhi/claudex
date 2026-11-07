@@ -40,6 +40,8 @@ export interface ViewState {
   activeDraft?: string;
   /** When you last saw each thread, to tell what finished while you were elsewhere. */
   seen?: SeenAt;
+  /** Pane sizes for the wide layout, keyed by which panes were open. */
+  layouts?: Record<string, string>;
 }
 interface HostApi {
   postMessage(action: Action): void;

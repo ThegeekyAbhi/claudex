@@ -94,7 +94,7 @@ try {
   ];
   for (const section of sections) await section(ctx);
   console.log(
-    'UI checks passed: no-prompt start, model and effort menus, appearance, mode colours, guide toggles, sandboxed visuals, thread filters, thread tabs and signals, modes, plan card, Markdown and highlighting, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, continuing in another agent, agent profiles, changes panel, first-run setup, side bar widths, and 4 viewport sizes.',
+    'UI checks passed: no-prompt start, model and effort menus, appearance, mode colours, guide toggles, sandboxed visuals, thread filters, thread tabs and signals, modes, plan card, Markdown and highlighting, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, continuing in another agent, agent profiles, changes panel, first-run setup, side bar widths, resizable panes, and 4 viewport sizes.',
   );
 } catch (error) {
   await page.screenshot({ path: 'test-results/screenshots/failure.png' });

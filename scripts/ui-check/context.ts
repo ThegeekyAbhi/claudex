@@ -71,7 +71,10 @@ export function createContext(page: Page, browserErrors: ReturnType<typeof colle
   const tablist = page.getByRole('tablist', { name: 'Open threads' });
   const pickAgent = async (agent: string, option: string) => {
     await page.getByRole('button', { name: /^Model:/ }).click();
-    await page.getByRole('tablist').getByRole('tab', { name: agent, exact: true }).click();
+    await page
+      .getByRole('tablist', { name: 'Agents' })
+      .getByRole('tab', { name: agent, exact: true })
+      .click();
     await page.getByRole('option', { name: option }).click();
   };
   const pressed = async (value: 'true' | 'false') =>

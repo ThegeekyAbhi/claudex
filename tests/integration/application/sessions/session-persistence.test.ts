@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { SessionPersistence } from '../../../../src/application/sessions/session-persistence';
-import type { Session } from '../../../../src/shared/model';
+import { restoreSessions, type Session } from '../../../../src/shared/model';
 
 function session(): Session {
   return {
@@ -137,4 +137,72 @@ test('save scheduling coalesces changes at the original deadline and flush cance
   await persistence.flush();
   t.mock.timers.tick(100);
   assert.equal(flushes, 1, 'an explicit flush cancels the scheduled save');
+});
+
+test('the first write after loading keeps a dated copy of the saved threads, once a day', async (t) => {
+  const storage = await mkdtemp(path.join(tmpdir(), 'aw-backup-'));
+  t.after(() => rm(storage, { recursive: true, force: true }));
+  const file = path.join(storage, 'sessions.json');
+  const before = JSON.stringify({ version: 1, sessions: [session()] });
+  await writeFile(file, before);
+  for (let day = 1; day <= 6; day++)
+    await writeFile(path.join(storage, `sessions.backup-2026010${day}.json`), '{}');
+  const sessions: Session[] = [];
+  const persistence = new SessionPersistence({ storage, sessions });
+  await persistence.load();
+  sessions[0].title = 'Renamed';
+  await persistence.flush();
+  const today = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  assert.equal(await readFile(path.join(storage, `sessions.backup-${today}.json`), 'utf8'), before);
+  const backups = (await readdir(storage)).filter((name) => name.startsWith('sessions.backup-'));
+  assert.equal(backups.length, 5, 'only the newest five copies are kept');
+  // A second write the same session doesn't copy again over the morning's state.
+  sessions[0].title = 'Renamed again';
+  await persistence.flush();
+  assert.equal(await readFile(path.join(storage, `sessions.backup-${today}.json`), 'utf8'), before);
+});
+
+test('new optional fields round-trip, and a build without them still reads the file', async (t) => {
+  const storage = await mkdtemp(path.join(tmpdir(), 'aw-compat-'));
+  t.after(() => rm(storage, { recursive: true, force: true }));
+  const thread: Session = {
+    ...session(),
+    nativeId: 'native-1',
+    nativeSyncedAt: 50,
+    origin: 'terminal',
+    messages: [{ id: 'm1', role: 'assistant', text: 'From the CLI', nativeRef: 'uuid-1:0' }],
+  };
+  await new SessionPersistence({ storage, sessions: [thread] }).flush();
+  const restored: Session[] = [];
+  await new SessionPersistence({ storage, sessions: restored }).load();
+  assert.equal(restored[0].nativeSyncedAt, 50);
+  assert.equal(restored[0].origin, 'terminal');
+  assert.equal(restored[0].messages[0].nativeRef, 'uuid-1:0');
+  // Same format version: an older Claudex reads this file and only drops the fields it doesn't know.
+  const saved = JSON.parse(await readFile(path.join(storage, 'sessions.json'), 'utf8'));
+  assert.equal(saved.version, 1);
+});
+
+test('a delegation cut off by a reload is marked interrupted, with a notice that no result came', () => {
+  const [restored] = restoreSessions({
+    version: 1,
+    sessions: [
+      {
+        ...session(),
+        status: 'running',
+        messages: [
+          {
+            id: 'call-1',
+            role: 'tool',
+            text: '',
+            tool: { kind: 'agent', name: 'delegate', title: 'Review', status: 'running' },
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(restored.status, 'interrupted');
+  assert.equal(restored.messages[0].tool?.status, 'interrupted');
+  assert.equal(restored.messages[1].role, 'notice');
+  assert.match(restored.messages[1].text, /delegation was interrupted/);
 });

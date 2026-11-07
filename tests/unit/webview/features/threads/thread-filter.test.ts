@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Status } from '../../../../../src/shared/model';
 import {
+  inProfile,
+  isNativeRow,
+  nativeRows,
   rootVisible,
   selectedPath,
   splitChildren,
@@ -76,4 +79,34 @@ test('running only keeps an old parent of a running child, and the open thread',
   assert.ok(rootVisible(nodes[0], children, new Set()));
   assert.ok(!rootVisible(nodes[2], children, new Set()));
   assert.ok(rootVisible(nodes[3], children, new Set(['open'])));
+});
+
+test('a tab holds one account’s threads; All holds every account’s', () => {
+  assert.equal(inProfile({ provider: 'claude' }, 'claude'), true);
+  assert.equal(inProfile({ provider: 'claude', profileId: 'claud2' }, 'claude'), false);
+  assert.equal(inProfile({ provider: 'claude', profileId: 'claud2' }, 'claud2'), true);
+  assert.equal(inProfile({ provider: 'codex' }, undefined), true);
+});
+
+test('terminal sessions follow the tab and search, belong to known accounts, and are not "running"', () => {
+  const entries = [
+    { profileId: 'codex', sessionId: 'a', title: 'Fix the flaky test', updatedAt: 2 },
+    { profileId: 'claud2', sessionId: 'b', title: 'Sketch the parser', updatedAt: 1 },
+    { profileId: 'removed', sessionId: 'c', title: 'Gone account', updatedAt: 3 },
+  ];
+  const base = { needle: '', runningOnly: false, profiles: ['claude', 'claud2', 'codex'] };
+  assert.deepEqual(
+    nativeRows(entries, base).map((entry) => entry.sessionId),
+    ['a', 'b'],
+  );
+  assert.deepEqual(
+    nativeRows(entries, { ...base, profile: 'codex' }).map((entry) => entry.sessionId),
+    ['a'],
+  );
+  assert.deepEqual(
+    nativeRows(entries, { ...base, needle: 'parser' }).map((entry) => entry.sessionId),
+    ['b'],
+  );
+  assert.deepEqual(nativeRows(entries, { ...base, runningOnly: true }), []);
+  assert.equal(isNativeRow(entries[0]), true);
 });

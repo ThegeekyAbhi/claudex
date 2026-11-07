@@ -1,4 +1,13 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import {
+  constants,
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { persistableSession, restoreSessions, type Session } from '../../shared/model';
 
@@ -6,6 +15,8 @@ interface Dependencies {
   sessions: Session[];
   storage: string;
 }
+const BACKUPS_KEPT = 5;
+const BACKUP = /^sessions\.backup-\d{8}\.json$/;
 interface SaveSchedule {
   delayMs: number;
   flush(): Promise<void>;
@@ -16,6 +27,7 @@ export class SessionPersistence {
   private saveQueue: Promise<void> = Promise.resolve();
   private lastSaved?: string;
   private saveTimer?: NodeJS.Timeout;
+  private backedUp = false;
   constructor(private deps: Dependencies) {}
   scheduleSave(schedule: SaveSchedule): void {
     if (this.saveTimer) return;
@@ -46,6 +58,29 @@ export class SessionPersistence {
       ),
     });
   }
+  /**
+   * Before the first write after loading, keep a copy of the saved threads as they were, once a
+   * day. A newer or older Claudex can then always go back to what it last read.
+   */
+  async backup(now = new Date()): Promise<void> {
+    if (this.backedUp) return;
+    this.backedUp = true;
+    const day = now.toISOString().slice(0, 10).replaceAll('-', '');
+    try {
+      await copyFile(
+        path.join(this.deps.storage, 'sessions.json'),
+        path.join(this.deps.storage, `sessions.backup-${day}.json`),
+        constants.COPYFILE_EXCL,
+      );
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Nothing saved yet, or today's copy is already there.
+      if (code !== 'ENOENT' && code !== 'EEXIST') throw error;
+    }
+    const old = (await readdir(this.deps.storage)).filter((name) => BACKUP.test(name)).sort();
+    for (const name of old.slice(0, -BACKUPS_KEPT))
+      await rm(path.join(this.deps.storage, name), { force: true });
+  }
   async flush(): Promise<void> {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -58,6 +93,7 @@ export class SessionPersistence {
       .catch(() => undefined)
       .then(async () => {
         await mkdir(this.deps.storage, { recursive: true });
+        await this.backup();
         const temporary = path.join(this.deps.storage, 'sessions.json.tmp');
         await writeFile(temporary, data, { mode: 0o600 });
         await rename(temporary, path.join(this.deps.storage, 'sessions.json'));

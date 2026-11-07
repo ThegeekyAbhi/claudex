@@ -13,7 +13,14 @@ export function AppHeader({
   changes,
   turns,
   ui,
-}: Pick<ReturnType<typeof useAppState>, 'host' | 'tabs' | 'threads' | 'changes' | 'turns' | 'ui'>) {
+  threadsPane,
+}: Pick<
+  ReturnType<typeof useAppState>,
+  'host' | 'tabs' | 'threads' | 'changes' | 'turns' | 'ui'
+> & {
+  /** In the wide layout, the thread list is a resizable pane that can be folded away. */
+  threadsPane?: ReturnType<typeof useAppState>['layout']['threads'];
+}) {
   const { snapshot } = host;
   const { session } = tabs.current;
   return (
@@ -83,6 +90,19 @@ export function AppHeader({
             <Icon name="diff" />
           </button>
         </Hint>
+        {threadsPane ? (
+          <Hint label={threadsPane.collapsed ? 'Show threads' : 'Hide threads'}>
+            <button
+              type="button"
+              className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-expanded:text-foreground"
+              aria-label="Toggle thread list"
+              aria-expanded={!threadsPane.collapsed}
+              onClick={threadsPane.toggle}
+            >
+              <Icon name="sidebar" />
+            </button>
+          </Hint>
+        ) : null}
         <OverflowMenu
           items={[
             ...(session && !session.observed && !tabs.accounts.active

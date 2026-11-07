@@ -101,6 +101,8 @@ export class ThreadsHandlers {
   }
   async startThread(action: Extract<Action, { type: 'start' }>, surface: Surface): Promise<void> {
     this.context.requireAgent(action.agent);
+    // Check the mentioned agent before anything is created, so a missing CLI leaves no thread behind.
+    if (action.delegate) this.context.requireAgent(action.delegate);
     const parent = action.parentId ? this.context.sessions.get(action.parentId) : undefined;
     const continued = action.continuedFrom
       ? this.context.sessions.get(action.continuedFrom)
@@ -171,6 +173,11 @@ export class ThreadsHandlers {
   ): Promise<void> {
     const parent = this.context.sessions.get(action.id);
     if (parent.observed) throw new Error('This worker is controlled by its main agent.');
+    if (this.context.terminals.has(parent.id))
+      throw new Error(
+        'This thread is open in the terminal. Close it there to start another agent.',
+      );
+    this.context.requireAgent(action.agent);
     const input = await this.input(
       await this.context.checkSkills(action.agent, action.attachments),
       parent.workspace,

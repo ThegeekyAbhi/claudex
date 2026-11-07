@@ -1,7 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   agentKind,
   agentLabel,
+  allProfiles,
+  type NativeSessionEntry,
+  profileLabel,
   type Session,
   type Snapshot,
   threadTitle,
@@ -11,6 +14,9 @@ import { AgentMark, Icon } from '../../components/icons';
 import { Hint, OverflowMenu } from '../../components/menus';
 import { needsYou, type SeenAt, SIGNAL_LABELS, threadSignal } from './tab-state';
 import {
+  inProfile,
+  isNativeRow,
+  nativeRows,
   rootVisible,
   selectedPath,
   splitChildren,
@@ -47,6 +53,13 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
   const showEarlier = view.showEarlier ?? {};
   const runningOnly = Boolean(view.runningOnly);
   const [showAll, setShowAll] = useState(false);
+  const profiles = allProfiles().map((profile) => profile.id);
+  // A tab for a profile that was since removed falls back to All.
+  const tab = view.profile && profiles.includes(view.profile) ? view.profile : undefined;
+  // Read-only: asks the host what the CLIs keep for this folder.
+  useEffect(() => {
+    send({ type: 'refreshNativeSessions' });
+  }, []);
   const children = useMemo(() => {
     const map = new Map<string, Session[]>();
     for (const item of snapshot.sessions)
@@ -64,6 +77,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
   const filtering = runningOnly && !needle;
   const roots = snapshot.sessions
     .filter((item) => !item.parentId || !known.has(item.parentId))
+    .filter((item) => inProfile(item, tab))
     .filter(matches)
     .filter((item) => !filtering || rootVisible(item, children, path))
     .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -80,7 +94,59 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
   const recent = unpinned.filter((item) => item.updatedAt >= today || path.has(item.id));
   const lastDay = unpinned.filter((item) => !recent.includes(item) && item.updatedAt >= yesterday);
   const older = unpinned.filter((item) => !recent.includes(item) && !lastDay.includes(item));
-  const hidden = needle || showAll || filtering ? 0 : Math.max(0, older.length - OLDER_SHOWN);
+  const natives = nativeRows(snapshot.nativeSessions, {
+    profile: tab,
+    needle,
+    runningOnly: filtering,
+    profiles,
+  });
+  type Row = Session | NativeSessionEntry;
+  const withNative = (items: Session[], from: number, until = Number.POSITIVE_INFINITY): Row[] =>
+    [
+      ...items,
+      ...natives.filter((entry) => entry.updatedAt >= from && entry.updatedAt < until),
+    ].sort((a, b) => b.updatedAt - a.updatedAt);
+  const recentRows = withNative(recent, today);
+  const lastDayRows = withNative(lastDay, yesterday, today);
+  const olderRows = withNative(older, 0, yesterday);
+  const hidden = needle || showAll || filtering ? 0 : Math.max(0, olderRows.length - OLDER_SHOWN);
+  const row = (item: Row) => (isNativeRow(item) ? nativeRow(item) : thread(item));
+  /** A session from the CLI's own history: opening it makes it a thread here, same session. */
+  function nativeRow(entry: NativeSessionEntry) {
+    const title = threadTitle(entry.title);
+    return (
+      <div
+        key={`native-${entry.profileId}-${entry.sessionId}`}
+        className="thread group/row flex items-center rounded-md min-h-8 hover:bg-muted focus-within:bg-muted"
+      >
+        <span className="w-3.5 h-[26px] shrink-0" />
+        <button
+          type="button"
+          className="flex-1 min-w-0 justify-start gap-2 py-1 pr-1.5 pl-0 text-left text-muted-foreground in-[.thread:hover]:text-foreground enabled:hover:bg-transparent"
+          title={`${title}\n${profileLabel(entry.profileId)} · from the terminal. Opening it continues the same session.`}
+          aria-label={`${title}, from the terminal`}
+          data-native-session={entry.sessionId}
+          onClick={() =>
+            send({ type: 'openNativeSession', agent: entry.profileId, sessionId: entry.sessionId })
+          }
+        >
+          <span className="relative inline-flex shrink-0 items-center justify-center size-[18px]">
+            <AgentMark agent={entry.profileId} size={13} />
+          </span>
+          <span className="min-w-0 flex-1 flex flex-col leading-[1.3]">
+            <span className="truncate text-[12.5px]">{title}</span>
+            <small className="flex items-center gap-1 truncate text-[11px] text-faint">
+              <Icon name="terminal" size={10} />
+              Terminal
+            </small>
+          </span>
+          <span className="text-[10.5px] text-faint shrink-0 tabular-nums">
+            {relativeTime(entry.updatedAt)}
+          </span>
+        </button>
+      </div>
+    );
+  }
   function thread(item: Session) {
     const all = (children.get(item.id) ?? []).filter(matches);
     const split = needle ? { current: all, earlier: [] } : splitChildren(all, children, path);
@@ -102,14 +168,16 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           ? SIGNAL_LABELS.failed
           : item.status === 'interrupted'
             ? 'Interrupted'
-            : shownSignal === 'running'
-              ? [
-                  ...(item.status === 'running' ? ['Running'] : []),
-                  ...(runningKids
-                    ? [`${runningKids} ${runningKids === 1 ? 'subagent' : 'subagents'} running`]
-                    : []),
-                ].join(' · ')
-              : undefined;
+            : item.origin === 'terminal' && !shownSignal
+              ? 'From the terminal'
+              : shownSignal === 'running'
+                ? [
+                    ...(item.status === 'running' ? ['Running'] : []),
+                    ...(runningKids
+                      ? [`${runningKids} ${runningKids === 1 ? 'subagent' : 'subagents'} running`]
+                      : []),
+                  ].join(' · ')
+                : undefined;
     const lines = [...kids, ...(split.earlier.length && !filtering ? [undefined] : [])];
     return (
       <div key={item.id} className="thread-node">
@@ -226,13 +294,13 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
       </div>
     );
   }
-  const group = (label: string, items: Session[]) =>
+  const group = (label: string, items: Row[]) =>
     items.length ? (
       <section>
         <h3 className="block text-[11px] font-[450] text-faint mt-0 mx-2 mb-[3px] truncate">
           {label}
         </h3>
-        {items.map(thread)}
+        {items.map(row)}
       </section>
     ) : null;
   return (
@@ -256,6 +324,28 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           </Hint>
         </div>
       </div>
+      {profiles.length > 1 ? (
+        <div
+          role="tablist"
+          aria-label="Chats by account"
+          className="flex flex-wrap gap-0.5 mb-1.5 px-1"
+        >
+          {[undefined, ...profiles].map((id) => (
+            <button
+              key={id ?? 'all'}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              title={id ? `${profileLabel(id)}: threads and terminal sessions` : 'Every account'}
+              className="shrink-0 gap-1 min-h-6 px-1.5 py-[3px] rounded-md text-[11.5px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground"
+              onClick={() => onView({ ...view, profile: id })}
+            >
+              {id ? <AgentMark agent={id} size={11} /> : null}
+              <span className="truncate max-w-24">{id ? profileLabel(id) : 'All'}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <label className="flex items-center gap-1.5 mb-2 px-2 py-[5px] text-faint rounded-md focus-within:bg-muted [&_kbd]:opacity-0 in-[.threads:hover]:[&_kbd]:opacity-100 [&_input]:w-full [&_input]:text-[12px] [&_input]:text-foreground [&_input:focus-visible]:outline-none">
         <Icon name="search" size={12} />
         <span className="sr-only">Find a thread</span>
@@ -271,14 +361,14 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
         {group('Needs you', attention)}
         {group('Running', working)}
         {group('Pinned', pinned)}
-        {group('Today', recent)}
-        {group('Yesterday', lastDay)}
-        {older.length ? (
+        {group('Today', recentRows)}
+        {group('Yesterday', lastDayRows)}
+        {olderRows.length ? (
           <section>
             <h3 className="block text-[11px] font-[450] text-faint mt-0 mx-2 mb-[3px] truncate">
               Older
             </h3>
-            {(hidden ? older.slice(0, OLDER_SHOWN) : older).map(thread)}
+            {(hidden ? olderRows.slice(0, OLDER_SHOWN) : olderRows).map(row)}
             {hidden ? (
               <button
                 type="button"
@@ -291,7 +381,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
             ) : null}
           </section>
         ) : null}
-        {!roots.length ? (
+        {!roots.length && !natives.length ? (
           <p className="text-muted-foreground text-[12px] m-2">
             {search
               ? 'No matching threads.'

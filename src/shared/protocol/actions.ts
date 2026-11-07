@@ -80,6 +80,16 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resumeInAuto'), id: z.string(), requestId: z.string() }),
   z.object({ type: z.literal('interrupt'), id: z.string() }),
   z.object({ type: z.literal('terminal'), id: z.string() }),
+  z.object({ type: z.literal('refreshNativeSessions') }),
+  z.object({
+    type: z.literal('openNativeSession'),
+    agent: agentEnum,
+    sessionId: z
+      .string()
+      .min(1)
+      .max(200)
+      .regex(/^[\w.-]+$/),
+  }),
   z.object({ type: z.literal('terminalBack'), id: z.string() }),
   z.object({ type: z.literal('select'), id: z.string() }),
   z.object({ type: z.literal('rename'), id: z.string() }),

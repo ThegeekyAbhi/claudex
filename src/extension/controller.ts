@@ -31,6 +31,7 @@ import { ProfilesHandlers } from './handlers/profiles';
 import { TerminalHandlers } from './handlers/terminal';
 import { ThreadsHandlers } from './handlers/threads';
 import { launcherFor } from './launcher';
+import { NativeHistory } from './native-history';
 import { restoredThreadId } from './panel-state';
 import { PlanStore } from './plans';
 import { type ActionRoutes, routeAction } from './router';
@@ -81,6 +82,7 @@ export class WorkspaceController {
   private cachedDocuments = new Map<string, Awaited<ReturnType<typeof listDocuments>>>();
   private documentWatchers = new Map<string, vscode.FileSystemWatcher>();
   private terminals = new Map<string, { terminal: vscode.Terminal; openedAt: number }>();
+  private history: NativeHistory;
   private bases = new Map<string, string>();
   private plans: PlanStore;
   private subscriptions: vscode.Disposable[] = [];
@@ -169,11 +171,21 @@ export class WorkspaceController {
       terminalCapture: this.terminalCapture,
       images: this.images,
     });
+    this.history = new NativeHistory({
+      sessions: this.sessions,
+      terminals: this.terminals,
+      output: this.output,
+      extension: this.context,
+      publish: this.publish.bind(this),
+    });
     this.terminalHandlers = new TerminalHandlers({
       sessions: this.sessions,
       terminals: this.terminals,
       output: this.output,
       extension: this.context,
+      history: this.history,
+      select: this.select.bind(this),
+      publish: this.publish.bind(this),
     });
     this.routes = {
       unrestricted: this.surfaceHandlers(),
@@ -275,11 +287,17 @@ export class WorkspaceController {
           });
         else void this.publish();
       }),
+      // Coming back to VS Code is when a terminal session elsewhere has most likely moved on.
+      vscode.window.onDidChangeWindowState((state) => {
+        if (!state.focused) return;
+        if (this.selectedId) this.syncInBackground(this.selectedId);
+        void this.history.refresh().catch((error) => this.output.appendLine(String(error)));
+      }),
       vscode.window.onDidCloseTerminal((terminal) => {
         for (const [id, active] of this.terminals)
           if (terminal === active.terminal) {
             this.terminals.delete(id);
-            void this.terminalHandlers.returnFromTerminal(id, active.openedAt);
+            void this.terminalHandlers.returnFromTerminal(id);
           }
       }),
       vscode.workspace.registerTextDocumentContentProvider('agent-workspace-base', {
@@ -380,6 +398,7 @@ export class WorkspaceController {
         project: root ? path.basename(root) : 'Open a local folder',
         trusted: vscode.workspace.isTrusted,
         onboardingDismissed: this.context.globalState.get<boolean>(ONBOARDING_DISMISSED, false),
+        nativeSessions: this.history.entries(),
         preferences: this.preferences(),
         ...(streaming && last.catalog === this.catalogHandlers.catalogVersion
           ? {}
@@ -412,10 +431,22 @@ export class WorkspaceController {
     }
   }
   private async select(id?: string, surface = this.surfaces.active): Promise<void> {
-    if (id) this.sessions.get(id);
+    if (id) {
+      this.sessions.get(id);
+      this.syncInBackground(id);
+    }
     if (surface) surface.selectedId = id;
     this.selectedId = id;
     await this.context.workspaceState.update('selectedId', id);
+  }
+  /** Brings in turns run elsewhere, such as a terminal, without holding up the click. */
+  private syncInBackground(id: string): void {
+    void this.history
+      .sync(id)
+      .then((outcome) => {
+        if (outcome && (outcome.added || outcome.updated)) void this.publish(true);
+      })
+      .catch((error) => this.output.appendLine(`History: ${String(error)}`));
   }
   async open(id?: string): Promise<void> {
     if (id) await this.select(id);
@@ -459,6 +490,8 @@ export class WorkspaceController {
         await this.publish(true);
         await this.deliverDrafts();
         if (vscode.workspace.isTrusted) void this.catalogHandlers.loadCatalog();
+        // Read-only: lists what the CLIs keep for this folder. It starts no agent turn.
+        void this.history.refresh().catch((error) => this.output.appendLine(String(error)));
       },
       openChat: (action) => {
         if (action.id) this.sessions.get(action.id);

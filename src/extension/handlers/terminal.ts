@@ -1,24 +1,21 @@
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
 import * as vscode from 'vscode';
 import type { Sessions } from '../../application/sessions/session-manager';
-import {
-  claudeHistorySince,
-  codexHistorySince,
-  readClaudeRecords,
-  readCodexTurns,
-  type TerminalHistory,
-  terminalArgs,
-} from '../../providers/terminal';
-import { agentKind, agentLabel, findProfile, type Session } from '../../shared/model';
+import { terminalArgs } from '../../providers/terminal';
+import { agentLabel } from '../../shared/model';
 import type { HandlersFor } from '../action-groups';
-import { launcherFor, legacyHistoryDir } from '../launcher';
+import { launcherFor } from '../launcher';
+import type { NativeHistory } from '../native-history';
+import type { Surface } from '../surfaces';
 
 export interface TerminalHandlersContext {
   sessions: Pick<Sessions, 'get' | 'interrupt' | 'disconnect' | 'changed' | 'resumeInAuto'>;
   terminals: Map<string, { terminal: vscode.Terminal; openedAt: number }>;
   output: Pick<vscode.OutputChannel, 'appendLine'>;
   extension: Pick<vscode.ExtensionContext, 'extensionPath'>;
+  history: Pick<NativeHistory, 'sync' | 'refresh' | 'open'>;
+  select(id?: string, surface?: Surface): Promise<void>;
+  publish(full?: boolean): Promise<void>;
 }
 
 export class TerminalHandlers {
@@ -76,25 +73,16 @@ export class TerminalHandlers {
     if (choice) active.terminal.dispose();
   }
   /** Adds what happened in the terminal. The CLI keeps it either way, so a failed read loses nothing. */
-  async returnFromTerminal(id: string, since: number): Promise<void> {
+  async returnFromTerminal(id: string): Promise<void> {
     const session = this.context.sessions.get(id);
     session.inTerminal = false;
     this.context.sessions.changed();
     const notice = (text: string) =>
       session.messages.push({ id: randomUUID(), role: 'notice', text });
     try {
-      const history = await this.terminalHistory(session, since);
-      if (!history.messages.length && !history.tools)
+      const outcome = await this.context.history.sync(id, { force: true, announce: true });
+      if (outcome && !outcome.added && !outcome.updated)
         notice('Back from the terminal. No new messages.');
-      else {
-        const counts = [
-          `${history.messages.length} message${history.messages.length === 1 ? '' : 's'}`,
-          ...(history.tools ? [`${history.tools} tool call${history.tools === 1 ? '' : 's'}`] : []),
-        ].join(', ');
-        notice(`From terminal: ${counts}. Tool calls aren't shown here.`);
-        for (const message of history.messages)
-          session.messages.push({ id: randomUUID(), ...message });
-      }
     } catch (error) {
       this.context.output.appendLine(String(error));
       notice(
@@ -102,27 +90,7 @@ export class TerminalHandlers {
       );
     }
     session.updatedAt = Date.now();
-    this.context.sessions.changed();
-  }
-  async terminalHistory(session: Session, since: number): Promise<TerminalHistory> {
-    const nativeId = session.nativeId ?? '';
-    if (session.provider === 'codex') {
-      const { executable, env } = launcherFor('codex', session.profileId);
-      return codexHistorySince(
-        await readCodexTurns(executable, nativeId, session.cwd, since, env),
-        since,
-      );
-    }
-    const sdk = path.join(
-      this.context.extension.extensionPath,
-      'dist/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs',
-    );
-    const launcher = launcherFor('claude', session.profileId);
-    const profile = findProfile(agentKind(session));
-    // A claud2 wrapper sets its folder itself, so the old setting is the only other place to look.
-    const legacy = profile && legacyHistoryDir(profile);
-    const env = launcher.env ?? (legacy ? { CLAUDE_CONFIG_DIR: legacy } : {});
-    return claudeHistorySince(await readClaudeRecords(sdk, nativeId, session.cwd, env), since);
+    this.context.sessions.changed(true);
   }
   handlers(): HandlersFor<'terminal'> {
     return {
@@ -131,6 +99,14 @@ export class TerminalHandlers {
       },
       terminalBack: async (action) => {
         await this.terminalBack(action.id);
+      },
+      refreshNativeSessions: async () => {
+        await this.context.history.refresh();
+      },
+      openNativeSession: async (action, surface) => {
+        const session = await this.context.history.open(action.agent, action.sessionId);
+        await this.context.select(session.id, surface);
+        await this.context.publish(true);
       },
       resumeInAuto: async (action) => {
         if (this.context.terminals.has(action.id))

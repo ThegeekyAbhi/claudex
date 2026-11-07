@@ -165,7 +165,9 @@ export async function checkProfiles(ctx: UiCheckContext): Promise<void> {
   await accounts.getByRole('button', { name: 'Remove account', exact: true }).click();
   const removed = (await sentOf('profileRequest')).at(-1);
   assert.deepEqual(removed.request, { operation: 'remove', id: 'personal' });
-  snapshot.agents.profiles = snapshot.agents.profiles.filter((item) => item.id !== 'personal');
+  snapshot.agents.profiles = snapshot.agents.profiles.filter(
+    (item) => (item as { id: string }).id !== 'personal',
+  );
   await update(undefined);
   await page.evaluate(
     (requestId) => window.postMessage({ type: 'profileResult', requestId, id: 'personal' }, '*'),

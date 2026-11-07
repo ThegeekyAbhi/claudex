@@ -8,6 +8,7 @@ import { useInitialViewState, useSavedViewState } from './use-saved-view-state';
 import { useTabs } from './use-tabs';
 import { useThreadView } from './use-thread-view';
 import { useTurns } from './use-turns';
+import { useWorkspaceLayout } from './use-workspace-layout';
 import { useWorkspaceEffects, useWorkspaceUI } from './use-workspace-ui';
 
 export function useAppState() {
@@ -38,7 +39,8 @@ export function useAppState() {
     tabs.accounts.active ? undefined : tabs.current.session,
   );
   const turns = useTurns(host.snapshot, tabs, drafts, compose, ui.setError);
-  useSavedViewState(savedViewState({ drafts, compose, tabs: tabs.saved, threads }));
+  const layout = useWorkspaceLayout(saved);
+  useSavedViewState(savedViewState({ drafts, compose, tabs: tabs.saved, threads, layout }));
   useWorkspaceEffects(host.snapshot.preferences.appearance, ui.setError, tabs.history.setOpen);
   const conversation = {
     asking: pendingQuestion(tabs.current.session, host.snapshot.sessions),
@@ -46,5 +48,5 @@ export function useAppState() {
       ? host.snapshot.sessions.find((item) => item.id === compose.choice.parentId)
       : undefined,
   };
-  return { host, drafts, compose, tabs, threads, changes, turns, ui, conversation };
+  return { host, drafts, compose, tabs, threads, changes, turns, ui, conversation, layout };
 }

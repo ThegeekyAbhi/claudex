@@ -29,6 +29,7 @@ export function useSavedViewState(state: ViewState) {
     state.tabs,
     state.activeDraft,
     state.seen,
+    state.layouts,
     persist,
   ]);
 }

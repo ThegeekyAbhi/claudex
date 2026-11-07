@@ -37,7 +37,13 @@ export const actionGroups = {
   plans: ['buildPlan', 'keepPlanning', 'viewPlan', 'savePlan'],
   documents: ['link', 'document', 'template', 'handoff', 'changes', 'openDiff', 'copy'],
   attachments: ['previewContext', 'searchContext', 'pickImages', 'attachImage', 'openImage'],
-  terminal: ['terminal', 'terminalBack', 'resumeInAuto'],
+  terminal: [
+    'terminal',
+    'terminalBack',
+    'resumeInAuto',
+    'refreshNativeSessions',
+    'openNativeSession',
+  ],
 } as const satisfies Record<string, readonly Action['type'][]>;
 
 type Group = keyof typeof actionGroups;

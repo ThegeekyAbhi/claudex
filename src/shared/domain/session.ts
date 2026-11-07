@@ -118,6 +118,8 @@ export interface Message {
   endedAt?: number;
   planningGuideVersion?: string;
   explainGuideVersion?: string;
+  /** Where this came from in the CLI's own transcript, for messages read from it. */
+  nativeRef?: string;
 }
 export interface Question {
   id: string;
@@ -193,6 +195,13 @@ export interface Session {
   observed?: boolean;
   /** Running in the CLI's own terminal, so nothing here is running it. Not saved. */
   inTerminal?: boolean;
+  /**
+   * The last moment this thread matched the CLI's own transcript: a turn run here ended, or the
+   * transcript was read. Anything the CLI recorded later came from somewhere else, like a terminal.
+   */
+  nativeSyncedAt?: number;
+  /** First seen in the CLI's terminal, then opened here. */
+  origin?: 'terminal';
   /** The thread this one continues, in another agent. Organisational only: no native link. */
   continuedFrom?: string;
   /** For each linked thread, the last of its messages this thread has been sent. */
@@ -280,6 +289,16 @@ export interface Snapshot {
   preferences: Preferences;
   /** You closed first-run setup. Kept for every workspace, not per folder. */
   onboardingDismissed?: boolean;
+  /** Sessions the CLIs keep for this folder that no thread here is linked to yet. */
+  nativeSessions?: NativeSessionEntry[];
+}
+/** A CLI session found in that profile's own history, such as one you ran in a terminal. */
+export interface NativeSessionEntry {
+  profileId: string;
+  sessionId: string;
+  title: string;
+  /** Milliseconds since the epoch. */
+  updatedAt: number;
 }
 export interface ChangesResult {
   files: FileDiff[];

@@ -382,6 +382,13 @@ export class CodexAgent implements Agent {
   private tool(worker: string | undefined, id: string, tool: ToolInfo, text: string): void {
     this.out(worker, { type: 'message', message: { id, role: 'tool', text, tool } });
   }
+  /**
+   * Rebuilds rows from one finished item of the CLI's saved thread, through the same mapping a
+   * live turn uses. Only for an instance made to read history: it never starts the CLI.
+   */
+  replayItem(item: unknown): void {
+    this.item(item, true);
+  }
   private item(item: any, completed: boolean, worker?: string): void {
     if (item.type === 'plan' && !worker) {
       if (completed) this.emit({ type: 'plan', text: item.text, final: true });
@@ -606,6 +613,7 @@ export class CodexAgent implements Agent {
         id: `run-agent-${id}`,
         title: runAgentApprovalTitle(request),
         detail: request.prompt,
+        origin: 'delegation',
       },
       respond: (allowed) => {
         if (!allowed) {

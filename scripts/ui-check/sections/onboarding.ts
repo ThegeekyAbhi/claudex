@@ -42,7 +42,13 @@ export async function checkOnboarding(ctx: UiCheckContext): Promise<void> {
   await card.waitFor();
   await card.getByText('CLI installed').waitFor();
   await card.getByText('Not installed').waitFor();
-  assert.equal(await card.getByText('npm install -g @openai/codex').isVisible(), false);
+  // The missing CLI's install command is shown inline, with a copy button.
+  await card.getByText('npm install -g @openai/codex').waitFor();
+  assert.equal(await card.getByRole('button', { name: 'Copy install command' }).count(), 1);
+  // Installation is the only step this extension can verify; sign-in is never marked done.
+  const steps = card.getByRole('list', { name: 'Setup steps' }).getByRole('listitem');
+  assert.equal(await steps.nth(0).getAttribute('data-state'), 'done');
+  assert.equal(await steps.nth(1).getAttribute('data-state'), 'current');
   assert.equal(await card.getByText(/signed in/i).count(), 0, 'installed is not signed in');
   await page.screenshot({ path: 'test-results/screenshots/onboarding.png' });
 

@@ -119,9 +119,9 @@ export class ClaudeAgent {
             model: runAgentInput.shape.model,
             effort: runAgentInput.shape.effort,
           },
-          async (args) => {
+          async (args, extra) => {
             const request = parseRunAgent(args);
-            const toolId = this.pendingRunAgent.shift();
+            const toolId = this.takeRunAgentId(extra);
             const result = await delegate(request, (sessionId) => {
               if (toolId) this.emit({ type: 'patch', id: toolId, tool: { workerId: sessionId } });
             });
@@ -143,6 +143,21 @@ export class ClaudeAgent {
         tools: [{ name: RUN_AGENT_TOOL, permission_policy: 'always_ask' as const }],
       },
     };
+  }
+  /**
+   * Which `run_agent` row this call belongs to. The call's own id wins when the CLI passes it;
+   * otherwise the oldest call still waiting, skipping any that were declined or cancelled, since
+   * those never reach the handler and would shift every later pairing.
+   */
+  private takeRunAgentId(extra: unknown): string | undefined {
+    const meta = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta;
+    const own = meta?.['claudecode/toolUseId'];
+    const pending = this.pendingRunAgent.filter((id) => !this.declined.has(id));
+    const id = typeof own === 'string' && pending.includes(own) ? own : pending[0];
+    this.pendingRunAgent = this.pendingRunAgent.filter(
+      (item) => item !== id && pending.includes(item),
+    );
+    return id;
   }
   private async content(text: string, images?: ImageInput[]) {
     if (!images?.length) return text;
@@ -327,7 +342,10 @@ export class ClaudeAgent {
           ...(diffs ? { diffs } : {}),
         },
         respond: (allowed, answers) => {
-          if (!allowed && options.toolUseID) this.declined.add(options.toolUseID);
+          if (!allowed && options.toolUseID) {
+            this.declined.add(options.toolUseID);
+            this.pendingRunAgent = this.pendingRunAgent.filter((id) => id !== options.toolUseID);
+          }
           // Allow in Auto changes the mode for what follows, without waiting for the next turn.
           if (allowed && this.session.mode === 'auto') this.applyMode();
           finish(
@@ -436,6 +454,15 @@ export class ClaudeAgent {
     }
     return worker;
   }
+  /**
+   * Rebuilds rows from one record of the CLI's saved transcript, through the same mapping a live
+   * turn uses. Only for an instance made to read history: it never starts the CLI.
+   */
+  replayRecord(record: unknown): void {
+    const message = record as SDKMessage;
+    if (message.type === 'assistant') this.assistant(message);
+    else if (message.type === 'user') this.user(message);
+  }
   private receive(message: SDKMessage): void {
     if (message.type === 'stream_event') this.stream(message);
     else if (message.type === 'assistant') this.assistant(message);
@@ -537,6 +564,8 @@ export class ClaudeAgent {
           message: { id: message.uuid ?? randomUUID(), role: 'user', text: block.text },
         });
       if (block.type !== 'tool_result') continue;
+      // A finished call no longer waits for its handler, whether it ran, was declined or cancelled.
+      this.pendingRunAgent = this.pendingRunAgent.filter((id) => id !== block.tool_use_id);
       const failed = Boolean(block.is_error);
       const status: ToolInfo['status'] = this.declined.delete(block.tool_use_id)
         ? 'declined'

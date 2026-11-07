@@ -1,9 +1,11 @@
-import type { Session } from '../../../shared/model';
+import { agentKind, type NativeSessionEntry, type Session } from '../../../shared/model';
 
 export type ThreadNode = Pick<Session, 'id' | 'parentId' | 'status' | 'inTerminal'>;
 export type ThreadChildren<T extends ThreadNode> = Map<string, T[]>;
 export interface ThreadViewState {
   runningOnly?: boolean;
+  /** The Chats tab: one profile's threads, or every profile's when unset. */
+  profile?: string;
   /** Parents whose earlier subagents are showing. */
   showEarlier?: Record<string, boolean>;
   collapsed?: Record<string, boolean>;
@@ -59,4 +61,30 @@ export function splitChildren<T extends ThreadNode>(
     (keep ? current : earlier).push(kid);
   }
   return { current, earlier };
+}
+/** A thread belongs to the open tab when it runs on that profile; the All tab shows every one. */
+export function inProfile(
+  item: Pick<Session, 'provider' | 'profileId'>,
+  profile?: string,
+): boolean {
+  return !profile || agentKind(item) === profile;
+}
+/**
+ * Sessions found in a CLI's own history that aren't threads here yet, for the open tab and
+ * search. They can't be running here, so "Running only" hides them.
+ */
+export function nativeRows(
+  entries: NativeSessionEntry[] | undefined,
+  options: { profile?: string; needle: string; runningOnly: boolean; profiles: string[] },
+): NativeSessionEntry[] {
+  if (options.runningOnly) return [];
+  return (entries ?? []).filter(
+    (entry) =>
+      options.profiles.includes(entry.profileId) &&
+      (!options.profile || entry.profileId === options.profile) &&
+      (!options.needle || entry.title.toLowerCase().includes(options.needle)),
+  );
+}
+export function isNativeRow(row: Session | NativeSessionEntry): row is NativeSessionEntry {
+  return 'sessionId' in row && !('messages' in row);
 }

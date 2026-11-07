@@ -25,6 +25,8 @@ const persistedSession = z.object({
   cwd: z.string(),
   workspace: z.string(),
   nativeId: z.string().optional(),
+  nativeSyncedAt: z.number().optional(),
+  origin: z.literal('terminal').optional(),
   parentId: z.string().optional(),
   continuedFrom: z.string().optional(),
   synced: z.record(z.string(), z.string()).optional(),
@@ -89,6 +91,7 @@ const persistedSession = z.object({
       endedAt: z.number().optional(),
       planningGuideVersion: z.string().optional(),
       explainGuideVersion: z.string().optional(),
+      nativeRef: z.string().optional(),
       tool: z
         .object({
           kind: z.enum(['command', 'read', 'edit', 'search', 'web', 'agent', 'skill', 'other']),
@@ -134,9 +137,24 @@ export function restoreSessions(value: unknown): Session[] {
         ? { plan: { ...session.plan, status: 'incomplete' as const } }
         : {}),
       // Nothing that never reported an outcome may keep claiming to run after a restart.
-      messages: session.messages.map((message) => {
-        if (message.tool?.status === 'running')
-          return { ...message, tool: { ...message.tool, status: 'interrupted' as const } };
+      messages: session.messages.flatMap((message) => {
+        if (message.tool?.status === 'running') {
+          const interrupted = {
+            ...message,
+            tool: { ...message.tool, status: 'interrupted' as const },
+          };
+          // A delegation's result was owed to the lead; say plainly that it never arrived.
+          return message.tool.kind === 'agent' && !session.observed
+            ? [
+                interrupted,
+                {
+                  id: `${message.id}-interrupted`,
+                  role: 'notice' as const,
+                  text: 'This delegation was interrupted when the window closed. Its result never reached this thread.',
+                },
+              ]
+            : [interrupted];
+        }
         if (message.image?.status === 'generating')
           return {
             ...message,
@@ -146,7 +164,7 @@ export function restoreSessions(value: unknown): Session[] {
               failure: 'The window closed before this finished.',
             },
           };
-        return message;
+        return [message];
       }),
     };
   });

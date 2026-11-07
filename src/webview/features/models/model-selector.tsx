@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
+import { Fragment, useContext, useEffect, useState } from 'react';
 import {
   Command,
   CommandEmpty,
@@ -61,12 +61,14 @@ function Row({
   agent,
   model,
   label,
+  description,
   checked,
   onChoose,
 }: {
   agent: AgentKind;
   model?: ModelOption;
   label: string;
+  description?: string;
   checked: boolean;
   onChoose: (choice: ModelChoice) => void;
 }) {
@@ -79,7 +81,9 @@ function Row({
     >
       <span className="flex-1 min-w-0 flex flex-col text-[12px] [&_small]:text-[11px] [&_small]:text-muted-foreground">
         {label}
-        <small className="whitespace-normal">{model?.description ?? DEFAULT_DESCRIPTION}</small>
+        <small className="whitespace-normal">
+          {description ?? model?.description ?? DEFAULT_DESCRIPTION}
+        </small>
       </span>
       {checked ? (
         <span className="inline-flex shrink-0 text-agent" role="img" aria-label="Selected">
@@ -125,12 +129,36 @@ function PaneStatus({
     );
   return null;
 }
+/** The tail of a long folder path, which is the part that tells accounts apart. */
+function shortPath(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : path;
+}
+/** What the rail's dot means, in words, for its tooltip. */
+function railStatus(
+  profile: AgentProfile | undefined,
+  entry: AgentCatalog,
+): { tone: 'failed' | 'waiting'; text: string } | undefined {
+  if (profile && !canRun(profile))
+    return {
+      tone: 'waiting',
+      text: profile.problem ?? (profile.status === 'missingCli' ? 'Not installed' : 'Not set up'),
+    };
+  if (entry.status === 'error') return { tone: 'failed', text: 'Could not read this CLI’s models' };
+  return undefined;
+}
 const FOOTER_BUTTON =
   'shrink-0 px-1 py-px rounded-sm text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer';
 function ProfileActions({ profile, onManage }: { profile: AgentProfile; onManage: () => void }) {
   return (
     <div className="flex items-center justify-between gap-2 px-2 py-1 text-[11px] text-faint">
-      <span className="truncate">@{profile.id}</span>
+      <span className="min-w-0 truncate" title={profile.homeDir ?? 'The CLI’s default folder'}>
+        <span className="text-muted-foreground" title="Mention this profile with this handle">
+          @{profile.id}
+        </span>
+        {' · '}
+        {profile.homeDir ? shortPath(profile.homeDir) : 'default folder'}
+      </span>
       <button type="button" className={FOOTER_BUTTON} onClick={onManage}>
         Manage account
       </button>
@@ -197,6 +225,11 @@ export function ModelSelector({
   // A profile that can't run has no models to pick, so only its status shows.
   const groups = searching ? rail.filter(runnable) : [pane];
   const label = modelLabel(catalog, agent, model, active);
+  // The running thread reports the model "Default" resolved to; say so instead of guessing.
+  const defaultDescription = (group: AgentKind) =>
+    group === agent && active
+      ? `Currently ${modelLabel(catalog, agent, undefined, active)}, from the CLI’s settings`
+      : undefined;
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
@@ -236,27 +269,37 @@ export function ModelSelector({
           aria-label="Agents"
           aria-orientation="vertical"
         >
-          {rail.map((item) => (
-            <button
-              type="button"
-              role="tab"
-              tabIndex={0}
-              key={item}
-              aria-selected={!searching && item === pane}
-              data-agent={profileProvider(item)}
-              className="rail-item justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[12px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-agent-tint aria-selected:text-foreground aria-selected:enabled:hover:bg-agent-tint max-[900px]:gap-[5px] max-[900px]:px-[5px]"
-              aria-label={profileLabel(item)}
-              title={findProfile(item)?.problem}
-              onClick={() => switchPane(item)}
-            >
-              <AgentMark agent={item} />
-              <span className={`min-w-0 truncate ${runnable(item) ? '' : 'opacity-50'}`}>
-                {profileLabel(item)}
-              </span>
-              {runnable(item) && catalogFor(catalog, item).status === 'error' ? (
-                <span className="status-dot size-1.5 rounded-full bg-muted-foreground shrink-0 inline-block [&.quiet]:bg-faint [&.quiet]:opacity-50 [&.waiting]:bg-warning [&.failed]:bg-error in-[.rail-item]:ml-auto failed" />
+          {rail.map((item, index) => (
+            <Fragment key={item}>
+              {index > 0 && profileProvider(rail[index - 1]) !== profileProvider(item) ? (
+                <span role="presentation" className="mx-1.5 my-1 h-px bg-subtle" />
               ) : null}
-            </button>
+              <button
+                type="button"
+                role="tab"
+                tabIndex={0}
+                aria-selected={!searching && item === pane}
+                data-agent={profileProvider(item)}
+                className="rail-item justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[12px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-agent-tint aria-selected:text-foreground aria-selected:enabled:hover:bg-agent-tint max-[900px]:gap-[5px] max-[900px]:px-[5px]"
+                aria-label={profileLabel(item)}
+                title={railStatus(findProfile(item), catalogFor(catalog, item))?.text}
+                onClick={() => switchPane(item)}
+              >
+                <AgentMark agent={item} />
+                <span className={`min-w-0 truncate ${runnable(item) ? '' : 'opacity-50'}`}>
+                  {profileLabel(item)}
+                </span>
+                {(() => {
+                  const status = railStatus(findProfile(item), catalogFor(catalog, item));
+                  return status ? (
+                    <span
+                      data-status={status.tone}
+                      className={`status-dot size-1.5 rounded-full shrink-0 inline-block ml-auto ${status.tone === 'failed' ? 'bg-error' : 'bg-warning'}`}
+                    />
+                  ) : null;
+                })()}
+              </button>
+            </Fragment>
           ))}
           <span className="flex-1" />
           <button
@@ -326,6 +369,7 @@ export function ModelSelector({
                   <Row
                     agent={group}
                     label="Default"
+                    description={defaultDescription(group)}
                     checked={selectedKey === rowKey(group)}
                     onChoose={choose}
                   />

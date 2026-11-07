@@ -47,7 +47,13 @@ export class SessionDelegation {
     child.effort = request.effort;
     onStart?.(child.id);
     const finished = new Promise<void>((resolve) => this.waiters.set(child.id, resolve));
-    await this.deps.send(child.id, request.prompt, input);
+    try {
+      await this.deps.send(child.id, request.prompt, input);
+    } catch (error) {
+      // The turn never started, so nothing will settle this wait.
+      this.waiters.delete(child.id);
+      throw error;
+    }
     await finished;
     return {
       sessionId: child.id,
