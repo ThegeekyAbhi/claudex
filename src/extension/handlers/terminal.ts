@@ -101,7 +101,7 @@ export class TerminalHandlers {
         await this.terminalBack(action.id);
       },
       refreshNativeSessions: async () => {
-        await this.context.history.refresh();
+        await this.context.history.refresh({ force: true });
       },
       openNativeSession: async (action, surface) => {
         const session = await this.context.history.open(action.agent, action.sessionId);

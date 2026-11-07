@@ -14,6 +14,8 @@ import { persistableSession, restoreSessions, type Session } from '../../shared/
 interface Dependencies {
   sessions: Session[];
   storage: string;
+  /** Where a failed backup is reported; it never stops the save itself. */
+  log?(text: string): void;
 }
 const BACKUPS_KEPT = 5;
 const BACKUP = /^sessions\.backup-\d{8}\.json$/;
@@ -93,7 +95,9 @@ export class SessionPersistence {
       .catch(() => undefined)
       .then(async () => {
         await mkdir(this.deps.storage, { recursive: true });
-        await this.backup();
+        await this.backup().catch((error) =>
+          this.deps.log?.(`Could not back up saved threads: ${String(error)}`),
+        );
         const temporary = path.join(this.deps.storage, 'sessions.json.tmp');
         await writeFile(temporary, data, { mode: 0o600 });
         await rename(temporary, path.join(this.deps.storage, 'sessions.json'));

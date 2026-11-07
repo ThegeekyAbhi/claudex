@@ -29,8 +29,19 @@ import { useAppState } from './state';
 import { WorkspacePanes } from './workspace-panes';
 
 export function App() {
-  const { host, drafts, compose, tabs, threads, changes, turns, ui, conversation, layout } =
-    useAppState();
+  const {
+    host,
+    drafts,
+    compose,
+    tabs,
+    threads,
+    changes,
+    turns,
+    ui,
+    conversation,
+    layout,
+    revealThreads,
+  } = useAppState();
   const { snapshot } = host;
   const { session, parent, draftKey } = tabs.current;
   const draft = drafts.texts[draftKey] ?? '';
@@ -219,14 +230,7 @@ export function App() {
               <RecentThreads
                 sessions={snapshot.sessions}
                 onSelect={tabs.select}
-                onViewAll={() => {
-                  if (!layout.wide) tabs.history.setOpen(true);
-                  else if (layout.threads.collapsed) layout.threads.toggle();
-                  else
-                    document
-                      .querySelector<HTMLInputElement>('nav[aria-label="Agent sessions"] input')
-                      ?.focus();
-                }}
+                onViewAll={revealThreads}
               />
             </div>
           ) : null}

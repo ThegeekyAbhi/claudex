@@ -1,4 +1,4 @@
-import { useContext, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import {
   INSTALL_HELP,
   noAgentInstalled,
@@ -86,6 +86,7 @@ export function SetupCard({
           <li
             key={step.label}
             data-state={step.state}
+            aria-current={step.state === 'current' ? 'step' : undefined}
             className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-muted-foreground data-[state=current]:text-foreground"
           >
             <span
@@ -100,6 +101,7 @@ export function SetupCard({
               {step.state === 'done' ? <Icon name="check" size={10} /> : index + 1}
             </span>
             <span className="truncate">{step.label}</span>
+            {step.state === 'done' ? <span className="sr-only">(done)</span> : null}
             {index < 2 ? <span className="h-px min-w-3 flex-1 bg-subtle" /> : null}
           </li>
         ))}
@@ -205,16 +207,26 @@ function AgentCard({ row, onOpen }: { row: SetupRow; onOpen: () => void }) {
 }
 
 function CopyCommand({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
   async function copy() {
     try {
       await navigator.clipboard.writeText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setState('copied');
     } catch {
-      // Clipboard can be unavailable; the command stays selectable.
+      // Clipboard can be unavailable; the command stays selectable, so say to copy it by hand.
+      setState('failed');
     }
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setState('idle'), 2000);
   }
+  const copied = state === 'copied';
+  const label = copied
+    ? 'Copied'
+    : state === 'failed'
+      ? 'Couldn’t copy. Select the command and copy it'
+      : 'Copy install command';
   return (
     <div className="flex min-w-0 items-center gap-1 rounded border border-subtle bg-background pl-2">
       <code className="min-w-0 flex-1 truncate select-all text-[11px]" title={command}>
@@ -223,8 +235,8 @@ function CopyCommand({ command }: { command: string }) {
       <button
         type="button"
         className="icon-button shrink-0 p-1 text-muted-foreground"
-        aria-label={copied ? 'Copied' : 'Copy install command'}
-        title={copied ? 'Copied' : 'Copy install command'}
+        aria-label={label}
+        title={label}
         onClick={copy}
       >
         <Icon name={copied ? 'check' : 'copy'} size={12} />

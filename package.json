@@ -33,7 +33,14 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Agent execution and workspace documents require workspace trust."
+      "description": "Agent execution and workspace documents require workspace trust.",
+      "restrictedConfigurations": [
+        "agentWorkspace.codexPath",
+        "agentWorkspace.claudePath",
+        "agentWorkspace.profiles",
+        "agentWorkspace.claud2Path",
+        "agentWorkspace.claud2ConfigDir"
+      ]
     },
     "virtualWorkspaces": false
   },

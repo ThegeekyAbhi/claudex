@@ -28,9 +28,11 @@ export async function checkThreadFilters(ctx: UiCheckContext): Promise<void> {
 /** One tab per account; each shows its threads here and its sessions from the terminal. */
 async function checkAccountTabs(ctx: UiCheckContext): Promise<void> {
   const { page, threads, update, snapshot, sentOf } = ctx;
-  assert.ok(
-    (await sentOf('refreshNativeSessions')).length >= 1,
-    'the list asks what the CLIs keep',
+  // The host lists the CLIs' sessions itself; a folder it doesn't trust must not get an error.
+  assert.equal(
+    (await sentOf('refreshNativeSessions')).length,
+    0,
+    'the list leaves listing to the host',
   );
   const now = Date.now();
   (snapshot as any).nativeSessions = [
@@ -59,6 +61,18 @@ async function checkAccountTabs(ctx: UiCheckContext): Promise<void> {
   await threads.getByRole('button', { name: 'Fix the flaky test, from the terminal' }).waitFor();
   await threads.getByRole('button', { name: 'Sketch the parser, from the terminal' }).waitFor();
 
+  // Arrow keys move between accounts; only the chosen tab is in the Tab order.
+  await tabs.getByRole('tab', { name: 'All' }).focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(
+    await tabs.getByRole('tab', { selected: true }).innerText(),
+    'Claude',
+    'ArrowRight chooses the next account',
+  );
+  await page.keyboard.press('End');
+  assert.equal(await tabs.getByRole('tab', { selected: true }).innerText(), 'Codex');
+  assert.equal(await tabs.locator('[role="tab"][tabindex="0"]').count(), 1);
+  await page.keyboard.press('Home');
   await tabs.getByRole('tab', { name: 'Codex' }).click();
   assert.equal(
     await tabs.getByRole('tab', { name: 'Codex' }).getAttribute('aria-selected'),

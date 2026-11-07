@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { agentKind, type Session, threadTitle } from '../../../shared/model';
 import { AgentMark, Icon } from '../../components/icons';
+import { moveTabFocus } from '../../lib/roving-tabs';
 import { SIGNAL_LABELS, type ThreadSignal } from './tab-state';
 
 export function SignalMark({ signal }: { signal: ThreadSignal }) {
@@ -72,17 +73,6 @@ export function ThreadTabs({
       ?.querySelector('[role="tab"][aria-selected="true"]')
       ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [activeKey, items.length]);
-  function moveFocus(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-    const all = Array.from(strip.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []);
-    const index = all.indexOf(document.activeElement as HTMLElement);
-    if (index < 0) return;
-    event.preventDefault();
-    const step = event.key === 'ArrowRight' ? 1 : -1;
-    const next = all[(index + step + all.length) % all.length];
-    next.focus();
-    next.click();
-  }
   return (
     <div
       ref={strip}
@@ -90,7 +80,7 @@ export function ThreadTabs({
       tabIndex={-1}
       aria-label="Open threads"
       className="flex-1 min-w-0 h-full flex overflow-x-auto [scrollbar-width:none]"
-      onKeyDown={moveFocus}
+      onKeyDown={(event) => moveTabFocus(event)}
     >
       {items.map((item) => {
         const active = item.key === activeKey;

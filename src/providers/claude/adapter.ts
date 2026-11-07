@@ -153,7 +153,10 @@ export class ClaudeAgent {
     const meta = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta;
     const own = meta?.['claudecode/toolUseId'];
     const pending = this.pendingRunAgent.filter((id) => !this.declined.has(id));
-    const id = typeof own === 'string' && pending.includes(own) ? own : pending[0];
+    // The CLI's own id is the only sure match. It isn't documented, so without one the oldest
+    // waiting call is the best match; with one that isn't waiting, no row is claimed at all.
+    const id = typeof own === 'string' ? (pending.includes(own) ? own : undefined) : pending[0];
+    if (!id) return undefined;
     this.pendingRunAgent = this.pendingRunAgent.filter(
       (item) => item !== id && pending.includes(item),
     );

@@ -16,6 +16,7 @@ import { send } from '../../app/bridge';
 import { AgentMark } from '../../components/icons';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '../../components/ui/dialog';
+import { moveTabFocus } from '../../lib/roving-tabs';
 
 /** Every skill each CLI reports. Installing skills belongs to the CLIs, not this panel. */
 export function SkillsPanel({
@@ -60,7 +61,12 @@ export function SkillsPanel({
         className="flex max-h-[80vh] w-[calc(100%-32px)] max-w-[560px] flex-col gap-2 border border-[var(--border-strong)] bg-[var(--surface)] p-3 text-xs shadow-lg"
       >
         <DialogTitle className="text-[13px] font-semibold">Skills</DialogTitle>
-        <div role="tablist" aria-label="Agent" className="flex gap-1">
+        <div
+          role="tablist"
+          aria-label="Agent"
+          className="flex gap-1"
+          onKeyDown={(event) => moveTabFocus(event)}
+        >
           {runnableProfiles()
             .map((profile) => profile.id)
             .map((item) => (
@@ -68,6 +74,7 @@ export function SkillsPanel({
                 key={item}
                 role="tab"
                 aria-selected={item === agent}
+                tabIndex={item === agent ? 0 : -1}
                 variant={item === agent ? 'secondary' : 'ghost'}
                 size="xs"
                 className="cursor-pointer"

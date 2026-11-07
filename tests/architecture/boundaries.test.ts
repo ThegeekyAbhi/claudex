@@ -11,7 +11,7 @@ const forbidden: Record<string, string[]> = {
   webview: ['application', 'infrastructure', 'extension', 'providers'],
   application: ['extension'],
   infrastructure: ['extension'],
-  providers: ['extension'],
+  providers: ['extension', 'application'],
 };
 const builtins = new Set(builtinModules);
 

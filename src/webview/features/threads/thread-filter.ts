@@ -1,4 +1,9 @@
-import { agentKind, type NativeSessionEntry, type Session } from '../../../shared/model';
+import {
+  agentKind,
+  type NativeSessionEntry,
+  type Session,
+  threadTitle,
+} from '../../../shared/model';
 
 export type ThreadNode = Pick<Session, 'id' | 'parentId' | 'status' | 'inTerminal'>;
 export type ThreadChildren<T extends ThreadNode> = Map<string, T[]>;
@@ -69,6 +74,12 @@ export function inProfile(
 ): boolean {
   return !profile || agentKind(item) === profile;
 }
+/** A session from a CLI's own history, shown in the list beside threads. */
+export type NativeRow = NativeSessionEntry & { kind: 'native' };
+/** How a title is compared with what you typed, the same for threads and terminal sessions. */
+export function matchesSearch(title: string, needle: string): boolean {
+  return !needle || threadTitle(title).toLowerCase().includes(needle);
+}
 /**
  * Sessions found in a CLI's own history that aren't threads here yet, for the open tab and
  * search. They can't be running here, so "Running only" hides them.
@@ -76,15 +87,24 @@ export function inProfile(
 export function nativeRows(
   entries: NativeSessionEntry[] | undefined,
   options: { profile?: string; needle: string; runningOnly: boolean; profiles: string[] },
-): NativeSessionEntry[] {
+): NativeRow[] {
   if (options.runningOnly) return [];
-  return (entries ?? []).filter(
-    (entry) =>
-      options.profiles.includes(entry.profileId) &&
-      (!options.profile || entry.profileId === options.profile) &&
-      (!options.needle || entry.title.toLowerCase().includes(options.needle)),
-  );
+  return (entries ?? [])
+    .filter(
+      (entry) =>
+        options.profiles.includes(entry.profileId) &&
+        (!options.profile || entry.profileId === options.profile) &&
+        matchesSearch(entry.title, options.needle),
+    )
+    .map((entry) => ({ ...entry, kind: 'native' as const }));
 }
-export function isNativeRow(row: Session | NativeSessionEntry): row is NativeSessionEntry {
-  return 'sessionId' in row && !('messages' in row);
+export function isNativeRow(row: Session | NativeRow): row is NativeRow {
+  return 'kind' in row && row.kind === 'native';
+}
+/** Older rows shown before "More": up to this many threads, and as many terminal sessions. */
+export function olderShown<T extends Session | NativeRow>(rows: T[], each: number): T[] {
+  let threads = 0;
+  let natives = 0;
+  const end = rows.findIndex((row) => (isNativeRow(row) ? ++natives > each : ++threads > each));
+  return end < 0 ? rows : rows.slice(0, end);
 }

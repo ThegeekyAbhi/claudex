@@ -119,3 +119,42 @@ test('unreadable entries are reported once, on the first read, and never guessed
   mergeNative(session, { messages: [row('a', 10)], skipped: 2 }, { announce: false });
   assert.equal(notices(), before);
 });
+
+test('a thread opened from the terminal reads everything, even after a failed first read', () => {
+  // `open()` sets the cursor to 0 and may then fail to read, leaving a notice behind.
+  const session = thread({
+    origin: 'terminal',
+    nativeSyncedAt: undefined,
+    messages: [{ id: 'unread', role: 'notice', text: 'Couldn’t read' }],
+  });
+  assert.equal(syncCursor(session), 0);
+  const outcome = mergeNative(
+    session,
+    { messages: [row('a', 10, { role: 'user' }), row('b', 20)], skipped: 0 },
+    { announce: false },
+  );
+  assert.equal(outcome.added, 2);
+});
+
+test('records at the cursor time are added once: later items of one Codex turn share its time', () => {
+  const session = thread({ nativeSyncedAt: 0 });
+  mergeNative(session, { messages: [row('a', 50)], skipped: 0 }, { announce: false });
+  assert.equal(session.nativeSyncedAt, 50);
+  const outcome = mergeNative(
+    session,
+    { messages: [row('a', 50), row('b', 50)], skipped: 0 },
+    { announce: false },
+  );
+  assert.equal(outcome.added, 1);
+  assert.deepEqual(
+    session.messages.map((item) => item.text),
+    ['a', 'b'],
+  );
+});
+
+test('the no-time notice is said once even when every record lacks a time', () => {
+  const session = thread({ nativeSyncedAt: 0 });
+  mergeNative(session, { messages: [], skipped: 3 }, { announce: false });
+  mergeNative(session, { messages: [], skipped: 3 }, { announce: false });
+  assert.equal(session.messages.filter((item) => item.role === 'notice').length, 1);
+});

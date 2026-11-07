@@ -299,6 +299,8 @@ export interface NativeSessionEntry {
   title: string;
   /** Milliseconds since the epoch. */
   updatedAt: number;
+  /** When the CLI started it, when the CLI says. */
+  createdAt?: number;
 }
 export interface ChangesResult {
   files: FileDiff[];

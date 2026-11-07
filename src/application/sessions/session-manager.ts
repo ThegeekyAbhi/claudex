@@ -42,7 +42,11 @@ export class Sessions extends EventEmitter {
     richExplanations: () => boolean = () => false,
   ) {
     super();
-    this.persistence = new SessionPersistence({ storage, sessions: this.sessions });
+    this.persistence = new SessionPersistence({
+      storage,
+      sessions: this.sessions,
+      log: (text) => console.warn(text),
+    });
     this.files = new SessionFiles({
       isDisposed: () => this.disposed,
       changed: (full) => this.changed(full),

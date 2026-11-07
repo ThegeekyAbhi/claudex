@@ -129,3 +129,42 @@ test('Codex turns become your messages, replies and command rows; untimed items 
   assert.equal(messages[0].startedAt, 1_700_000_000_000);
   assert.equal(messages[1].startedAt, 1_700_000_001_000);
 });
+
+test('a Codex item the CLI never finished is interrupted; declined stays declined', () => {
+  const turns = [
+    {
+      startedAt: 1_700_000_000,
+      items: [
+        { type: 'commandExecution', id: 'c1', command: 'make', status: 'inProgress' },
+        { type: 'commandExecution', id: 'c2', command: 'rm -rf build', status: 'declined' },
+        { type: 'fileChange', id: 'c3', changes: [], status: 'inProgress' },
+      ],
+    },
+  ];
+  const { messages } = codexTranscript(session('codex'), turns);
+  assert.deepEqual(
+    messages.map((item) => item.tool?.status),
+    ['interrupted', 'declined', 'interrupted'],
+  );
+});
+
+test('Claude bookkeeping is not shown as something you wrote', () => {
+  const user = (uuid: string, second: number, extra: object) => ({
+    type: 'user',
+    uuid,
+    timestamp: at(second),
+    message: { content: 'text' },
+    ...extra,
+  });
+  const { messages } = claudeTranscript(session('claude'), [
+    user('u1', 1, { message: { content: 'Fix the bug' } }),
+    user('u2', 2, { message: { content: '[Request interrupted by user]' } }),
+    user('u3', 3, { isCompactSummary: true, message: { content: 'Summary of earlier work' } }),
+    user('u4', 4, { isVisibleInTranscriptOnly: true }),
+    user('u5', 5, { is_meta: true }),
+  ]);
+  assert.deepEqual(
+    messages.map((item) => item.text),
+    ['Fix the bug'],
+  );
+});

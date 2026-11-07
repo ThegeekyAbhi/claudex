@@ -36,7 +36,10 @@ function userValue(inspected?: {
   globalValue?: string;
   workspaceValue?: string;
 }): string | undefined {
-  return inspected?.workspaceValue ?? inspected?.globalValue;
+  // An untrusted folder's settings must not choose which program runs or where it keeps history.
+  return (
+    (vscode.workspace.isTrusted ? inspected?.workspaceValue : undefined) ?? inspected?.globalValue
+  );
 }
 /**
  * The second Claude account from before profiles. Shell aliases are invisible to VS Code, so it is

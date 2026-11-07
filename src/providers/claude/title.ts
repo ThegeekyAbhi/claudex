@@ -1,22 +1,33 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
 export function claudeConfigDir(env?: Record<string, string>): string {
   return env?.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude');
 }
-async function transcriptText(root: string, id: string, cwd: string): Promise<string | undefined> {
+/** Where Claude Code keeps a session's transcript: its folder for this cwd, or any other. */
+export async function findClaudeTranscript(
+  id: string,
+  cwd: string,
+  env?: Record<string, string>,
+): Promise<string | undefined> {
+  const root = path.join(claudeConfigDir(env), 'projects');
   const name = `${id}.jsonl`;
   const expected = path.join(root, cwd.replace(/[^a-zA-Z0-9]/g, '-'), name);
-  const direct = await readFile(expected, 'utf8').catch(() => undefined);
-  if (direct !== undefined) return direct;
+  if (await exists(expected)) return expected;
   const folders = await readdir(root, { withFileTypes: true }).catch(() => []);
   for (const folder of folders) {
     if (!folder.isDirectory()) continue;
-    const found = await readFile(path.join(root, folder.name, name), 'utf8').catch(() => undefined);
-    if (found !== undefined) return found;
+    const candidate = path.join(root, folder.name, name);
+    if (await exists(candidate)) return candidate;
   }
   return undefined;
+}
+function exists(file: string): Promise<boolean> {
+  return stat(file).then(
+    (info) => info.isFile(),
+    () => false,
+  );
 }
 /**
  * Reads the name Claude Code gave a session from its own transcript. A /rename wins over the
@@ -27,7 +38,8 @@ export async function readClaudeTitle(
   cwd: string,
   env?: Record<string, string>,
 ): Promise<string | undefined> {
-  const content = await transcriptText(path.join(claudeConfigDir(env), 'projects'), id, cwd);
+  const file = await findClaudeTranscript(id, cwd, env);
+  const content = file && (await readFile(file, 'utf8').catch(() => undefined));
   if (!content) return undefined;
   let ai: string | undefined;
   let custom: string | undefined;

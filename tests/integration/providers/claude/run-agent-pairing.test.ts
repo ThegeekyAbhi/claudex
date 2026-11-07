@@ -44,9 +44,10 @@ test("the call's own tool-use id wins over queue order when the CLI passes it", 
   assert.equal(lead.take(), 'call-1');
 });
 
-test('an unknown id in the call context falls back to the oldest waiting call', () => {
+test('an id from the CLI that matches no waiting call claims no row, not a guessed one', () => {
   const lead = agent();
   lead.queued('call-1');
-  assert.equal(lead.take({ _meta: { 'claudecode/toolUseId': 'other' } }), 'call-1');
-  assert.equal(lead.take(), undefined);
+  assert.equal(lead.take({ _meta: { 'claudecode/toolUseId': 'other' } }), undefined);
+  // The waiting call keeps its own row for its own handler.
+  assert.equal(lead.take(), 'call-1');
 });

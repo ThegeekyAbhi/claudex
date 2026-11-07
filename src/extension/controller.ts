@@ -141,6 +141,7 @@ export class WorkspaceController {
       deliverDrafts: this.deliverDrafts.bind(this),
       terminals: this.terminals,
       surfaces: this.surfaces,
+      catchUp: (id) => this.history.catchUp(id),
     });
     this.plansHandlers = new PlansHandlers({
       sessions: this.sessions,

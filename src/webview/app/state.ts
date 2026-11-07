@@ -41,12 +41,25 @@ export function useAppState() {
   const turns = useTurns(host.snapshot, tabs, drafts, compose, ui.setError);
   const layout = useWorkspaceLayout(saved);
   useSavedViewState(savedViewState({ drafts, compose, tabs: tabs.saved, threads, layout }));
-  useWorkspaceEffects(host.snapshot.preferences.appearance, ui.setError, tabs.history.setOpen);
+  const revealThreads = () => layout.threads.reveal(() => tabs.history.setOpen(true));
+  useWorkspaceEffects(host.snapshot.preferences.appearance, ui.setError, revealThreads);
   const conversation = {
     asking: pendingQuestion(tabs.current.session, host.snapshot.sessions),
     linkedTo: compose.choice.parentId
       ? host.snapshot.sessions.find((item) => item.id === compose.choice.parentId)
       : undefined,
   };
-  return { host, drafts, compose, tabs, threads, changes, turns, ui, conversation, layout };
+  return {
+    host,
+    drafts,
+    compose,
+    tabs,
+    threads,
+    changes,
+    turns,
+    ui,
+    conversation,
+    layout,
+    revealThreads,
+  };
 }

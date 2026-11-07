@@ -42,6 +42,8 @@ export interface ViewState {
   seen?: SeenAt;
   /** Pane sizes for the wide layout, keyed by which panes were open. */
   layouts?: Record<string, string>;
+  /** You folded the thread list in the wide layout. */
+  threadsFolded?: boolean;
 }
 interface HostApi {
   postMessage(action: Action): void;

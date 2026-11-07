@@ -10,7 +10,9 @@ export interface SavedViewSources {
   compose: Pick<ReturnType<typeof useComposeChoice>, 'choice' | 'dismissedNudges'>;
   tabs: Omit<ReturnType<typeof useTabs>['saved'], 'accountsActive'> & { accountsActive?: boolean };
   threads: Pick<ReturnType<typeof useThreadView>, 'scroll' | 'threadView' | 'seen'>;
-  layout?: Pick<ReturnType<typeof useWorkspaceLayout>, 'layouts'>;
+  layout?: Pick<ReturnType<typeof useWorkspaceLayout>, 'layouts'> & {
+    threads?: { folded: boolean };
+  };
 }
 
 export function savedViewState({
@@ -33,5 +35,6 @@ export function savedViewState({
     activeDraft: tabs.activeDraft,
     seen: threads.seen,
     ...(layout && Object.keys(layout.layouts).length ? { layouts: layout.layouts } : {}),
+    ...(layout?.threads?.folded ? { threadsFolded: true } : {}),
   };
 }

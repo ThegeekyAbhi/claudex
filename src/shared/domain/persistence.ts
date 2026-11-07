@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RUN_AGENT_TOOL } from './delegation';
 import { agentModeEnum } from './modes';
 import { LEGACY_SECOND_CLAUDE, PROFILE_ID } from './profiles';
 import { attachmentSchema, IMAGE_FILE, type Session } from './session';
@@ -121,6 +122,8 @@ const persistedSession = z.object({
   updatedAt: z.number(),
 });
 export const savedState = z.object({ version: z.literal(1), sessions: z.array(persistedSession) });
+/** Delegations Claudex runs: one you started, or one the agent asked for through its tool. */
+const OUR_DELEGATIONS = ['delegate', RUN_AGENT_TOOL];
 export function restoreSessions(value: unknown): Session[] {
   return savedState.parse(value).sessions.map(({ claudeCommand, ...session }) => {
     const unfinished = ['running', 'waiting'].includes(session.status);
@@ -133,6 +136,10 @@ export function restoreSessions(value: unknown): Session[] {
       ...session,
       ...(profileId ? { profileId } : {}),
       status: unfinished ? 'interrupted' : session.status,
+      // What the closed window last saw of the turn was its own; anything later is the CLI's news.
+      ...(unfinished && session.nativeId
+        ? { nativeSyncedAt: Math.max(session.nativeSyncedAt ?? 0, session.updatedAt) }
+        : {}),
       ...(session.plan?.status === 'drafting'
         ? { plan: { ...session.plan, status: 'incomplete' as const } }
         : {}),
@@ -144,7 +151,7 @@ export function restoreSessions(value: unknown): Session[] {
             tool: { ...message.tool, status: 'interrupted' as const },
           };
           // A delegation's result was owed to the lead; say plainly that it never arrived.
-          return message.tool.kind === 'agent' && !session.observed
+          return OUR_DELEGATIONS.includes(message.tool.name) && !session.observed
             ? [
                 interrupted,
                 {

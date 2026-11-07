@@ -57,11 +57,13 @@ export function WorkspacePanes({
     // The group registers a new pane during its own effects; size it on the next frame.
     const frame = requestAnimationFrame(() => {
       try {
-        if (saved.defaultLayout) group.current?.setLayout(saved.defaultLayout);
-        else {
-          if (sideKind && sideId) sidePanel.current?.resize(SIDE_DEFAULT[sideKind] ?? '280px');
-          layout.threads.ref.current?.resize(THREADS_DEFAULT);
-        }
+        layout.threads.arrange(() => {
+          if (saved.defaultLayout) group.current?.setLayout(saved.defaultLayout);
+          else {
+            if (sideKind && sideId) sidePanel.current?.resize(SIDE_DEFAULT[sideKind] ?? '280px');
+            layout.threads.ref.current?.resize(THREADS_DEFAULT);
+          }
+        });
       } catch {
         // A pane that is already gone keeps the library's own sizing.
       }
@@ -115,7 +117,7 @@ export function WorkspacePanes({
               collapsible
               collapsedSize={0}
               groupResizeBehavior="preserve-pixel-size"
-              onResize={(size) => layout.threads.setCollapsed(size.inPixels < 1)}
+              onResize={(size) => layout.threads.onResize(size.inPixels)}
               // Folded away, its buttons must not stay reachable by Tab.
               inert={layout.threads.collapsed}
             >

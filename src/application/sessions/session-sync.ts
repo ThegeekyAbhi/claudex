@@ -16,10 +16,12 @@ export interface SyncOutcome {
 
 /**
  * Where to read from. A thread saved by a Claudex without this field has no record of what it last
- * matched; its last change is the safe stand-in, so nothing it already shows is added twice.
+ * matched; its last change is the safe stand-in, so nothing it already shows is added twice. A
+ * thread opened from the terminal starts with the CLI's whole history.
  */
 export function syncCursor(session: Session): number {
   if (session.nativeSyncedAt !== undefined) return session.nativeSyncedAt;
+  if (session.origin === 'terminal') return 0;
   return session.messages.length ? session.updatedAt : 0;
 }
 
@@ -52,7 +54,8 @@ export function mergeNative(
       continue;
     }
     if (existing || (row.nativeRef && refs.has(row.nativeRef))) continue;
-    if ((row.startedAt ?? 0) <= cursor) continue;
+    // Equal times are kept: a record already here is matched by its reference above.
+    if ((row.startedAt ?? 0) < cursor) continue;
     fresh.push(row);
   }
   const tools = fresh.filter((message) => message.role === 'tool').length;
@@ -69,10 +72,11 @@ export function mergeNative(
     });
   }
   session.messages.push(...fresh);
-  // Said once, on the first read: the same old entries stay unreadable on every later one.
-  if (rows.skipped && !cursor)
+  // Said once: the same old entries stay unreadable on every later read.
+  const skippedId = `${session.id}-native-skipped`;
+  if (rows.skipped && !session.messages.some((message) => message.id === skippedId))
     session.messages.push({
-      id: randomUUID(),
+      id: skippedId,
       role: 'notice',
       text: `${rows.skipped} entr${rows.skipped === 1 ? 'y' : 'ies'} in the CLI’s history had no time recorded, so ${rows.skipped === 1 ? 'it isn’t' : 'they aren’t'} shown here. The CLI still has ${rows.skipped === 1 ? 'it' : 'them'}.`,
     });

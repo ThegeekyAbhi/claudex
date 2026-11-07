@@ -10,9 +10,9 @@ export interface NativeTranscript {
   /** Records that couldn't be placed in time, so they were left out rather than guessed. */
   skipped: number;
 }
-/** Markup the CLI records as a user turn that you didn't write. */
+/** What the CLI records as a user turn that you didn't write. */
 const NOT_YOURS =
-  /^<(?:command-|local-command-|system-reminder|user-prompt-submit-hook|bash-(?:input|stdout|stderr))/;
+  /^(?:<(?:command-|local-command-|system-reminder|user-prompt-submit-hook|bash-(?:input|stdout|stderr))|\[Request interrupted)/;
 
 function scratch(session: Session): Session {
   return { ...session, messages: [], status: 'idle' };
@@ -66,7 +66,9 @@ export function claudeTranscript(session: Session, records: unknown[]): NativeTr
   let skipped = 0;
   for (const raw of records as any[]) {
     // A subagent's own steps belong to its worker, not to this thread.
-    if (!raw || raw.parent_tool_use_id || raw.isMeta) continue;
+    // Nor do the summary that replaces compacted history, or records only the CLI's own view shows.
+    if (!raw || raw.parent_tool_use_id || raw.isMeta || raw.is_meta) continue;
+    if (raw.isCompactSummary || raw.isVisibleInTranscriptOnly) continue;
     if (raw.type !== 'user' && raw.type !== 'assistant') continue;
     const at = Date.parse(raw.timestamp);
     const ref = typeof raw.uuid === 'string' ? raw.uuid : undefined;

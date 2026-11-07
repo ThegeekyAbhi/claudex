@@ -53,6 +53,8 @@ export interface ThreadsHandlersContext {
   deliverDrafts(): Promise<void>;
   terminals: Map<string, { terminal: vscode.Terminal; openedAt: number }>;
   surfaces: Iterable<Surface>;
+  /** Brings in turns run in a terminal since the thread last matched the CLI's history. */
+  catchUp(id: string): Promise<void>;
 }
 
 export class ThreadsHandlers {
@@ -261,6 +263,8 @@ export class ThreadsHandlers {
         if (this.context.terminals.has(action.id))
           throw new Error('Close this session’s native terminal before resuming rich chat.');
         this.context.requireAgent(agentKind(target));
+        // A terminal's turns come first, or the turn about to run would move past them unseen.
+        await this.context.catchUp(action.id);
         if (target.thinking && target.thinking !== 'default')
           this.context.setThinking(target, target.thinking);
         const input = await this.input(

@@ -49,65 +49,14 @@ export function terminalArgs(
       }
     : { args };
 }
-export interface TerminalHistory {
-  messages: { role: 'user' | 'assistant'; text: string }[];
-  tools: number;
-}
-function add(history: TerminalHistory, role: 'user' | 'assistant', text: string): void {
-  const last = history.messages.at(-1);
-  // The CLI records each block of one reply on its own.
-  if (role === 'assistant' && last?.role === 'assistant') last.text += `\n\n${text}`;
-  else history.messages.push({ role, text });
-}
-/** What the CLI recorded at or after `since`. Unknown timing is an error, never a guess. */
-export function claudeHistorySince(records: unknown[], since: number): TerminalHistory {
-  const history: TerminalHistory = { messages: [], tools: 0 };
-  for (const raw of records as any[]) {
-    if (raw.parent_tool_use_id || (raw.type !== 'user' && raw.type !== 'assistant')) continue;
-    const at = Date.parse(raw.timestamp);
-    if (Number.isNaN(at)) throw new Error('Claude Code did not say when a message was sent.');
-    if (at < since) continue;
-    const content = raw.message?.content;
-    const blocks: any[] =
-      typeof content === 'string' ? [{ type: 'text', text: content }] : (content ?? []);
-    const text = blocks
-      .filter((block) => block.type === 'text')
-      .map((block) => block.text as string)
-      .join('\n\n')
-      .trim();
-    history.tools += blocks.filter((block) => block.type === 'tool_use').length;
-    // Slash commands are recorded as markup, and aren't something you wrote.
-    if (text && !/^<(?:local-)?command-/.test(text)) add(history, raw.type, text);
-  }
-  return history;
-}
-/** Turns as `thread/turns/list` returns them with `itemsView: 'full'`, oldest first. */
-export function codexHistorySince(turns: unknown[], since: number): TerminalHistory {
-  const history: TerminalHistory = { messages: [], tools: 0 };
-  for (const turn of turns as any[])
-    for (const item of turn.items ?? []) {
-      const at = item.startedAtMs ?? (turn.startedAt ? turn.startedAt * 1000 : undefined);
-      if (typeof at !== 'number') throw new Error('Codex did not say when a message was sent.');
-      if (at < since) continue;
-      if (item.type === 'userMessage') {
-        const text = (item.content ?? [])
-          .filter((part: any) => part.type === 'text')
-          .map((part: any) => part.text as string)
-          .join('\n')
-          .trim();
-        if (text) add(history, 'user', text);
-      } else if (item.type === 'agentMessage') {
-        if (item.text?.trim()) add(history, 'assistant', item.text.trim());
-      } else if (item.type !== 'reasoning') history.tools += 1;
-    }
-  return history;
-}
 const READ_SCRIPT = `
 const [sdk, id, dir] = process.argv.slice(1);
 const { getSessionMessages } = await import(sdk);
 const records = await getSessionMessages(id, { dir });
-process.stdout.write(JSON.stringify(records.map(({ type, uuid, isMeta, timestamp, parent_tool_use_id, message }) =>
-  ({ type, uuid, isMeta, timestamp, parent_tool_use_id,
+process.stdout.write(JSON.stringify(records.map(({ type, uuid, isMeta, is_meta, isCompactSummary,
+  isVisibleInTranscriptOnly, timestamp, parent_tool_use_id, message }) =>
+  ({ type, uuid, isMeta, is_meta, isCompactSummary, isVisibleInTranscriptOnly, timestamp,
+     parent_tool_use_id,
      message: { id: message?.id, model: message?.model, content: message?.content } }))));
 `;
 const LIST_SCRIPT = `
@@ -231,20 +180,7 @@ export async function readCodexTurns(
   since: number,
   env?: Record<string, string>,
 ): Promise<unknown[]> {
-  const rpc = new JsonRpc(
-    executable,
-    ['app-server', '--listen', 'stdio://'],
-    cwd,
-    () => {},
-    () => {},
-    env,
-  );
-  try {
-    await rpc.request('initialize', {
-      clientInfo: { name: 'agent_workspace', title: 'Agent Workspace', version: '0.6.0' },
-      capabilities: { experimentalApi: true },
-    });
-    rpc.write({ method: 'initialized' });
+  return codexRpc(executable, cwd, env, async (rpc) => {
     const turns: any[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -261,9 +197,7 @@ export async function readCodexTurns(
       if (!cursor || (typeof oldest === 'number' && oldest * 1000 < since)) break;
     }
     return turns.reverse();
-  } finally {
-    rpc.dispose();
-  }
+  });
 }
 
 async function codexRpc<T>(

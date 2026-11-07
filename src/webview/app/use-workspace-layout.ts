@@ -48,7 +48,18 @@ export function useWorkspaceLayout(saved: ViewState | undefined) {
     [],
   );
   const threadsPanel = useRef<PanelImperativeHandle | null>(null);
+  /** Whether the list shows as folded right now. */
   const [threadsCollapsed, setThreadsCollapsed] = useState(false);
+  /** Whether you folded it. Kept across reloads and across panes opening and closing. */
+  const [threadsFolded, setThreadsFolded] = useState(() => saved?.threadsFolded === true);
+  const folded = useRef(threadsFolded);
+  folded.current = threadsFolded;
+  /** While panes are being sized by the app rather than by you, sizes don't change your choice. */
+  const arranging = useRef(true);
+  const setFolded = (value: boolean) => {
+    folded.current = value;
+    setThreadsFolded(value);
+  };
   return {
     wide,
     layouts,
@@ -56,12 +67,44 @@ export function useWorkspaceLayout(saved: ViewState | undefined) {
     threads: {
       ref: threadsPanel,
       collapsed: threadsCollapsed,
-      setCollapsed: setThreadsCollapsed,
+      folded: threadsFolded,
+      onResize(inPixels: number) {
+        setThreadsCollapsed(inPixels < 1);
+        if (!arranging.current) setFolded(inPixels < 1);
+      },
+      /** Sizing done by the app, after which the list is folded again if you folded it. */
+      arrange(apply: () => void) {
+        arranging.current = true;
+        try {
+          apply();
+          if (folded.current) threadsPanel.current?.collapse();
+        } finally {
+          requestAnimationFrame(() => {
+            arranging.current = false;
+          });
+        }
+      },
       toggle() {
         const panel = threadsPanel.current;
         if (!panel) return;
-        if (panel.isCollapsed()) panel.expand();
-        else panel.collapse();
+        const fold = !panel.isCollapsed();
+        setFolded(fold);
+        if (fold) panel.collapse();
+        else panel.expand();
+      },
+      /**
+       * Shows the thread list and puts the cursor in its search: the overlay when narrow, the
+       * unfolded column when wide. A folded list can't take focus until it has opened.
+       */
+      reveal(openOverlay: () => void) {
+        if (!wide) openOverlay();
+        else if (threadsPanel.current?.isCollapsed()) {
+          setFolded(false);
+          threadsPanel.current.expand();
+        }
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => document.getElementById('thread-search')?.focus()),
+        );
       },
     },
   };

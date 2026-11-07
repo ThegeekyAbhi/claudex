@@ -206,3 +206,48 @@ test('a delegation cut off by a reload is marked interrupted, with a notice that
   assert.equal(restored.messages[1].role, 'notice');
   assert.match(restored.messages[1].text, /delegation was interrupted/);
 });
+
+test('a failed backup is reported and never stops the save', async () => {
+  const storage = await mkdtemp(path.join(tmpdir(), 'aw-backup-fail-'));
+  const logged: string[] = [];
+  const persistence = new SessionPersistence({
+    storage,
+    sessions: [session()],
+    log: (text) => logged.push(text),
+  });
+  persistence.backup = async () => {
+    throw new Error('disk full');
+  };
+  await persistence.flush();
+  const saved = JSON.parse(await readFile(path.join(storage, 'sessions.json'), 'utf8'));
+  assert.equal(saved.sessions.length, 1);
+  assert.match(logged.join('\n'), /disk full/);
+});
+
+test('a reload keeps no "interrupted delegation" notice for the CLI’s own subagents', () => {
+  const [restored] = restoreSessions({
+    version: 1,
+    sessions: [
+      {
+        ...session(),
+        status: 'running',
+        nativeId: 'native',
+        updatedAt: 500,
+        messages: [
+          {
+            id: 'task-1',
+            role: 'tool',
+            text: '',
+            tool: { kind: 'agent', name: 'Task', title: 'Explore', status: 'running' },
+          },
+        ],
+      },
+    ],
+  });
+  assert.deepEqual(
+    restored.messages.map((item) => [item.role, item.tool?.status]),
+    [['tool', 'interrupted']],
+  );
+  // What the closed window saw was its own turn; the CLI's later records are news.
+  assert.equal(restored.nativeSyncedAt, 500);
+});

@@ -3,12 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {
-  claudeHistorySince,
-  codexHistorySince,
-  readClaudeRecords,
-  terminalArgs,
-} from '../../../src/providers/terminal';
+import { readClaudeRecords, terminalArgs } from '../../../src/providers/terminal';
 import { AGENT_MODES } from '../../../src/shared/model';
 
 const base = { nativeId: 'abc', nativeSettings: { approvalPolicy: 'on-request' } };
@@ -58,76 +53,6 @@ test('no mode ever opens a terminal with a bypass', () => {
       const text = terminalArgs({ ...base, provider, mode }).args.join(' ');
       assert.doesNotMatch(text, /bypass|dangerously|danger-full|yolo/);
     }
-});
-
-test('Claude history keeps only what came after the handoff, without subagents or markup', () => {
-  const at = (ms: number) => new Date(ms).toISOString();
-  const history = claudeHistorySince(
-    [
-      { type: 'user', timestamp: at(100), message: { content: 'before' } },
-      { type: 'user', timestamp: at(200), message: { content: 'from the terminal' } },
-      {
-        type: 'user',
-        timestamp: at(201),
-        message: { content: '<command-name>/clear</command-name>' },
-      },
-      {
-        type: 'assistant',
-        timestamp: at(210),
-        message: { content: [{ type: 'thinking' }, { type: 'text', text: 'Part one' }] },
-      },
-      {
-        type: 'assistant',
-        timestamp: at(211),
-        message: { content: [{ type: 'text', text: 'Part two' }, { type: 'tool_use' }] },
-      },
-      {
-        type: 'assistant',
-        timestamp: at(212),
-        parent_tool_use_id: 'sub',
-        message: { content: [{ type: 'text', text: 'a subagent' }] },
-      },
-      { type: 'user', timestamp: at(220), message: { content: [{ type: 'tool_result' }] } },
-    ],
-    150,
-  );
-  assert.deepEqual(history, {
-    messages: [
-      { role: 'user', text: 'from the terminal' },
-      { role: 'assistant', text: 'Part one\n\nPart two' },
-    ],
-    tools: 1,
-  });
-});
-
-test('history with no timing is an error, never a guess', () => {
-  assert.throws(() => claudeHistorySince([{ type: 'user', message: { content: 'x' } }], 0), /when/);
-  assert.throws(() => codexHistorySince([{ items: [{ type: 'userMessage' }] }], 0), /when/);
-});
-
-test('Codex history keeps only what came after the handoff', () => {
-  const history = codexHistorySince(
-    [
-      { startedAt: 1, items: [{ type: 'userMessage', startedAtMs: 1000, content: [] }] },
-      {
-        startedAt: 3,
-        items: [
-          { type: 'userMessage', startedAtMs: 3000, content: [{ type: 'text', text: 'hello' }] },
-          { type: 'reasoning', startedAtMs: 3100 },
-          { type: 'commandExecution', startedAtMs: 3200 },
-          { type: 'agentMessage', startedAtMs: 3300, text: 'hi' },
-        ],
-      },
-    ],
-    2000,
-  );
-  assert.deepEqual(history, {
-    messages: [
-      { role: 'user', text: 'hello' },
-      { role: 'assistant', text: 'hi' },
-    ],
-    tools: 1,
-  });
 });
 
 test('the Claude read uses its own process, so a second account stays contained', async () => {

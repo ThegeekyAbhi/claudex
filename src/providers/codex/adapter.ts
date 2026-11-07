@@ -383,11 +383,12 @@ export class CodexAgent implements Agent {
     this.out(worker, { type: 'message', message: { id, role: 'tool', text, tool } });
   }
   /**
-   * Rebuilds rows from one finished item of the CLI's saved thread, through the same mapping a
-   * live turn uses. Only for an instance made to read history: it never starts the CLI.
+   * Rebuilds rows from one item of the CLI's saved thread, through the same mapping a live turn
+   * uses. An item the CLI never finished stays unfinished. Only for an instance made to read
+   * history: it never starts the CLI.
    */
   replayItem(item: unknown): void {
-    this.item(item, true);
+    this.item(item, (item as { status?: unknown } | null)?.status !== 'inProgress');
   }
   private item(item: any, completed: boolean, worker?: string): void {
     if (item.type === 'plan' && !worker) {

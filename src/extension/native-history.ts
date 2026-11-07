@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import * as vscode from 'vscode';
 import type { Sessions } from '../application/sessions/session-manager';
@@ -7,6 +8,7 @@ import {
   codexTranscript,
   type NativeTranscript,
 } from '../providers/history/transcript';
+import { TranscriptClock } from '../providers/history/transcript-files';
 import {
   listClaudeSessions,
   listCodexThreads,
@@ -27,6 +29,10 @@ import { launcherFor, legacyHistoryDir } from './launcher';
 const LIST_LIMIT = 40;
 /** Re-reading a transcript on every click would start a process each time. */
 const RECHECK_MS = 15_000;
+/** Listing starts a process per account, so switching windows back and forth reuses the last. */
+const RELIST_MS = 60_000;
+/** How long a send waits for the terminal's newest turns before going ahead without them. */
+const CATCH_UP_MS = 5_000;
 
 export interface NativeHistoryContext {
   sessions: Pick<Sessions, 'sessions' | 'get' | 'create' | 'changed'>;
@@ -46,6 +52,10 @@ export class NativeHistory {
   private inFlight = new Map<string, Promise<SyncOutcome | undefined>>();
   private checkedAt = new Map<string, number>();
   private listing?: Promise<void>;
+  private listedAt = 0;
+  private clock = new TranscriptClock();
+  /** The transcript's file time when it was last read in full, per thread. */
+  private readAt = new Map<string, number>();
   constructor(private context: NativeHistoryContext) {}
 
   /** Found sessions no thread here is linked to yet, newest first. */
@@ -67,6 +77,13 @@ export class NativeHistory {
     // A claud2 wrapper sets its folder itself, so the old setting is the only other place to look.
     const legacy = profile && legacyHistoryDir(profile);
     return launcher.env ?? (legacy ? { CLAUDE_CONFIG_DIR: legacy } : {});
+  }
+  private env(
+    session: Pick<Session, 'provider' | 'profileId'>,
+  ): Record<string, string> | undefined {
+    return session.provider === 'codex'
+      ? launcherFor('codex', session.profileId).env
+      : this.claudeEnv(session.profileId);
   }
   /** The CLI's whole transcript for this thread, as rows. */
   async read(session: Session): Promise<NativeTranscript> {
@@ -99,7 +116,12 @@ export class NativeHistory {
     options: { force?: boolean; announce?: boolean } = {},
   ): Promise<SyncOutcome | undefined> {
     const running = this.inFlight.get(id);
-    if (running) return running;
+    // A forced read must see what was written after the one already going had started.
+    if (running)
+      return options.force
+        ? running.catch(() => undefined).then(() => this.sync(id, options))
+        : running;
+    if (!vscode.workspace.isTrusted) return Promise.resolve(undefined);
     const session = this.context.sessions.sessions.find((item) => item.id === id);
     if (!session?.nativeId || session.observed) return Promise.resolve(undefined);
     if (session.status === 'running' || session.status === 'waiting')
@@ -110,7 +132,9 @@ export class NativeHistory {
     this.checkedAt.set(id, Date.now());
     const work = (async () => {
       try {
+        const modified = await this.modifiedAt(session);
         const rows = await this.read(session);
+        if (modified !== undefined) this.readAt.set(id, modified);
         // A turn may have started here while the CLI's history was being read.
         if (session.status === 'running' || session.status === 'waiting') return undefined;
         const outcome = mergeNative(session, rows, {
@@ -125,11 +149,49 @@ export class NativeHistory {
     this.inFlight.set(id, work);
     return work;
   }
+  private modifiedAt(session: Session): Promise<number | undefined> {
+    if (!session.nativeId) return Promise.resolve(undefined);
+    return this.clock
+      .modifiedAt(session.provider, session.nativeId, session.cwd, this.env(session))
+      .catch(() => undefined);
+  }
+  /**
+   * Before a message is sent here, brings in any turn the terminal ran since this thread last
+   * matched it. Otherwise the turn about to run would move past it and it would never show.
+   * Reads only when the transcript's file changed, and gives up after a few seconds, saying so.
+   */
+  async catchUp(id: string): Promise<void> {
+    const session = this.context.sessions.sessions.find((item) => item.id === id);
+    if (!session?.nativeId || session.observed || !vscode.workspace.isTrusted) return;
+    const modified = await this.modifiedAt(session);
+    const seen = Math.max(syncCursor(session), this.readAt.get(id) ?? 0);
+    if (modified !== undefined && modified <= seen) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>((resolve) => {
+      timer = setTimeout(() => resolve('late'), CATCH_UP_MS);
+    });
+    try {
+      const result = await Promise.race([this.sync(id, { force: true, announce: true }), late]);
+      if (result !== 'late') return;
+    } catch (error) {
+      this.context.output.appendLine(`History: ${String(error)}`);
+    } finally {
+      clearTimeout(timer);
+    }
+    session.messages.push({
+      id: randomUUID(),
+      role: 'notice',
+      text: 'Couldn’t check the CLI’s history for turns run in a terminal before sending. Any made since the last check may not show here; the CLI still has them.',
+    });
+    this.context.sessions.changed(true);
+  }
   /** Looks for each profile's sessions in this folder. A failing profile hides only its own. */
-  refresh(): Promise<void> {
+  refresh(options: { force?: boolean } = {}): Promise<void> {
     if (this.listing) return this.listing;
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!cwd || !vscode.workspace.isTrusted) return Promise.resolve();
+    if (!options.force && Date.now() - this.listedAt < RELIST_MS) return Promise.resolve();
+    this.listedAt = Date.now();
     this.listing = (async () => {
       const results = await Promise.all(
         runnableProfiles().map(async (profile) => {
@@ -184,8 +246,10 @@ export class NativeHistory {
     );
     session.nativeId = sessionId;
     session.origin = 'terminal';
+    // Everything the CLI has is new here, even if this first read fails and the next one runs.
+    session.nativeSyncedAt = 0;
     session.titleSource = 'provider';
-    session.createdAt = entry.updatedAt;
+    session.createdAt = entry.createdAt ?? entry.updatedAt;
     session.updatedAt = entry.updatedAt;
     try {
       await this.sync(session.id, { force: true, announce: false });
@@ -202,5 +266,10 @@ export class NativeHistory {
   }
 }
 function pick(info: NativeSessionInfo): Omit<NativeSessionEntry, 'profileId'> {
-  return { sessionId: info.sessionId, title: info.title, updatedAt: info.updatedAt };
+  return {
+    sessionId: info.sessionId,
+    title: info.title,
+    updatedAt: info.updatedAt,
+    ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
+  };
 }

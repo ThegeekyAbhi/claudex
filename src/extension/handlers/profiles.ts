@@ -155,7 +155,7 @@ export class ProfilesHandlers {
   async writeProfiles(edit: (list: ProfileSetting[]) => ProfileSetting[]): Promise<void> {
     const config = vscode.workspace.getConfiguration('agentWorkspace');
     const inspected = config.inspect<ProfileSetting[]>('profiles');
-    const inWorkspace = Array.isArray(inspected?.workspaceValue);
+    const inWorkspace = vscode.workspace.isTrusted && Array.isArray(inspected?.workspaceValue);
     const current = (inWorkspace ? inspected?.workspaceValue : inspected?.globalValue) ?? [];
     await config.update(
       'profiles',

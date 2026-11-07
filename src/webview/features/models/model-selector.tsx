@@ -22,6 +22,7 @@ import {
   profileProvider,
 } from '../../../shared/model';
 import { AgentMark, Icon } from '../../components/icons';
+import { moveTabFocus } from '../../lib/roving-tabs';
 import { AccountsNavigation } from '../accounts/navigation';
 
 export function effortLabel(effort: string): string {
@@ -225,9 +226,10 @@ export function ModelSelector({
   // A profile that can't run has no models to pick, so only its status shows.
   const groups = searching ? rail.filter(runnable) : [pane];
   const label = modelLabel(catalog, agent, model, active);
-  // The running thread reports the model "Default" resolved to; say so instead of guessing.
+  // The running thread reports the model "Default" resolved to; say so instead of guessing. With a
+  // model picked, the one running is that pick, not what Default would choose.
   const defaultDescription = (group: AgentKind) =>
-    group === agent && active
+    group === agent && active && !model
       ? `Currently ${modelLabel(catalog, agent, undefined, active)}, from the CLI’s settings`
       : undefined;
   return (
@@ -263,44 +265,54 @@ export function ModelSelector({
           onClosed();
         }}
       >
-        <div
-          className="flex flex-col gap-px p-[5px] border-r border-subtle"
-          role="tablist"
-          aria-label="Agents"
-          aria-orientation="vertical"
-        >
-          {rail.map((item, index) => (
-            <Fragment key={item}>
-              {index > 0 && profileProvider(rail[index - 1]) !== profileProvider(item) ? (
-                <span role="presentation" className="mx-1.5 my-1 h-px bg-subtle" />
-              ) : null}
-              <button
-                type="button"
-                role="tab"
-                tabIndex={0}
-                aria-selected={!searching && item === pane}
-                data-agent={profileProvider(item)}
-                className="rail-item justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[12px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-agent-tint aria-selected:text-foreground aria-selected:enabled:hover:bg-agent-tint max-[900px]:gap-[5px] max-[900px]:px-[5px]"
-                aria-label={profileLabel(item)}
-                title={railStatus(findProfile(item), catalogFor(catalog, item))?.text}
-                onClick={() => switchPane(item)}
-              >
-                <AgentMark agent={item} />
-                <span className={`min-w-0 truncate ${runnable(item) ? '' : 'opacity-50'}`}>
-                  {profileLabel(item)}
-                </span>
-                {(() => {
-                  const status = railStatus(findProfile(item), catalogFor(catalog, item));
-                  return status ? (
-                    <span
-                      data-status={status.tone}
-                      className={`status-dot size-1.5 rounded-full shrink-0 inline-block ml-auto ${status.tone === 'failed' ? 'bg-error' : 'bg-warning'}`}
-                    />
-                  ) : null;
-                })()}
-              </button>
-            </Fragment>
-          ))}
+        <div className="flex flex-col gap-px p-[5px] border-r border-subtle">
+          <div
+            className="flex flex-col gap-px"
+            role="tablist"
+            aria-label="Agents"
+            aria-orientation="vertical"
+            onKeyDown={(event) => moveTabFocus(event, 'vertical')}
+          >
+            {rail.map((item, index) => {
+              const status = railStatus(findProfile(item), catalogFor(catalog, item));
+              const statusId = `rail-status-${item}`;
+              return (
+                <Fragment key={item}>
+                  {index > 0 && profileProvider(rail[index - 1]) !== profileProvider(item) ? (
+                    <span role="presentation" className="mx-1.5 my-1 h-px bg-subtle" />
+                  ) : null}
+                  <button
+                    type="button"
+                    role="tab"
+                    tabIndex={item === pane ? 0 : -1}
+                    aria-selected={!searching && item === pane}
+                    data-agent={profileProvider(item)}
+                    className="rail-item justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[12px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-agent-tint aria-selected:text-foreground aria-selected:enabled:hover:bg-agent-tint max-[900px]:gap-[5px] max-[900px]:px-[5px]"
+                    aria-label={profileLabel(item)}
+                    aria-describedby={status ? statusId : undefined}
+                    title={status?.text}
+                    onClick={() => switchPane(item)}
+                  >
+                    <AgentMark agent={item} />
+                    <span className={`min-w-0 truncate ${runnable(item) ? '' : 'opacity-50'}`}>
+                      {profileLabel(item)}
+                    </span>
+                    {status ? (
+                      <>
+                        <span
+                          data-status={status.tone}
+                          className={`status-dot size-1.5 rounded-full shrink-0 inline-block ml-auto ${status.tone === 'failed' ? 'bg-error' : 'bg-warning'}`}
+                        />
+                        <span id={statusId} className="sr-only">
+                          {status.text}
+                        </span>
+                      </>
+                    ) : null}
+                  </button>
+                </Fragment>
+              );
+            })}
+          </div>
           <span className="flex-1" />
           <button
             type="button"
@@ -312,7 +324,7 @@ export function ModelSelector({
             }}
           >
             <Icon name="plus" size={12} />
-            <span className="min-w-0 truncate">Add profile</span>
+            <span className="min-w-0 truncate">Add account</span>
           </button>
         </div>
         <Command

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   agentKind,
   agentLabel,
@@ -12,11 +12,15 @@ import {
 import { send } from '../../app/bridge';
 import { AgentMark, Icon } from '../../components/icons';
 import { Hint, OverflowMenu } from '../../components/menus';
+import { moveTabFocus } from '../../lib/roving-tabs';
 import { needsYou, type SeenAt, SIGNAL_LABELS, threadSignal } from './tab-state';
 import {
   inProfile,
   isNativeRow,
+  matchesSearch,
+  type NativeRow,
   nativeRows,
+  olderShown,
   rootVisible,
   selectedPath,
   splitChildren,
@@ -56,10 +60,6 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
   const profiles = allProfiles().map((profile) => profile.id);
   // A tab for a profile that was since removed falls back to All.
   const tab = view.profile && profiles.includes(view.profile) ? view.profile : undefined;
-  // Read-only: asks the host what the CLIs keep for this folder.
-  useEffect(() => {
-    send({ type: 'refreshNativeSessions' });
-  }, []);
   const children = useMemo(() => {
     const map = new Map<string, Session[]>();
     for (const item of snapshot.sessions)
@@ -68,9 +68,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
   }, [snapshot.sessions]);
   const needle = search.trim().toLowerCase();
   const matches = (item: Session): boolean =>
-    !needle ||
-    threadTitle(item.title).toLowerCase().includes(needle) ||
-    (children.get(item.id) ?? []).some(matches);
+    matchesSearch(item.title, needle) || (children.get(item.id) ?? []).some(matches);
   const known = new Set(snapshot.sessions.map((item) => item.id));
   const path = selectedPath(snapshot.sessions, selectedId);
   // Search looks through everything, so a filter can't hide what you asked for.
@@ -100,7 +98,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
     runningOnly: filtering,
     profiles,
   });
-  type Row = Session | NativeSessionEntry;
+  type Row = Session | NativeRow;
   const withNative = (items: Session[], from: number, until = Number.POSITIVE_INFINITY): Row[] =>
     [
       ...items,
@@ -109,7 +107,10 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
   const recentRows = withNative(recent, today);
   const lastDayRows = withNative(lastDay, yesterday, today);
   const olderRows = withNative(older, 0, yesterday);
-  const hidden = needle || showAll || filtering ? 0 : Math.max(0, olderRows.length - OLDER_SHOWN);
+  // Terminal sessions don't push your threads behind "More"; each kind gets its own share.
+  const olderVisible =
+    needle || showAll || filtering ? olderRows : olderShown(olderRows, OLDER_SHOWN);
+  const hidden = olderRows.length - olderVisible.length;
   const row = (item: Row) => (isNativeRow(item) ? nativeRow(item) : thread(item));
   /** A session from the CLI's own history: opening it makes it a thread here, same session. */
   function nativeRow(entry: NativeSessionEntry) {
@@ -245,13 +246,13 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
                 },
                 {
                   key: 'pin',
-                  icon: <Icon name="more" size={12} />,
+                  icon: <Icon name="pin" size={12} />,
                   label: item.pinned ? 'Unpin' : 'Pin',
                   onSelect: () => send({ type: 'pin', id: item.id, pinned: !item.pinned }),
                 },
                 {
                   key: 'rename',
-                  icon: <Icon name="file" size={12} />,
+                  icon: <Icon name="edit" size={12} />,
                   label: 'Rename',
                   onSelect: () => send({ type: 'rename', id: item.id }),
                 },
@@ -329,6 +330,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           role="tablist"
           aria-label="Chats by account"
           className="flex flex-wrap gap-0.5 mb-1.5 px-1"
+          onKeyDown={(event) => moveTabFocus(event)}
         >
           {[undefined, ...profiles].map((id) => (
             <button
@@ -336,6 +338,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
               type="button"
               role="tab"
               aria-selected={tab === id}
+              tabIndex={tab === id ? 0 : -1}
               title={id ? `${profileLabel(id)}: threads and terminal sessions` : 'Every account'}
               className="shrink-0 gap-1 min-h-6 px-1.5 py-[3px] rounded-md text-[11.5px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground"
               onClick={() => onView({ ...view, profile: id })}
@@ -368,7 +371,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
             <h3 className="block text-[11px] font-[450] text-faint mt-0 mx-2 mb-[3px] truncate">
               Older
             </h3>
-            {(hidden ? olderRows.slice(0, OLDER_SHOWN) : olderRows).map(row)}
+            {olderVisible.map(row)}
             {hidden ? (
               <button
                 type="button"

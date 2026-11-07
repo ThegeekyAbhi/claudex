@@ -50,6 +50,17 @@ interface Dependencies {
   >;
 }
 
+/**
+ * The CLI writes a turn's last records just after it reports the turn over, so those few seconds
+ * still belong to the turn run here and must not come back as "From the terminal".
+ */
+export const SETTLE_GRACE_MS = 2_000;
+/** Every way a turn run here can end goes through this, so its records are never read back. */
+export function settleNative(session: Session, now = Date.now()): void {
+  if (session.nativeId)
+    session.nativeSyncedAt = Math.max(session.nativeSyncedAt ?? 0, now + SETTLE_GRACE_MS);
+}
+
 export class TurnLifecycle {
   private agents = new Map<string, Agent>();
   private generations = new Map<string, symbol>();
@@ -190,8 +201,8 @@ export class TurnLifecycle {
       session.status = 'waiting';
     }
     // A turn run here is in the CLI's transcript too; only what's recorded after it is new.
-    if (TERMINAL_STATUSES.includes(session.status) && event.type === 'status' && session.nativeId)
-      session.nativeSyncedAt = Date.now();
+    if (TERMINAL_STATUSES.includes(session.status) && event.type === 'status')
+      settleNative(session);
     if (TERMINAL_STATUSES.includes(session.status) && event.type === 'status')
       this.deps.delegation.notifySettled(session.id);
     this.deps.changed();
@@ -236,6 +247,7 @@ export class TurnLifecycle {
       this.deps.approvals.clear(id);
       delete session.approval;
       session.status = stopped ? 'interrupted' : 'failed';
+      settleNative(session);
       this.deps.files.captureFiles(session, undefined, true);
       await this.deps.files.flush(id);
       for (const message of session.messages) {
@@ -252,8 +264,10 @@ export class TurnLifecycle {
     this.generations.delete(id);
     agent?.dispose();
     this.deps.approvals.clear(id);
-    delete this.deps.get(id).approval;
-    this.deps.get(id).status = 'interrupted';
+    const session = this.deps.get(id);
+    delete session.approval;
+    session.status = 'interrupted';
+    settleNative(session);
     this.deps.delegation.notifySettled(id);
     await this.deps.flush();
   }
@@ -270,6 +284,7 @@ export class TurnLifecycle {
       if (session.status === 'running' || session.status === 'waiting') {
         session.status = 'interrupted';
         delete session.approval;
+        settleNative(session);
       }
     this.deps.delegation.settleAll();
     this.agents.clear();

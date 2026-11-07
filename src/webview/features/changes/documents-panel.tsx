@@ -1,6 +1,7 @@
 import type { ChangesResult, Session, Snapshot } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
+import { moveTabFocus } from '../../lib/roving-tabs';
 import { ChangesView } from './diff-view';
 
 export type PanelTab = 'changes' | 'docs';
@@ -34,6 +35,8 @@ export function SidePanel({
         <div
           className="flex gap-0.5 [&_button]:px-2 [&_button]:py-[3px] [&_button]:text-[12px] [&_button]:text-muted-foreground [&_.selected]:text-foreground [&_.selected]:bg-muted"
           role="tablist"
+          aria-label="Side panel"
+          onKeyDown={(event) => moveTabFocus(event)}
         >
           {(['changes', 'docs'] as const).map((value) => (
             <button
@@ -41,6 +44,7 @@ export function SidePanel({
               role="tab"
               key={value}
               aria-selected={tab === value}
+              tabIndex={tab === value ? 0 : -1}
               className={tab === value ? 'selected' : ''}
               onClick={() => onTab(value)}
             >

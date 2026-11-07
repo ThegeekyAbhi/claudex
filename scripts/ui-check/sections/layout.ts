@@ -148,6 +148,35 @@ async function checkResizablePanes(ctx: UiCheckContext): Promise<void> {
     'a folded thread list is out of the Tab order',
   );
   await page.screenshot({ path: 'test-results/screenshots/threads-folded.png' });
+  // Opening and closing a side pane re-sizes the panes, and must not unfold what you folded.
+  const changesToggle = page.getByRole('button', { name: 'Toggle changes' });
+  await changesToggle.click();
+  await frame();
+  await frame();
+  assert.ok((await width()) < 1, 'a side pane opening keeps the thread list folded');
+  await changesToggle.click();
+  await frame();
+  await frame();
+  assert.ok((await width()) < 1, 'a side pane closing keeps the thread list folded');
+  // ⌘K unfolds it and puts the cursor in its search.
+  await page.keyboard.press('ControlOrMeta+k');
+  await frame();
+  await frame();
+  assert.ok((await width()) > 150, '⌘K unfolds the thread list');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'thread-search',
+    '⌘K focuses the search of a folded list',
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      document.querySelector('.workspace')?.classList.contains('show-history'),
+    ),
+    false,
+    'wide, ⌘K leaves the narrow overlay closed',
+  );
+  await toggle.click();
+  await frame();
   await toggle.click();
   await frame();
   assert.ok((await width()) > 150, 'the thread list comes back');

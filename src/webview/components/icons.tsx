@@ -31,6 +31,7 @@ import {
   PanelRight,
   Paperclip,
   Pencil,
+  Pin,
   Plus,
   Save,
   Search,
@@ -85,6 +86,7 @@ const icons = {
   palette: Palette,
   filter: ListFilter,
   sidebar: PanelRight,
+  pin: Pin,
 } satisfies Record<string, LucideIcon>;
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 15 }: { name: IconName; size?: number }) {

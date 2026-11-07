@@ -5,6 +5,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createAgentFactory, Sessions } from '../../../../src/application/sessions/session-manager';
+import { mergeNative } from '../../../../src/application/sessions/session-sync';
+import { SETTLE_GRACE_MS } from '../../../../src/application/sessions/turn-lifecycle';
 import type { Delegate, EventSink } from '../../../../src/shared/model';
 
 async function waitUntil(ready: () => boolean): Promise<void> {
@@ -459,4 +461,48 @@ test('a delegation whose child cannot start fails at once instead of waiting for
     /not installed/,
   );
   await manager.dispose();
+});
+
+test('a turn stopped here, disconnected or cut off by closing never comes back as the terminal’s', async () => {
+  const storage = await mkdtemp(path.join(tmpdir(), 'aw-settle-'));
+  const manager = new Sessions(storage, () => ({
+    send: async () => {},
+    interrupt: async () => {},
+    dispose() {},
+  }));
+  const stopped = manager.create('claude', storage, storage, 'Stop');
+  const dropped = manager.create('claude', storage, storage, 'Disconnect');
+  const closed = manager.create('claude', storage, storage, 'Close');
+  for (const item of [stopped, dropped, closed]) {
+    item.nativeId = `native-${item.id}`;
+    await manager.send(item.id, 'go');
+  }
+  const before = Date.now();
+  await manager.interrupt(stopped.id);
+  await manager.disconnect(dropped.id);
+  await manager.dispose();
+  for (const item of [stopped, dropped, closed]) {
+    assert.equal(item.status, 'interrupted');
+    assert.ok((item.nativeSyncedAt ?? 0) >= before + SETTLE_GRACE_MS, item.title);
+    // The CLI records your message and its reply just after the stop.
+    const shown = item.messages.length;
+    const outcome = mergeNative(
+      item,
+      {
+        messages: [
+          {
+            id: 'native-u',
+            role: 'user',
+            text: 'go',
+            nativeRef: 'u:0',
+            startedAt: before + SETTLE_GRACE_MS / 2,
+          },
+        ],
+        skipped: 0,
+      },
+      { announce: true },
+    );
+    assert.equal(outcome.added, 0, item.title);
+    assert.equal(item.messages.length, shown, item.title);
+  }
 });

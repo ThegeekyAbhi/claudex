@@ -5,6 +5,7 @@ import {
   inProfile,
   isNativeRow,
   nativeRows,
+  olderShown,
   rootVisible,
   selectedPath,
   splitChildren,
@@ -108,5 +109,18 @@ test('terminal sessions follow the tab and search, belong to known accounts, and
     ['b'],
   );
   assert.deepEqual(nativeRows(entries, { ...base, runningOnly: true }), []);
-  assert.equal(isNativeRow(entries[0]), true);
+  const [native] = nativeRows(entries, base);
+  assert.equal(isNativeRow(native), true);
+  // A plain entry, like a thread, isn't a terminal row just because it has a session id.
+  assert.equal(isNativeRow(entries[0] as never), false);
+});
+
+test('older terminal sessions never push your threads behind "More"', () => {
+  const thread = (id: string) => ({ id }) as never;
+  const native = (id: string) => ({ kind: 'native', sessionId: id }) as never;
+  const rows = [native('n1'), thread('t1'), native('n2'), thread('t2'), thread('t3'), native('n3')];
+  const ids = (list: { id?: string; sessionId?: string }[]) =>
+    list.map((row) => row.id ?? row.sessionId);
+  assert.deepEqual(ids(olderShown(rows, 2)), ['n1', 't1', 'n2', 't2']);
+  assert.deepEqual(ids(olderShown(rows, 5)), ['n1', 't1', 'n2', 't2', 't3', 'n3']);
 });
