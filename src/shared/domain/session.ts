@@ -305,6 +305,9 @@ export interface NativeSessionEntry {
   createdAt?: number;
 }
 export interface ChangesResult {
+  requestId?: string;
+  root?: string;
+  baseline?: string;
   files: FileDiff[];
   /** Why changes could not be read, such as the folder not being a Git repository. */
   error?: string;

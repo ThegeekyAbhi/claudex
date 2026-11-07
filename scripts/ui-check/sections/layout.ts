@@ -116,8 +116,12 @@ async function checkResizablePanes(ctx: UiCheckContext): Promise<void> {
     nav.evaluate(
       (element) => (element.closest('[data-panel]') ?? element).getBoundingClientRect().width,
     );
+  if ((await width()) < 1) {
+    await page.getByRole('button', { name: 'Toggle thread list' }).click();
+    await frame();
+  }
   const before = await width();
-  assert.ok(Math.abs(before - 232) <= 2, `thread list starts at its usual width, got ${before}`);
+  assert.ok(before >= 180 && before <= 400, `thread list reopens at a usable width, got ${before}`);
 
   const handle = page.getByRole('separator', { name: 'Resize thread list' });
   const box = await handle.boundingBox();

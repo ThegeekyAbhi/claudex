@@ -85,7 +85,13 @@ export function AppHeader({
             className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-expanded:text-foreground in-[.question-card]:size-[22px] in-[.question-card]:p-0"
             aria-label="Toggle changes"
             aria-expanded={changes.panel === 'changes'}
-            onClick={() => changes.setPanel((value) => (value === 'changes' ? null : 'changes'))}
+            onClick={() => {
+              if (changes.panel !== 'changes') {
+                tabs.history.setOpen(false);
+                if (threadsPane && !threadsPane.collapsed) threadsPane.toggle();
+              }
+              changes.setPanel((value) => (value === 'changes' ? null : 'changes'));
+            }}
           >
             <Icon name="diff" />
           </button>

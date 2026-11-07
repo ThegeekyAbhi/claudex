@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { parsePatch } from '../../../shared/domain/diff';
-import type { ChangesResult, FileDiff } from '../../../shared/model';
+import type { ChangesResult, FileDiff, Session } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
 import { ColouredTokens } from '../../lib/coloured-lines';
@@ -177,19 +177,73 @@ export function DiffCard({
     </section>
   );
 }
-/** The checkout's current state, read from Git by the host. */
+const STATUS_LETTERS: Record<FileDiff['kind'], string> = {
+  add: 'A',
+  update: 'M',
+  delete: 'D',
+  rename: 'R',
+};
+const BADGES: Record<string, [type: string, label: string]> = {
+  ts: ['ts', 'TS'],
+  tsx: ['ts', 'TSX'],
+  mts: ['ts', 'TS'],
+  cts: ['ts', 'TS'],
+  js: ['js', 'JS'],
+  jsx: ['js', 'JSX'],
+  mjs: ['js', 'JS'],
+  cjs: ['js', 'JS'],
+  json: ['json', '{ }'],
+  md: ['md', 'M↓'],
+  css: ['css', '#'],
+  scss: ['css', '#'],
+};
+function FileBadge({ path }: { path: string }) {
+  const [type, label] = BADGES[path.split('.').at(-1)?.toLowerCase() ?? ''] ?? ['', ''];
+  return (
+    <span className="change-review-badge" data-type={type} aria-hidden="true">
+      {label || <Icon name="file" size={13} />}
+    </span>
+  );
+}
+/** The checkout's changed files. VS Code's own diff editors render the content. */
 export function ChangesView({
   result,
-  sessionId,
+  sessionId = '',
+  session,
   loading,
   onRefresh,
 }: {
   result?: ChangesResult;
   sessionId?: string;
+  session?: Session;
   loading: boolean;
   onRefresh: () => void;
 }) {
-  const totals = (result?.files ?? []).reduce(
+  const [query, setQuery] = useState('');
+  const [threadOnly, setThreadOnly] = useState(false);
+  const [selected, setSelected] = useState('');
+  const [limit, setLimit] = useState(200);
+  const normalize = (file: string) =>
+    result?.root && file.startsWith(`${result.root}/`) ? file.slice(result.root.length + 1) : file;
+  const evidence = new Set(
+    session?.messages.flatMap(
+      (message) =>
+        message.tool?.diffs?.flatMap((diff) => [
+          normalize(diff.path),
+          ...(diff.original ? [normalize(diff.original)] : []),
+        ]) ?? [],
+    ) ?? [],
+  );
+  const all = result?.files ?? [];
+  const files = all.filter(
+    (file) =>
+      (!threadOnly ||
+        !session ||
+        evidence.has(file.path) ||
+        Boolean(file.original && evidence.has(file.original))) &&
+      file.path.toLowerCase().includes(query.toLowerCase()),
+  );
+  const totals = files.reduce(
     (sum, file) => ({
       additions: sum.additions + file.additions,
       deletions: sum.deletions + file.deletions,
@@ -197,55 +251,123 @@ export function ChangesView({
     { additions: 0, deletions: 0 },
   );
   return (
-    <div className="p-2 min-w-0">
-      <div className="changes-summary flex items-center gap-2 pt-0.5 pr-0.5 pb-2 pl-1 text-[12px]">
-        {result?.files.length ? (
-          <>
-            <span>
-              {result.files.length} {result.files.length === 1 ? 'file' : 'files'}
-            </span>
-            <DiffStat {...totals} />
-          </>
-        ) : (
-          <span className="text-muted-foreground">
-            {loading ? 'Reading changes…' : 'Working tree'}
-          </span>
-        )}
-        <button
-          type="button"
-          className="px-1.5 py-0.5 text-[11px] text-muted-foreground shrink-0 enabled:hover:text-foreground in-[.changes-summary]:ml-auto"
-          onClick={onRefresh}
-          disabled={!sessionId}
-        >
-          Refresh
-        </button>
+    <div className="change-review min-w-0">
+      <div className="change-review-toolbar">
+        <span className="change-review-count">
+          {loading && !result ? 'Reading changes…' : `${files.length} files`}
+        </span>
+        <DiffStat {...totals} />
+        <span className="change-review-actions">
+          <button
+            type="button"
+            className="change-review-primary"
+            title="Open every changed file in VS Code's multi-file diff editor"
+            disabled={!all.length}
+            onClick={() => send({ type: 'reviewChanges', id: sessionId })}
+          >
+            Review all
+          </button>
+          <button
+            type="button"
+            className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground"
+            aria-label="Refresh changes"
+            title="Refresh"
+            onClick={onRefresh}
+            disabled={loading}
+          >
+            <Icon name="refresh" size={13} />
+          </button>
+        </span>
       </div>
-      {result?.error ? (
-        <p className="text-muted-foreground text-[12px] mx-1 my-2">{result.error}</p>
-      ) : null}
-      {!sessionId ? (
-        <p className="text-muted-foreground text-[12px] mx-1 my-2">
-          Open a thread to see its changes.
-        </p>
-      ) : null}
-      {sessionId && result && !result.error && !result.files.length ? (
-        <p className="text-muted-foreground text-[12px] mx-1 my-2">
-          No uncommitted changes in this checkout.
-        </p>
-      ) : null}
-      {result?.files.map((file) => (
-        <DiffCard
-          key={file.path}
-          diff={file}
-          sessionId={sessionId}
-          defaultOpen={result.files.length <= 8}
+      <p className="change-review-caption">
+        {result?.baseline ? `${result.baseline.slice(0, 7)} (HEAD)` : 'Empty repository'} ↔ working
+        tree
+      </p>
+      <div className="change-review-filters">
+        <input
+          aria-label="Search changed files"
+          placeholder="Filter files…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="change-review-search"
         />
-      ))}
-      {result?.truncated ? (
-        <p className="text-muted-foreground text-[12px] mx-1 my-2">
-          Only the first 200 changed files are shown.
+        <label
+          className="change-review-scope"
+          title="Files recorded during this thread, including provider reports. Coverage may be incomplete."
+        >
+          <input
+            type="checkbox"
+            checked={threadOnly && Boolean(session)}
+            disabled={!session}
+            onChange={(event) => setThreadOnly(event.target.checked)}
+          />
+          This thread
+        </label>
+      </div>
+      {threadOnly && session && !evidence.size ? (
+        <p className="change-review-note">No recorded file evidence in this thread.</p>
+      ) : null}
+      {result?.error ? (
+        <p className="change-review-note" role="alert">
+          {result.error}
         </p>
       ) : null}
+      {!loading && result && !result.error && !files.length ? (
+        <p className="change-review-note">
+          {query || threadOnly
+            ? 'No matching changed files.'
+            : 'No uncommitted changes in this checkout.'}
+        </p>
+      ) : null}
+      <div className="change-review-list">
+        {files.slice(0, limit).map((file) => {
+          const directory = file.path.includes('/')
+            ? file.path.slice(0, file.path.lastIndexOf('/'))
+            : '';
+          return (
+            <button
+              key={file.path}
+              type="button"
+              aria-label={`Show ${file.path} in the Changes editor`}
+              aria-pressed={selected === file.path}
+              title={file.original ? `${file.original} → ${file.path}` : file.path}
+              className="change-review-file"
+              data-kind={file.kind}
+              onClick={() => {
+                setSelected(file.path);
+                send({ type: 'reviewChanges', id: sessionId, file: file.path });
+              }}
+            >
+              <FileBadge path={file.path} />
+              <span className="change-review-name">{file.path.split('/').at(-1)}</span>
+              <span className="change-review-directory">{directory}</span>
+              {file.binary ? (
+                <span className="change-review-muted">Binary</span>
+              ) : file.truncated ? (
+                <span className="change-review-muted">Large</span>
+              ) : (
+                <DiffStat additions={file.additions} deletions={file.deletions} />
+              )}
+              <span
+                className="change-review-status"
+                data-kind={file.kind}
+                title={KIND_LABELS[file.kind] || 'Modified'}
+              >
+                {STATUS_LETTERS[file.kind]}
+              </span>
+            </button>
+          );
+        })}
+        {files.length > limit ? (
+          <button
+            type="button"
+            className="change-review-file change-review-muted"
+            onClick={() => setLimit(limit + 200)}
+          >
+            Show {Math.min(200, files.length - limit)} more
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

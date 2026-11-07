@@ -1,49 +1,61 @@
-import { readFile, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { readFile, realpath, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { git } from '../infrastructure/git';
 import { type ChangedFile, parseGitStatus } from '../infrastructure/worktrees';
 import { resolveInside } from '../providers/shared/paths';
-import { makeDiff, patchFromContent, stripPatchHeader } from '../shared/domain/diff';
 import type { ChangesResult, FileDiff } from '../shared/model';
 
-const MAX_FILES = 200;
 const MAX_UNTRACKED_BYTES = 256 * 1024;
+type Count = { additions: number; deletions: number; binary: boolean };
 
-async function untracked(cwd: string, change: ChangedFile): Promise<FileDiff> {
+/** Line count for a file Git has no baseline for. Large or unreadable files report `truncated`. */
+async function countUntracked(cwd: string, change: ChangedFile): Promise<Count | undefined> {
   const target = await resolveInside(cwd, change.file);
-  const info = await stat(target);
-  if (info.size > MAX_UNTRACKED_BYTES)
-    return { ...makeDiff(change.file, 'add', ''), truncated: true };
+  if ((await stat(target)).size > MAX_UNTRACKED_BYTES) return undefined;
   const content = await readFile(target);
-  if (content.includes(0)) return { ...makeDiff(change.file, 'add', ''), binary: true };
-  return makeDiff(change.file, 'add', patchFromContent(content.toString('utf8'), '+'));
+  if (content.includes(0)) return { additions: 0, deletions: 0, binary: true };
+  const text = content.toString('utf8');
+  const lines = text ? text.split('\n').length - (text.endsWith('\n') ? 1 : 0) : 0;
+  return { additions: lines, deletions: 0, binary: false };
 }
-async function tracked(cwd: string, change: ChangedFile, base: string[]): Promise<FileDiff> {
-  const raw = await git(cwd, [
-    'diff',
-    ...base,
-    '--no-ext-diff',
-    '--no-color',
-    '--',
-    ...(change.original ? [change.original] : []),
-    change.file,
-  ]);
-  const kind: FileDiff['kind'] = /[RC]/.test(change.status)
-    ? 'rename'
-    : change.status.includes('D')
-      ? 'delete'
-      : change.status.includes('A')
-        ? 'add'
-        : 'update';
-  const extra = change.original ? { original: change.original } : {};
-  if (/^Binary files /m.test(raw) || raw.includes('GIT binary patch'))
-    return { ...makeDiff(change.file, kind, ''), binary: true, ...extra };
-  return makeDiff(change.file, kind, stripPatchHeader(raw), extra);
+/** `git diff --numstat -z`: renames carry an empty path field followed by old and new paths. */
+function parseNumstat(raw: string): Map<string, Count> {
+  const counts = new Map<string, Count>();
+  const parts = raw.split('\0');
+  for (let index = 0; index < parts.length; index++) {
+    const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(parts[index]);
+    if (!match) continue;
+    let file = match[3];
+    if (!file) {
+      index += 2;
+      file = parts[index];
+    }
+    counts.set(file, {
+      additions: Number(match[1]) || 0,
+      deletions: Number(match[2]) || 0,
+      binary: match[1] === '-',
+    });
+  }
+  return counts;
 }
-/** Reads the checkout's real state with Git, so this reports what is on disk, not what an agent said. */
+function kindOf(change: ChangedFile): FileDiff['kind'] {
+  if (change.original) return 'rename';
+  if (change.status.includes('D')) return 'delete';
+  if (change.status === '??' || change.status.includes('A')) return 'add';
+  return 'update';
+}
+/**
+ * Reads the checkout's real state with Git, so this reports what is on disk, not what an agent
+ * said. Metadata only: VS Code's own diff editors render the content.
+ */
 export async function collectChanges(cwd: string): Promise<ChangesResult> {
-  let raw: string;
+  let status: ChangedFile[];
   try {
-    raw = await git(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+    cwd = (await git(cwd, ['rev-parse', '--show-toplevel'])).trim();
+    status = parseGitStatus(
+      await git(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+    );
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     return {
@@ -53,23 +65,58 @@ export async function collectChanges(cwd: string): Promise<ChangesResult> {
         : text,
     };
   }
-  const changes = parseGitStatus(raw);
-  const base = await git(cwd, ['rev-parse', '--verify', 'HEAD']).then(
-    () => ['HEAD'],
-    () => [],
+  const baseline = await git(cwd, ['rev-parse', '--verify', 'HEAD']).then(
+    (value) => value.trim(),
+    () => undefined,
   );
-  const selected = changes.slice(0, MAX_FILES);
+  const counts = baseline
+    ? parseNumstat(
+        await git(cwd, [
+          'diff',
+          '--numstat',
+          '-z',
+          '--no-ext-diff',
+          '--no-textconv',
+          baseline,
+          '--',
+        ]),
+      )
+    : new Map<string, Count>();
   const files: FileDiff[] = [];
-  for (let index = 0; index < selected.length; index += 8) {
-    files.push(
-      ...(await Promise.all(
-        selected
-          .slice(index, index + 8)
-          .map((change) =>
-            change.status === '??' ? untracked(cwd, change) : tracked(cwd, change, base),
-          ),
-      )),
-    );
+  for (const change of status) {
+    let count = counts.get(change.file);
+    let truncated = false;
+    if (change.status === '??' || !baseline) {
+      count = await countUntracked(cwd, change).catch(() => undefined);
+      truncated = !count;
+    }
+    files.push({
+      path: change.file,
+      kind: kindOf(change),
+      patch: '',
+      additions: count?.additions ?? 0,
+      deletions: count?.deletions ?? 0,
+      ...(count?.binary ? { binary: true } : {}),
+      ...(truncated ? { truncated } : {}),
+      ...(change.original ? { original: change.original } : {}),
+    });
   }
-  return { files, ...(changes.length > MAX_FILES ? { truncated: true } : {}) };
+  return { root: cwd, baseline, files };
+}
+
+/**
+ * A file's content at a commit, located from its absolute path alone so a restored editor can
+ * reload it after a window reload. Read-only; the revision must be a full object ID.
+ */
+export async function readAtRevision(file: string, revision: string): Promise<string> {
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(revision)) throw new Error('Invalid revision.');
+  // Deleted files: find the nearest folder that still exists, then come back down.
+  let folder = path.dirname(file);
+  while (!existsSync(folder) && path.dirname(folder) !== folder) folder = path.dirname(folder);
+  const real = await realpath(folder);
+  const root = (await git(real, ['rev-parse', '--show-toplevel'])).trim();
+  const relative = path.relative(root, path.join(real, path.relative(folder, file)));
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
+    throw new Error('Path outside the checkout.');
+  return git(root, ['show', `${revision}:${relative.split(path.sep).join('/')}`]);
 }

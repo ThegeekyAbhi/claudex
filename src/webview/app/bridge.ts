@@ -46,7 +46,13 @@ export interface ViewState {
   threadsFolded?: boolean;
 }
 interface HostApi {
-  postMessage(action: Action): void;
+  postMessage(
+    action:
+      | Action
+      | { type: 'reviewReady' | 'reviewRefresh' }
+      | { type: 'reviewNative' | 'reviewPatch'; entry: string }
+      | { type: 'reviewViewed'; entry: string; viewed: boolean },
+  ): void;
   getState(): ViewState | undefined;
   /** Returns the state it was given, as VS Code does. */
   setState(state: ViewState): ViewState;

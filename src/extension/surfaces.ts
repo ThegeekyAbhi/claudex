@@ -52,6 +52,10 @@ export class Surfaces {
   codeColumn(): vscode.ViewColumn {
     return this.panels.size ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
   }
+  /** Editor columns holding the editor-tab layout, which the Changes editor must not cover. */
+  panelColumns(): vscode.ViewColumn[] {
+    return [...this.panels.keys()].flatMap((panel) => (panel.viewColumn ? [panel.viewColumn] : []));
+  }
   get hasPanel(): boolean {
     return Boolean(this.panels.size);
   }

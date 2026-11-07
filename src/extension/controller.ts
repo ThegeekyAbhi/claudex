@@ -22,6 +22,7 @@ import {
   tailStart,
 } from '../shared/model';
 import type { HandlersFor } from './action-groups';
+import { readAtRevision } from './changes';
 import { listDocuments } from './documents';
 import { AttachmentsHandlers } from './handlers/attachments';
 import { CatalogHandlers } from './handlers/catalog';
@@ -163,6 +164,7 @@ export class WorkspaceController {
       pendingDrafts: this.pendingDrafts,
       deliverDrafts: this.deliverDrafts.bind(this),
       bases: this.bases,
+      globalState: this.context.globalState,
     });
     this.attachmentsHandlers = new AttachmentsHandlers({
       sessions: this.sessions,
@@ -300,8 +302,31 @@ export class WorkspaceController {
             void this.terminalHandlers.returnFromTerminal(id);
           }
       }),
+      vscode.window.tabGroups.onDidChangeTabs((event) => {
+        for (const tab of event.closed) {
+          if (!(tab.input instanceof vscode.TabInputTextDiff)) continue;
+          for (const uri of [tab.input.original, tab.input.modified]) {
+            const used = vscode.window.tabGroups.all.some((group) =>
+              group.tabs.some(
+                (open) =>
+                  open.input instanceof vscode.TabInputTextDiff &&
+                  [open.input.original.toString(), open.input.modified.toString()].includes(
+                    uri.toString(),
+                  ),
+              ),
+            );
+            if (!used) this.bases.delete(uri.toString());
+          }
+        }
+      }),
       vscode.workspace.registerTextDocumentContentProvider('agent-workspace-base', {
-        provideTextDocumentContent: (uri) => this.bases.get(uri.toString()) ?? '',
+        provideTextDocumentContent: async (uri) => {
+          const stored = this.bases.get(uri.toString());
+          if (stored !== undefined) return stored;
+          // The Changes editor names the commit instead of storing content; see reviewAll.
+          const revision = new URLSearchParams(uri.query).get('ref');
+          return revision ? readAtRevision(uri.fsPath, revision) : '';
+        },
       }),
     );
     this.watchDocuments();

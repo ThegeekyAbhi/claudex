@@ -563,3 +563,162 @@ body.vscode-high-contrast .user-message .bubble,
 body.vscode-high-contrast-light .user-message .bubble {
   border: 1px solid var(--border-strong);
 }
+
+/* Changed-files list, modelled on VS Code's own SCM and multi-diff file lists. */
+.change-review {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 12px;
+}
+.change-review-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 6px 12px;
+}
+.change-review-count {
+  font-weight: 600;
+}
+.change-review-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.change-review-primary {
+  padding: 3px 10px;
+  border-radius: 2px;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  font-size: 12px;
+  line-height: 18px;
+}
+.change-review-primary:enabled:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+.change-review-caption {
+  margin: 0;
+  padding: 0 12px 6px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.change-review-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 6px 12px;
+}
+.change-review-search {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-size: 12px;
+}
+.change-review-scope {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.change-review-note {
+  margin: 0;
+  padding: 0 12px 6px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.change-review-list {
+  padding: 0 4px 8px;
+}
+.change-review-file {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 3px;
+  text-align: left;
+  white-space: nowrap;
+}
+.change-review-file:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.change-review-file[aria-pressed="true"] {
+  background: var(--vscode-list-inactiveSelectionBackground);
+  color: var(--vscode-list-inactiveSelectionForeground);
+}
+.change-review-file:focus-visible,
+.change-review-search:focus-visible,
+.change-review-primary:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+.change-review-badge {
+  width: 18px;
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--vscode-symbolIcon-fileForeground, var(--vscode-descriptionForeground));
+}
+.change-review-badge[data-type="ts"] {
+  color: var(--vscode-charts-blue, #3794ff);
+}
+.change-review-badge[data-type="js"] {
+  color: var(--vscode-charts-yellow, #cca700);
+}
+.change-review-badge[data-type="json"],
+.change-review-badge[data-type="md"] {
+  color: var(--vscode-charts-orange, #d18616);
+}
+.change-review-badge[data-type="css"] {
+  color: var(--vscode-charts-purple, #b180d7);
+}
+.change-review-name {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.change-review-file[data-kind="delete"] .change-review-name {
+  text-decoration: line-through;
+}
+.change-review-directory {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+.change-review-status {
+  width: 12px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+.change-review-status[data-kind="update"] {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+}
+.change-review-status[data-kind="add"] {
+  color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
+}
+.change-review-status[data-kind="delete"] {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+}
+.change-review-status[data-kind="rename"] {
+  color: var(--vscode-gitDecoration-renamedResourceForeground, #73c991);
+}
+.change-review-muted {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}

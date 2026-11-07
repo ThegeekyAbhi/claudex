@@ -34,13 +34,25 @@ export async function checkChanges(ctx: UiCheckContext): Promise<void> {
     { patch },
   );
   await page.getByRole('complementary').getByText('2 files').waitFor();
+  await page.getByRole('complementary').getByText('compiler.ts', { exact: true }).waitFor();
+  await page.getByRole('textbox', { name: 'Search changed files' }).fill('plan');
+  assert.equal(
+    await page
+      .getByRole('complementary')
+      .getByRole('button', { name: 'Show src/compiler.ts in the Changes editor' })
+      .count(),
+    0,
+  );
+  await page.getByRole('textbox', { name: 'Search changed files' }).fill('');
   await page.screenshot({ path: 'test-results/screenshots/changes-panel.png' });
-  await page
-    .getByRole('button', { name: 'Open src/compiler.ts in the diff editor' })
-    .last()
-    .click();
-  const [opened] = await sentOf('openDiff');
-  assert.equal(opened.file, 'src/compiler.ts');
+  // Files open in VS Code's own multi-file diff editor: one tab, scrolled to the file.
+  await page.getByRole('complementary').getByText('src', { exact: true }).first().waitFor();
+  await page.getByRole('button', { name: 'Show src/compiler.ts in the Changes editor' }).click();
+  const [picked] = await sentOf('reviewChanges');
+  assert.deepEqual([picked.id, picked.file], ['codex-one', 'src/compiler.ts']);
+  await page.getByRole('complementary').getByRole('button', { name: 'Review all' }).click();
+  const all = (await sentOf('reviewChanges')).at(-1);
+  assert.equal(all.file, undefined);
   await page.getByRole('button', { name: 'Close panel' }).click();
 
   // Icon buttons explain themselves.

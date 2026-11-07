@@ -64,7 +64,8 @@ export function SidePanel({
       {tab === 'changes' ? (
         <ChangesView
           result={changes}
-          sessionId={session?.id}
+          sessionId={session?.id ?? ''}
+          session={session}
           loading={changesLoading}
           onRefresh={onRefreshChanges}
         />

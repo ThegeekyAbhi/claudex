@@ -115,7 +115,16 @@ export const actionSchema = z.discriminatedUnion('type', [
     id: z.string().optional(),
   }),
   z.object({ type: z.literal('handoff'), id: z.string() }),
-  z.object({ type: z.literal('changes'), id: z.string() }),
+  z.object({
+    type: z.literal('changes'),
+    id: z.string(),
+    requestId: z.string().max(100).optional(),
+  }),
+  z.object({
+    type: z.literal('reviewChanges'),
+    id: z.string(),
+    file: z.string().max(4096).optional(),
+  }),
   z.object({
     type: z.literal('openDiff'),
     id: z.string(),

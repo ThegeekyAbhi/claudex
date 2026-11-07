@@ -36,7 +36,16 @@ export const actionGroups = {
     'setMode',
   ],
   plans: ['buildPlan', 'keepPlanning', 'viewPlan', 'editPlan', 'savePlan'],
-  documents: ['link', 'document', 'template', 'handoff', 'changes', 'openDiff', 'copy'],
+  documents: [
+    'link',
+    'document',
+    'template',
+    'handoff',
+    'changes',
+    'reviewChanges',
+    'openDiff',
+    'copy',
+  ],
   attachments: ['previewContext', 'searchContext', 'pickImages', 'attachImage', 'openImage'],
   terminal: [
     'terminal',

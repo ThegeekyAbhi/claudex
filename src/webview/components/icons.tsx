@@ -33,6 +33,7 @@ import {
   Pencil,
   Pin,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Sparkles,
@@ -47,6 +48,7 @@ import { type AgentKind, findProfile, profileProvider } from '../../shared/model
 const icons = {
   logo: Sparkles,
   history: History,
+  refresh: RefreshCw,
   plus: Plus,
   terminal: SquareTerminal,
   arrow: ArrowUp,
