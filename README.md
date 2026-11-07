@@ -1,6 +1,18 @@
-# Claudex
+# Claudex — Claude Code and Codex AI chat for VS Code
 
-Codex and Claude Code, together in VS Code. Ask questions, review a plan, and follow changes beside your code using your installed, signed-in agents.
+**Two coding agents. One place to work.**
+
+Use Claude Code and Codex beside your code, with your existing CLI accounts and settings. Ask questions, turn a plan into working code, and review changes in VS Code. Continue a conversation with another agent and choose what context to carry forward.
+
+## Why Claudex?
+
+- **Keep the context when you switch agents.** Continue a thread with Claude Code or Codex and inspect the context chip before sending.
+- **Go from plan to implementation.** Review and edit a Markdown plan, then start implementation from the latest version.
+- **Review the work as it happens.** Respond to provider approval requests and open changed files in VS Code’s diff editor.
+- **Give each task its own space.** Keep local conversation threads and optionally start a task in a Git worktree.
+- **Bring your existing setup.** Use your installed agents’ skills and MCP configuration, with separate profiles for additional accounts.
+
+Requires Claude Code or Codex installed and signed in. Provider usage limits still apply. Developed and tested on macOS; other platforms have not yet been validated.
 
 ## Get started
 

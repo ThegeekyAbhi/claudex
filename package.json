@@ -1,7 +1,7 @@
 {
   "name": "claudex",
-  "displayName": "Claudex",
-  "description": "Codex and Claude Code together. Local threads, plans, approvals, and diffs in VS Code.",
+  "displayName": "Claudex — Claude Code & Codex",
+  "description": "Claude Code and Codex in one AI coding workspace. Chat, carry context between agents, turn plans into code, and review diffs in VS Code.",
   "version": "0.8.5",
   "publisher": "nerdyabhi",
   "icon": "media/claudex-icon.png",
@@ -9,7 +9,7 @@
     "color": "#111827",
     "theme": "dark"
   },
-  "keywords": ["codex", "claude", "claude-code", "agents", "chat", "planning"],
+  "keywords": ["claude", "claude-code", "codex", "ai", "chat", "ai coding", "coding assistant", "ai agent", "agents", "code review", "planning", "productivity", "pair programming", "git worktree", "mcp", "skills"],
   "repository": {
     "type": "git",
     "url": "https://github.com/thegeekyabhi/claudex.git"
@@ -23,7 +23,9 @@
     "vscode": "^1.96.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Chat",
+    "Visualization"
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [
