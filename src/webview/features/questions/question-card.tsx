@@ -135,7 +135,9 @@ export function QuestionCard({
       return;
     }
     if (event.key.length !== 1) return;
-    const slot = KEYS.indexOf(event.key.toUpperCase());
+    const slot = /^[1-9]$/.test(event.key)
+      ? Number(event.key) - 1
+      : KEYS.indexOf(event.key.toUpperCase());
     if (slot < 0) return;
     if (slot < question.options.length) {
       event.preventDefault();
@@ -227,7 +229,7 @@ export function QuestionCard({
                       className="question-option flex items-center justify-start gap-2 w-full min-h-7 py-[3px] pr-1.5 pl-1 rounded-md text-[12px] text-left text-foreground enabled:hover:bg-muted enabled:hover:outline-none focus-visible:bg-muted focus-visible:outline-none aria-checked:bg-accent [&>svg]:ml-auto [&>svg]:text-muted-foreground [&_kbd]:inline-flex [&_kbd]:items-center [&_kbd]:justify-center [&_kbd]:size-[18px] [&_kbd]:shrink-0 [&_kbd]:border [&_kbd]:border-subtle [&_kbd]:rounded-sm [&_kbd]:text-[10px] [&_kbd]:font-medium [&_kbd]:text-muted-foreground aria-checked:[&_kbd]:border-strong aria-checked:[&_kbd]:text-foreground [&.other]:cursor-text [&.other_input]:flex-1 [&.other_input]:min-w-0 [&.other_input]:text-[12px] [&.other_input:focus-visible]:outline-none"
                       onClick={() => pick(option)}
                     >
-                      <kbd>{KEYS[slot]}</kbd>
+                      <kbd>{slot < 9 ? slot + 1 : KEYS[slot]}</kbd>
                       <span className="min-w-0 flex flex-col gap-px wrap-anywhere [&_em]:ml-1.5 [&_em]:not-italic [&_em]:text-[10.5px] [&_em]:text-faint [&_small]:text-[11px] [&_small]:text-muted-foreground">
                         <span>
                           {option.replace(RECOMMENDED, '')}

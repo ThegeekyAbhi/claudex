@@ -2,6 +2,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   agentKind,
   agentLabel,
+  canBuildPlan,
   continuationLinks,
   emptySkills,
   noAgentInstalled,
@@ -18,7 +19,7 @@ import { TerminalStrip } from '../features/composer/terminal-strip';
 import { Conversation } from '../features/conversation/conversation';
 import { ImageBase } from '../features/images/image-view';
 import { SetupCard } from '../features/onboarding/setup-card';
-import { BuildContext } from '../features/plan/build-button';
+import { BuildContext, PlanOptions } from '../features/plan/plan-options';
 import { QuestionCard } from '../features/questions/question-card';
 import { SkillsPanel } from '../features/skills/skills-panel';
 import { ThreadSidebar } from '../features/threads/thread-list';
@@ -145,6 +146,13 @@ export function App() {
                 }))
               }
             />
+          ) : null}
+          {session && canBuildPlan(session) ? (
+            <div className="shrink-0 px-6 max-h-[40vh] overflow-y-auto">
+              <div className="max-w-[780px] mx-auto">
+                <PlanOptions key={session.id + session.plan?.updatedAt} session={session} />
+              </div>
+            </div>
           ) : null}
           {conversation.asking ? (
             <QuestionCard

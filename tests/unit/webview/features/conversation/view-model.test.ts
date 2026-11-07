@@ -6,10 +6,15 @@ import {
   diffsOf,
   duration,
   findChild,
+  isPlanEdit,
+  noteIndices,
   segment,
   segmentHas,
   segmentKey,
+  turns,
   verb,
+  workDuration,
+  workMessages,
 } from '../../../../../src/webview/features/conversation/view-model';
 
 function message(id: string, role: Message['role'], tool?: Partial<ToolInfo>): Message {
@@ -155,4 +160,167 @@ test('duration labels retain millisecond and minute rounding', () => {
   ] as const) {
     assert.equal(duration(value), label);
   }
+});
+
+const say = (id: string, role: 'user' | 'assistant' | 'notice', at?: number): Message => ({
+  id,
+  role,
+  text: id,
+  ...(at !== undefined ? { startedAt: at } : {}),
+});
+const step = (id: string, at?: number): Message => ({
+  id,
+  role: 'tool',
+  text: '',
+  ...(at !== undefined ? { startedAt: at } : {}),
+  tool: { kind: 'command', name: 'command', title: id, status: 'completed' },
+});
+const delegate = (id: string): Message => ({
+  id,
+  role: 'tool',
+  text: '',
+  tool: { kind: 'agent', name: 'delegate', title: id, status: 'completed' },
+});
+const view = (messages: Message[], live = false) => {
+  const segments = segment(messages);
+  return { segments, turns: turns(segments, live), notes: noteIndices(segments) };
+};
+
+test('folds a finished turn’s notes and steps, keeping your message and the answer', () => {
+  const {
+    segments,
+    turns: [turn],
+    notes,
+  } = view([
+    say('q', 'user', 0),
+    say('n1', 'assistant', 1_000),
+    step('s1', 2_000),
+    say('n2', 'assistant', 3_000),
+    step('s2', 4_000),
+    say('a', 'assistant', 64_000),
+  ]);
+  assert.equal(turn.fold, true);
+  assert.equal(turn.answer, 5);
+  assert.deepEqual(turn.work, [1, 2, 3, 4]);
+  assert.deepEqual([...notes], [3, 1]);
+  const rows = workMessages(segments, turn.work);
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ['n1', 's1', 'n2', 's2'],
+  );
+  assert.equal(workDuration(rows, say('a', 'assistant', 64_000)), 63_000);
+});
+
+test('never folds the turn still running, or one with no answer or little work', () => {
+  const running = view(
+    [say('q', 'user'), say('n', 'assistant'), step('s'), say('a', 'assistant')],
+    true,
+  );
+  assert.equal(running.turns[0].fold, false);
+  const unanswered = view([say('q', 'user'), say('n', 'assistant'), step('s')]);
+  assert.equal(unanswered.turns[0].fold, false);
+  assert.equal(unanswered.turns[0].answer, undefined);
+  // One group of steps already reads as one line.
+  const small = view([say('q', 'user'), step('s'), say('a', 'assistant')]);
+  assert.equal(small.turns[0].fold, false);
+});
+
+test('splits at each of your messages; only the last turn is live', () => {
+  const { turns: all } = view(
+    [
+      say('q1', 'user'),
+      say('n', 'assistant'),
+      step('s'),
+      say('a1', 'assistant'),
+      say('q2', 'user'),
+      say('n2', 'assistant'),
+      step('s2'),
+      say('a2', 'assistant'),
+    ],
+    true,
+  );
+  assert.deepEqual(
+    all.map((turn) => [turn.start, turn.end, turn.fold]),
+    [
+      [0, 4, true],
+      [4, 8, false],
+    ],
+  );
+});
+
+test('keeps subagents and notices out of the fold, in view', () => {
+  const {
+    turns: [turn],
+  } = view([
+    say('q', 'user'),
+    say('n', 'assistant'),
+    delegate('d'),
+    step('s'),
+    say('From the terminal', 'notice'),
+    say('a', 'assistant'),
+  ]);
+  assert.equal(turn.fold, true);
+  // 2 is the subagent card, 4 the notice: neither is folded work.
+  assert.deepEqual(turn.work, [1, 3]);
+});
+
+test('a window that starts mid-turn, after older messages were left out, still groups', () => {
+  const { turns: all } = view([
+    say('n', 'assistant'),
+    step('s'),
+    say('a', 'assistant'),
+    say('q', 'user'),
+  ]);
+  assert.deepEqual(
+    all.map((turn) => [turn.start, turn.work, turn.fold]),
+    [
+      [0, [0, 1], true],
+      [3, [], false],
+    ],
+  );
+});
+
+test('a duration is given only from times the CLI recorded', () => {
+  assert.equal(workDuration([step('s')], say('a', 'assistant')), undefined);
+});
+
+test('edits to Claude Code’s plan file read as the plan, not as a diff', () => {
+  const planEdit: Message = {
+    id: 'p',
+    role: 'tool',
+    text: '',
+    tool: {
+      kind: 'edit',
+      name: 'Write',
+      title: '/Users/me/.claude-account2/plans/demo.md',
+      status: 'completed',
+      diffs: [
+        {
+          path: '/Users/me/.claude-account2/plans/demo.md',
+          kind: 'update',
+          patch: '@@ -1 +1 @@\n-# Old\n+# New',
+          additions: 1,
+          deletions: 1,
+        },
+      ],
+    },
+  };
+  const realEdit: Message = {
+    id: 'e',
+    role: 'tool',
+    text: '',
+    tool: {
+      kind: 'edit',
+      name: 'Edit',
+      title: 'src/app.ts',
+      status: 'completed',
+      diffs: [{ path: 'src/app.ts', kind: 'update', patch: '', additions: 1, deletions: 0 }],
+    },
+  };
+  assert.deepEqual(diffsOf([planEdit]), []);
+  assert.equal(diffsOf([planEdit, realEdit]).length, 1);
+  assert.equal(isPlanEdit(planEdit.tool), true);
+  assert.equal(isPlanEdit(realEdit.tool), false);
+  assert.equal(verb(planEdit.tool as ToolInfo), 'Updated');
+  assert.equal(activitySummary([planEdit, realEdit]), 'Wrote the plan, edited 1 file');
 });

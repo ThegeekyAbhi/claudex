@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import {
   Group,
   Panel,
@@ -49,6 +49,13 @@ export function WorkspacePanes({
   const group = useGroupRef();
   const sidePanel = usePanelRef();
   const shape = panelIds.join(',');
+  // Set while rendering, before the new panes mount and report their sizes. Repeating it is
+  // harmless, so a second render does no damage.
+  const lastShape = useRef('');
+  if (lastShape.current !== shape) {
+    lastShape.current = shape;
+    layout.threads.hold();
+  }
   // A pane that joins an existing group ignores its default size, so whenever the set of panes
   // changes, restore what was saved for this set, or each pane's own default.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-apply only when the set of panes changes

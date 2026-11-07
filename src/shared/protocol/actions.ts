@@ -17,6 +17,9 @@ const buildChoice = {
   agent: agentEnum.optional(),
   model: optionName.optional(),
   effort: optionName.optional(),
+  /** Auto, or the CLI's own default so each edit comes to you. Only Claude Code has the latter. */
+  approvals: z.enum(['auto', 'manual']).optional(),
+  notes: z.string().max(200_000).optional(),
 };
 export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready') }),
@@ -29,6 +32,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('dismissOnboarding') }),
   z.object({ type: z.literal('link'), href: z.string().max(4096) }),
   z.object({ type: z.literal('compose') }),
+  z.object({ type: z.literal('continueChat'), id: z.string().max(200), agent: agentEnum }),
   z.object({ type: z.literal('openChat'), id: z.string().optional() }),
   z.object({
     type: z.literal('start'),
@@ -127,6 +131,7 @@ export const actionSchema = z.discriminatedUnion('type', [
     feedback: z.string().max(200_000).optional(),
   }),
   z.object({ type: z.literal('viewPlan'), id: z.string() }),
+  z.object({ type: z.literal('editPlan'), id: z.string() }),
   z.object({ type: z.literal('refreshSkills'), agent: agentEnum }),
   z.object({
     type: z.literal('openSkill'),
@@ -220,4 +225,6 @@ export type BuildChoice = {
   agent?: AgentKind;
   model?: string;
   effort?: string;
+  approvals?: 'auto' | 'manual';
+  notes?: string;
 };

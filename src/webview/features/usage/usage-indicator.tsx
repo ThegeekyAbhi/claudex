@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
+import { limitFailure } from '../../../shared/domain/nudges';
 import { modeView, type Session, type Usage, type UsageLimit } from '../../../shared/model';
 
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
@@ -90,6 +91,12 @@ export function UsageIndicator({
   onHandOff?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [, setNow] = useState(Date.now());
+  const now = Date.now();
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: close when switching threads
@@ -99,29 +106,32 @@ export function UsageIndicator({
   }, [session?.id]);
   const usage: Usage | undefined = session?.usage;
   const details = session ? threadDetails(session) : undefined;
-  if (!usage && !details?.worthShowing) return null;
-  const now = Date.now();
+  const blocked = session ? limitFailure(session) : undefined;
+  if (!usage && !details?.worthShowing && !blocked) return null;
   const context = usage?.context;
   const contextPercent = context ? (context.used / context.max) * 100 : undefined;
   // A window that has already reset says nothing about now.
   const limits = (usage?.limits ?? []).filter((item) => !item.resetsAt || item.resetsAt > now);
-  if (contextPercent === undefined && !limits.length && !details?.worthShowing) return null;
+  if (contextPercent === undefined && !limits.length && !details?.worthShowing && !blocked)
+    return null;
   const highestLimit = limits.reduce((top, item) => Math.max(top, item.usedPercent), 0);
   const shown = contextPercent ?? highestLimit;
-  const worst = Math.max(contextPercent ?? 0, highestLimit);
+  const worst = Math.max(contextPercent ?? 0, highestLimit, blocked ? 100 : 0);
   const state = level(worst);
   const hover = (next: boolean) => {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setOpen(next), next ? 180 : 140);
   };
   const failed = details?.failed ?? [];
-  const inlineUsage = [
-    ...(contextPercent !== undefined ? [`Ctx ${Math.round(contextPercent)}%`] : []),
-    ...limits.map((limit) => {
-      const label = limit.label.replace(/^Weekly/, 'Week').replace(/(\d+)-hour/, '$1h');
-      return `${label} ${Math.round(limit.usedPercent)}%`;
-    }),
-  ].join(' · ');
+  const inlineUsage = blocked
+    ? 'Limit reached'
+    : [
+        ...(contextPercent !== undefined ? [`Ctx ${Math.round(contextPercent)}%`] : []),
+        ...limits.map((limit) => {
+          const label = limit.label.replace(/^Weekly/, 'Week').replace(/(\d+)-hour/, '$1h');
+          return `${label} ${Math.round(limit.usedPercent)}%`;
+        }),
+      ].join(' · ');
   const summary = [
     contextPercent !== undefined
       ? `Context ${Math.round(contextPercent)}% used`
@@ -181,6 +191,18 @@ export function UsageIndicator({
         onMouseLeave={() => hover(false)}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
+        {blocked ? (
+          <section>
+            <strong>Limit reached</strong>
+            <p className="m-0 text-muted-foreground">{blocked}</p>
+            <small>Percentages below are the last reported snapshot.</small>
+          </section>
+        ) : null}
+        {!context ? (
+          <section>
+            <small>Conversation context usage unavailable from this provider.</small>
+          </section>
+        ) : null}
         {context && contextPercent !== undefined ? (
           <section>
             <div className="flex justify-between gap-2 tabular-nums text-muted-foreground [&_strong]:font-[450] [&_strong]:text-foreground">
@@ -217,11 +239,11 @@ export function UsageIndicator({
           <section className="[&_p]:m-0 [&_p]:text-muted-foreground [&_p]:leading-[1.4] [&_button]:self-start [&_button]:min-h-[22px] [&_button]:px-[7px] [&_button]:py-px [&_button]:-ml-[7px] [&_button]:text-[11.5px] [&_button]:text-foreground">
             <p>
               {(contextPercent ?? 0) >= WARN
-                ? 'This thread is nearly full. Hand off to carry on in a fresh thread, from a summary you review.'
-                : 'You are close to this account limit. Hand off to carry on with another agent.'}
+                ? 'This thread is nearly full. Continue with another agent here, from context you review.'
+                : 'You are close to this account limit. Continue here with another agent or account.'}
             </p>
             <button type="button" onClick={onHandOff}>
-              Hand off to another agent
+              Continue with…
             </button>
           </section>
         ) : null}

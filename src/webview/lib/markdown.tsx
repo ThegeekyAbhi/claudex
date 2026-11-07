@@ -1,84 +1,21 @@
-import {
-  Children,
-  isValidElement,
-  memo,
-  type ReactElement,
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { Children, isValidElement, memo, type ReactElement, type ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remend from 'remend';
 import { send } from '../app/bridge';
 import { Icon } from '../components/icons';
+import { ColouredLines } from './coloured-lines';
 import { MermaidBlock } from './mermaid-block';
+import { useHighlight } from './use-highlight';
 import { VisualBlock, VisualPlaceholder } from './visual-block';
 import { VISUAL_MAX_SOURCE } from './visual-document';
 
-type Engine = typeof import('./highlighter');
-/** Grammars are large, so they load only once a thread shows a code block. */
-let engine: Engine | null | undefined;
-let loading: Promise<Engine | null> | undefined;
-function loadEngine(): Promise<Engine | null> {
-  loading ??= import('./highlighter')
-    .catch(() => null)
-    .then((loaded) => {
-      engine = loaded;
-      return loaded;
-    });
-  return loading;
-}
-const LANGUAGE_NAMES: Record<string, string> = {
-  sh: 'bash',
-  shell: 'bash',
-  zsh: 'bash',
-  console: 'bash',
-  js: 'javascript',
-  ts: 'typescript',
-  py: 'python',
-  rs: 'rust',
-  yml: 'yaml',
-  md: 'markdown',
-  golang: 'go',
-  patch: 'diff',
-};
 function Highlighted({ code, language }: { code: string; language: string }) {
-  const [ready, setReady] = useState(Boolean(engine));
-  useEffect(() => {
-    if (!language || ready) return;
-    let current = true;
-    void loadEngine().then(() => {
-      if (current) setReady(true);
-    });
-    return () => {
-      current = false;
-    };
-  }, [language, ready]);
-  const lines = useMemo(() => {
-    const name = LANGUAGE_NAMES[language] ?? language;
-    if (!ready || !engine?.highlighter.getLoadedLanguages().includes(name)) return null;
-    try {
-      return engine.highlighter.codeToTokens(code, { lang: name, theme: engine.THEME }).tokens;
-    } catch {
-      return null;
-    }
-  }, [code, language, ready]);
+  const lines = useHighlight(code, language || undefined);
   if (!lines) return <code>{code}</code>;
   return (
     <code>
-      {lines.map((line, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: lines have no identity beyond their order
-        <span key={index}>
-          {line.map((token) => (
-            <span key={token.offset} style={{ color: token.color }}>
-              {token.content}
-            </span>
-          ))}
-          {index < lines.length - 1 ? '\n' : ''}
-        </span>
-      ))}
+      <ColouredLines lines={lines} />
     </code>
   );
 }

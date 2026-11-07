@@ -14,28 +14,52 @@ export interface NativeTranscript {
 const NOT_YOURS =
   /^(?:<(?:command-|local-command-|system-reminder|user-prompt-submit-hook|bash-(?:input|stdout|stderr))|\[Request interrupted)/;
 
-function scratch(session: Session): Session {
-  return { ...session, messages: [], status: 'idle' };
+/**
+ * A copy of the thread to replay into. `open` are tool calls this thread still shows unfinished:
+ * reading only the newest records, a call's result can arrive without the call itself.
+ */
+interface Replay {
+  into: Session;
+  index: Map<string, Message>;
+  /** How many rows came from `open`, which are only there to receive results. */
+  seeded: number;
 }
-function sink(into: Session) {
+function scratch(session: Session, open: Message[] = []): Replay {
+  // Marked running, so a call whose result isn't among these records is left out.
+  const seeded = open.flatMap((message) =>
+    message.tool ? [{ ...message, tool: { ...message.tool, status: 'running' as const } }] : [],
+  );
+  return {
+    into: { ...session, messages: seeded, status: 'idle' },
+    index: new Map(seeded.map((message) => [message.id, message])),
+    seeded: seeded.length,
+  };
+}
+function sink({ into, index }: Replay) {
   return (event: AgentEvent) => {
-    if (event.type === 'message' || event.type === 'patch') applyTranscript(into, event);
+    if (event.type === 'message' || event.type === 'patch') applyTranscript(into, event, index);
   };
 }
 /**
  * Gives every row added for one record a stable reference and that record's time. Row ids other
  * than tool calls are made from the reference too, so a second read yields the same ids.
  */
-function stamp(into: Session, from: number, ref: string, at: number): void {
-  into.messages.slice(from).forEach((message, index) => {
-    message.nativeRef = `${ref}:${index}`;
+function stamp({ into, index }: Replay, from: number, ref: string, at: number): void {
+  into.messages.slice(from).forEach((message, position) => {
+    message.nativeRef = `${ref}:${position}`;
     message.startedAt = at;
-    if (message.role !== 'tool') message.id = `native-${ref}-${index}`;
+    if (message.role !== 'tool') {
+      index.delete(message.id);
+      message.id = `native-${ref}-${position}`;
+      index.set(message.id, message);
+    }
   });
 }
 /** Thinking stays in the CLI; a call with no recorded outcome can't claim one. */
-function finish(into: Session, skipped: number): NativeTranscript {
+function finish({ into, seeded }: Replay, skipped: number): NativeTranscript {
   const messages = into.messages
+    // A seeded call is returned only when its result arrived, so it can take that outcome.
+    .filter((message, position) => position >= seeded || message.tool?.status !== 'running')
     .filter((message) => message.role !== 'thinking')
     .map((message) =>
       message.tool?.status === 'running'
@@ -59,10 +83,18 @@ function userText(content: unknown): string {
     .trim();
 }
 
-/** Claude Code's records, as `getSessionMessages` returns them, oldest first. */
-export function claudeTranscript(session: Session, records: unknown[]): NativeTranscript {
-  const into = scratch(session);
-  const agent = new ClaudeAgent(into, 'claude', sink(into));
+/**
+ * Claude Code's records, oldest first: all of them as `getSessionMessages` returns them, or only
+ * the newest, read from the end of the transcript. For those, pass the thread's unfinished calls.
+ */
+export function claudeTranscript(
+  session: Session,
+  records: unknown[],
+  open: Message[] = [],
+): NativeTranscript {
+  const replay = scratch(session, open);
+  const { into } = replay;
+  const agent = new ClaudeAgent(into, 'claude', sink(replay));
   let skipped = 0;
   for (const raw of records as any[]) {
     // A subagent's own steps belong to its worker, not to this thread.
@@ -82,15 +114,16 @@ export function claudeTranscript(session: Session, records: unknown[]): NativeTr
       if (text && !NOT_YOURS.test(text)) into.messages.push({ id: ref, role: 'user', text });
       else agent.replayRecord(raw);
     } else agent.replayRecord(raw);
-    stamp(into, from, ref, at);
+    stamp(replay, from, ref, at);
   }
-  return finish(into, skipped);
+  return finish(replay, skipped);
 }
 
 /** Codex's turns, as `thread/turns/list` returns them with full items, oldest first. */
 export function codexTranscript(session: Session, turns: unknown[]): NativeTranscript {
-  const into = scratch(session);
-  const agent = new CodexAgent(into, 'codex', sink(into));
+  const replay = scratch(session);
+  const { into } = replay;
+  const agent = new CodexAgent(into, 'codex', sink(replay));
   let skipped = 0;
   for (const turn of turns as any[])
     for (const item of turn?.items ?? []) {
@@ -116,7 +149,7 @@ export function codexTranscript(session: Session, turns: unknown[]): NativeTrans
           .trim();
         if (text) into.messages.push({ id: ref, role: 'user', text });
       } else agent.replayItem(item);
-      stamp(into, from, ref, at);
+      stamp(replay, from, ref, at);
     }
-  return finish(into, skipped);
+  return finish(replay, skipped);
 }

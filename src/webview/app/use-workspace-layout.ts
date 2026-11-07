@@ -72,6 +72,13 @@ export function useWorkspaceLayout(saved: ViewState | undefined) {
         setThreadsCollapsed(inPixels < 1);
         if (!arranging.current) setFolded(inPixels < 1);
       },
+      /**
+       * The panes are about to change, as when the window crosses into the wide layout. Until
+       * they're arranged, the sizes they report on mounting aren't your choice.
+       */
+      hold() {
+        arranging.current = true;
+      },
       /** Sizing done by the app, after which the list is folded again if you folded it. */
       arrange(apply: () => void) {
         arranging.current = true;

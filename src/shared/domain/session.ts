@@ -191,6 +191,8 @@ export interface Session {
   cwd: string;
   workspace: string;
   nativeId?: string;
+  previousAgents?: { provider: Provider; profileId?: string; nativeId?: string }[];
+  continuationContext?: string;
   parentId?: string;
   observed?: boolean;
   /** Running in the CLI's own terminal, so nothing here is running it. Not saved. */

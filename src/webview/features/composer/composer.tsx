@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   attachmentLabel,
   nextMode,
@@ -16,6 +17,7 @@ import type { ComposerProps } from './types';
 import { useComposer } from './use-composer';
 
 export function Composer(props: ComposerProps) {
+  const [continuing, setContinuing] = useState(false);
   const {
     catalog,
     skills,
@@ -81,6 +83,51 @@ export function Composer(props: ComposerProps) {
       className={`composer-area pt-2 px-6 pb-2.5 shrink-0 relative [&.top]:pt-3.5 max-[900px]:py-2 max-[900px]:px-3 [.question-dock+&]:pt-0 ${top ? 'top' : ''}`}
       data-mode={modeShown.mode}
     >
+      {continuing && session ? (
+        <section
+          className="mx-auto mb-2 max-w-[780px] rounded-lg border border-strong bg-surface p-3"
+          aria-label="Continue with another agent"
+        >
+          <div className="flex items-center justify-between text-xs">
+            <strong>Continue with…</strong>
+            <button
+              type="button"
+              onClick={() => setContinuing(false)}
+              aria-label="Close continuation"
+            >
+              ×
+            </button>
+          </div>
+          <p className="my-2 text-xs text-muted-foreground">
+            Keep this chat and review the context before continuing. Your next message starts a new
+            provider session.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(catalog)
+              .filter(([id, value]) => id !== agent && value.status === 'ready')
+              .map(([id]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="rounded-md border border-subtle px-3 py-1.5 text-xs hover:bg-raised"
+                  onClick={() => {
+                    send({ type: 'continueChat', id: session.id, agent: id });
+                    setContinuing(false);
+                  }}
+                >
+                  {profileLabel(id)}
+                </button>
+              ))}
+            {!Object.entries(catalog).some(
+              ([id, value]) => id !== agent && value.status === 'ready',
+            ) ? (
+              <span className="text-xs text-muted-foreground">
+                No other agent is ready. Check your installed agents and accounts.
+              </span>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       <div ref={menuFrame} className="relative max-w-[780px] m-auto">
         {menuOpen && anchor && trigger?.mark === '/' ? (
           <SkillMenu
@@ -123,7 +170,7 @@ export function Composer(props: ComposerProps) {
         ) : null}
         <div
           data-agent={profileProvider(agent)}
-          className="composer @container border border-composer-edge rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [&_textarea]:w-full [&_textarea]:pt-2.5 [&_textarea]:px-3 [&_textarea]:pb-1 [&_textarea]:block [&_textarea]:text-[13px] [&_textarea]:leading-[1.55] [&_textarea]:resize-none [&_textarea]:field-sizing-content [&_textarea]:min-h-[52px] [&_textarea]:max-h-[40vh] [&_textarea]:overflow-y-auto [&_textarea:focus-visible]:outline-none in-[.composer-area.top]:[&_textarea]:min-h-24"
+          className="composer @container border border-composer-edge rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [&_textarea]:w-full [&_textarea]:pt-2.5 [&_textarea]:px-3 [&_textarea]:pb-1 [&_textarea]:block [&_textarea]:text-[13.5px] [&_textarea]:leading-[1.55] [&_textarea]:resize-none [&_textarea]:field-sizing-content [&_textarea]:min-h-[52px] [&_textarea]:max-h-[40vh] [&_textarea]:overflow-y-auto [&_textarea:focus-visible]:outline-none in-[.composer-area.top]:[&_textarea]:min-h-24"
         >
           {attachments.length ? (
             <div className="flex flex-wrap items-start gap-1 pt-2 px-2.5 pb-0 in-[.user]:pt-0 in-[.user]:px-0 in-[.user]:pb-1.5">
@@ -230,7 +277,7 @@ export function Composer(props: ComposerProps) {
             <div className="flex items-center gap-1 shrink-0">
               <UsageIndicator
                 session={session}
-                onHandOff={session ? () => send({ type: 'handoff', id: session.id }) : undefined}
+                onHandOff={session ? () => setContinuing(true) : undefined}
               />
               <button
                 type="button"
@@ -277,6 +324,7 @@ export function Composer(props: ComposerProps) {
         </div>
       </div>
       <ComposerCaption
+        onContinue={() => setContinuing(true)}
         session={session}
         choice={choice}
         onChoice={onChoice}

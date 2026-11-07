@@ -168,3 +168,44 @@ test('Claude bookkeeping is not shown as something you wrote', () => {
     ['Fix the bug'],
   );
 });
+
+test('read alone, a result finishes the call this thread already shows; untouched calls are left out', () => {
+  const thread = session('claude');
+  const open = [
+    {
+      id: 'tool-1',
+      role: 'tool' as const,
+      text: '',
+      tool: {
+        kind: 'command' as const,
+        name: 'Bash',
+        title: 'make',
+        status: 'interrupted' as const,
+      },
+    },
+    {
+      id: 'tool-2',
+      role: 'tool' as const,
+      text: '',
+      tool: { kind: 'command' as const, name: 'Bash', title: 'ls', status: 'running' as const },
+    },
+  ];
+  const { messages } = claudeTranscript(
+    thread,
+    [
+      {
+        type: 'user',
+        uuid: 'r1',
+        timestamp: at(5),
+        message: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'built' }] },
+      },
+    ],
+    open,
+  );
+  assert.deepEqual(
+    messages.map((item) => [item.id, item.tool?.status, item.text]),
+    [['tool-1', 'completed', 'built']],
+  );
+  // The thread's own rows are copies' sources, never changed by reading.
+  assert.equal(open[0].tool.status, 'interrupted');
+});

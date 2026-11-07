@@ -15,7 +15,7 @@ import { SessionApprovals } from './session-approvals';
 import { SessionDelegation } from './session-delegation';
 import { SessionFiles } from './session-files';
 import { SessionPersistence } from './session-persistence';
-import { SessionPlans } from './session-plans';
+import { type BuildOptions, SessionPlans } from './session-plans';
 import type { AgentFactory, PlanFiles } from './session-types';
 import { TurnLifecycle } from './turn-lifecycle';
 
@@ -102,6 +102,56 @@ export class Sessions extends EventEmitter {
     const session = this.sessions.find((item) => item.id === id);
     if (!session) throw new Error('Session no longer exists.');
     return session;
+  }
+  continueChat(
+    id: string,
+    provider: Provider,
+    profileId: string | undefined,
+    context: string,
+  ): void {
+    this.approvals.assertAvailable(id);
+    const session = this.get(id);
+    if (
+      session.observed ||
+      session.inTerminal ||
+      session.transition ||
+      ['running', 'waiting'].includes(session.status)
+    )
+      throw new Error('Stop this thread before continuing with another agent.');
+    this.turns.forget(id);
+    session.previousAgents = [
+      ...(session.previousAgents ?? []),
+      { provider: session.provider, profileId: session.profileId, nativeId: session.nativeId },
+    ];
+    session.provider = provider;
+    session.profileId = profileId;
+    session.nativeId = undefined;
+    session.nativeSyncedAt = undefined;
+    session.continuationContext = context;
+    session.model = undefined;
+    session.effort = undefined;
+    session.thinking = undefined;
+    session.activeModel = undefined;
+    session.adaptiveThinking = undefined;
+    session.mode = undefined;
+    session.reportedMode = undefined;
+    session.nativeSettings = undefined;
+    session.runtime = undefined;
+    session.usage = undefined;
+    if (session.plan)
+      session.messages.push({
+        id: randomUUID(),
+        role: 'notice',
+        text: `Plan before continuing (${session.plan.status}):\n\n${session.plan.text}`,
+      });
+    session.plan = undefined;
+    session.status = 'idle';
+    session.messages.push({
+      id: randomUUID(),
+      role: 'notice',
+      text: `Continuing with ${profileId ?? provider}. Reviewed context will accompany your next message; provider permissions start fresh.`,
+    });
+    this.changed(true);
   }
   remove(id: string): void {
     this.approvals.assertAvailable(id);
@@ -200,11 +250,11 @@ export class Sessions extends EventEmitter {
   currentPlanText(session: Session): Promise<string> {
     return this.plans.currentPlanText(session);
   }
-  buildPlan(id: string): Promise<void> {
-    return this.plans.buildPlan(id);
+  buildPlan(id: string, options?: BuildOptions): Promise<void> {
+    return this.plans.buildPlan(id, options);
   }
-  handOffPlan(id: string): Promise<string> {
-    return this.plans.handOffPlan(id);
+  handOffPlan(id: string, notes?: string): Promise<string> {
+    return this.plans.handOffPlan(id, notes);
   }
   keepPlanning(id: string, feedback?: string): void {
     this.plans.keepPlanning(id, feedback);

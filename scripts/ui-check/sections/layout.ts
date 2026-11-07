@@ -188,4 +188,17 @@ async function checkResizablePanes(ctx: UiCheckContext): Promise<void> {
   assert.equal(await toggle.count(), 0);
   await page.setViewportSize({ width: 1440, height: 960 });
   await frame();
+  await frame();
+  assert.ok((await width()) > 150, 'an unfolded list comes back unfolded');
+  // A list you folded stays folded through a narrow window and back.
+  await toggle.click();
+  await frame();
+  await page.setViewportSize({ width: 768, height: 840 });
+  await frame();
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await frame();
+  await frame();
+  assert.ok((await width()) < 1, 'a folded list stays folded after the window narrows and widens');
+  await page.getByRole('button', { name: 'Toggle thread list' }).click();
+  await frame();
 }

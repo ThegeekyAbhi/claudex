@@ -59,6 +59,19 @@ export function deriveTitle(prompt: string): string {
   return clean.length > 60 ? `${clean.slice(0, 59).trimEnd()}…` : clean;
 }
 
+/**
+ * Claude Code's own plan file, which it writes in plan mode: a Markdown file in `plans` inside its
+ * config folder (`~/.claude`, or any `.claude*` folder `CLAUDE_CONFIG_DIR` names). The plan card
+ * shows that plan, so the edit isn't repeated as a diff. Your workspace's own plans still are.
+ */
+export function isAgentPlanFile(path: string): boolean {
+  return /(^|[\\/])\.claude[^\\/]*[\\/]plans[\\/][^\\/]+\.md$/i.test(path);
+}
+/** The plan with your notes added, so an approval carries what you wrote. */
+export function planWithNotes(text: string, notes?: string): string {
+  const added = notes?.trim();
+  return added ? `${text.trimEnd()}\n\n## Notes from you\n\n${added}\n` : text;
+}
 /** A plan's first heading, or the thread's title when it has none. */
 export function planTitle(text: string, fallback: string): string {
   return /^#{1,3}\s+(.+)$/m.exec(text)?.[1]?.trim() || fallback;

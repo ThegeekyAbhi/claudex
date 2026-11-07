@@ -2,7 +2,7 @@
   "name": "claudex",
   "displayName": "Claudex",
   "description": "Codex and Claude Code together. Local threads, plans, approvals, and diffs in VS Code.",
-  "version": "0.8.3",
+  "version": "0.8.5",
   "publisher": "nerdyabhi",
   "icon": "media/claudex-icon.png",
   "galleryBanner": {

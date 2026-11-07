@@ -38,6 +38,8 @@ interface Props {
   onView: (view: ThreadViewState) => void;
 }
 const OLDER_SHOWN = 7;
+/** The shortcut as each system writes it: ⌘ on a Mac, Ctrl elsewhere. */
+const FIND_KEY = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘K' : 'Ctrl K';
 function relativeTime(at: number): string {
   const minutes = Math.floor((Date.now() - at) / 60_000);
   if (minutes < 1) return 'now';
@@ -349,7 +351,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           ))}
         </div>
       ) : null}
-      <label className="flex items-center gap-1.5 mb-2 px-2 py-[5px] text-faint rounded-md focus-within:bg-muted [&_kbd]:opacity-0 in-[.threads:hover]:[&_kbd]:opacity-100 [&_input]:w-full [&_input]:text-[12px] [&_input]:text-foreground [&_input:focus-visible]:outline-none">
+      <label className="relative flex items-center gap-1.5 mb-2 px-2 py-[5px] text-faint rounded-md focus-within:bg-muted [&_kbd]:opacity-0 in-[.threads:hover]:[&_kbd]:opacity-100 [&_input]:w-full [&_input]:text-[12px] [&_input]:text-foreground [&_input:focus-visible]:outline-none">
         <Icon name="search" size={12} />
         <span className="sr-only">Find a thread</span>
         <input
@@ -358,7 +360,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Find a thread…"
         />
-        <kbd>⌘K</kbd>
+        <kbd>{FIND_KEY}</kbd>
       </label>
       <div className="overflow-y-auto flex-1 flex flex-col gap-3.5">
         {group('Needs you', attention)}

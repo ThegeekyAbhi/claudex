@@ -13,7 +13,7 @@ export async function checkUsage(ctx: UiCheckContext): Promise<void> {
   await usageCard.getByText('176K / 200K').waitFor();
   await usageCard.getByText(/^Weekly/).waitFor();
   assert.equal(await usageCard.getByText('Expired').count(), 0, 'an elapsed window is not shown');
-  await usageCard.getByRole('button', { name: 'Hand off to another agent' }).waitFor();
+  await usageCard.getByRole('button', { name: 'Continue with…' }).waitFor();
   // The card is also the inspector: what the CLI reported, and a failed MCP server gets a dot.
   assert.equal(await usageCard.getByText('Mode').isVisible(), false);
   await page.screenshot({ path: 'test-results/screenshots/usage-compact.png' });
@@ -30,5 +30,15 @@ export async function checkUsage(ctx: UiCheckContext): Promise<void> {
   assert.equal(await nudges.count(), 0);
   await page.mouse.move(0, 0);
   await usageCard.waitFor({ state: 'detached' });
+  await ring.click();
+  await usageCard.getByRole('button', { name: 'Continue with…' }).click();
+  const continuation = page.getByRole('region', { name: 'Continue with another agent' });
+  await continuation.waitFor();
+  const target = continuation.getByRole('button').filter({ hasNotText: '×' }).first();
+  if (await target.count()) {
+    await target.click();
+    const actions = await ctx.sentOf('continueChat');
+    assert.equal(actions.at(-1).id, 'asking');
+  } else await continuation.getByRole('button', { name: 'Close continuation' }).click();
   await update('codex-one');
 }

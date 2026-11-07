@@ -28,11 +28,11 @@ export function chooseNudge(
   dismissed: readonly string[],
 ): Nudge | undefined {
   const options: Nudge[] = [];
-  if (session && !session.observed && worstUsage(session) >= NEAR_LIMIT)
+  if (session && !session.observed && (limitFailure(session) || worstUsage(session) >= NEAR_LIMIT))
     options.push({
       key: `handoff:${session.id}`,
       kind: 'handoff',
-      text: 'Close to a limit.',
+      text: limitFailure(session) ? 'Limit reached.' : 'Close to a limit.',
     });
   // Your Codex settings already get a notice that says why, and a nudge couldn't add anything.
   if (session && requested && session.reportedMode && session.reportedMode !== CODEX_OWN_SETTINGS) {
@@ -47,4 +47,25 @@ export function chooseNudge(
   if (!session && (!requested || requested === 'auto'))
     options.push({ key: 'try-plan', kind: 'plan', text: 'Try Plan Mode' });
   return options.find((item) => !dismissed.includes(item.key));
+}
+
+/** An explicit provider failure takes precedence over an older usage snapshot. */
+export function limitFailure(session: Session): string | undefined {
+  if (session.status !== 'failed') return undefined;
+  let lastUser = -1;
+  for (let index = session.messages.length - 1; index >= 0; index--) {
+    if (session.messages[index].role === 'user') {
+      lastUser = index;
+      break;
+    }
+  }
+  return session.messages
+    .slice(lastUser + 1)
+    .find(
+      (message) =>
+        (message.role === 'notice' || message.role === 'assistant') &&
+        /(?:hit|reached|exceeded) (?:your |the )?(?:[\w-]+ )?(?:usage |rate )?limit|rate[_ -]limit[_ -](?:error|exceeded)/i.test(
+          message.text,
+        ),
+    )?.text;
 }

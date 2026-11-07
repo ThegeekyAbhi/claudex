@@ -100,3 +100,82 @@ test('stopping or failing while reading a plan is rechecked before implementatio
   await assert.rejects(plans.buildPlan(session.id), /Wait for this turn/);
   assert.equal(sends(), 0);
 });
+
+function answering(provider: 'claude' | 'codex', waiting: boolean) {
+  const session: Session = {
+    id: 'two',
+    title: 'Plan',
+    provider,
+    cwd: '/tmp',
+    workspace: '/tmp',
+    status: waiting ? 'waiting' : 'completed',
+    mode: 'plan',
+    messages: [],
+    createdAt: 1,
+    updatedAt: 1,
+    plan: { text: '# Plan\n\nDo it.', status: 'ready', updatedAt: 1 },
+    ...(waiting
+      ? { approval: { id: 'req', title: 'Build this plan?', detail: '', kind: 'plan' as const } }
+      : {}),
+  };
+  const approvals: { allowed: boolean; answers: Record<string, string> }[] = [];
+  const sent: string[] = [];
+  const plans = new SessionPlans({
+    assertAvailable() {},
+    get: () => session,
+    changed() {},
+    keepPlanning() {},
+    approve: (_id, _request, allowed, answers) => approvals.push({ allowed, answers }),
+    currentPlanText: async () => session.plan?.text ?? '',
+    send: async (_id, text) => {
+      sent.push(text);
+    },
+  });
+  return { session, plans, approvals, sent };
+}
+
+test('approving each edit leaves the mode to the CLI’s own default', async () => {
+  const { session, plans, approvals } = answering('claude', true);
+  await plans.buildPlan(session.id, { approvals: 'manual' });
+  assert.equal(session.mode, undefined);
+  assert.equal(session.plan?.status, 'approved');
+  assert.deepEqual(approvals, [{ allowed: true, answers: {} }]);
+});
+
+test('Auto stays the default way to build', async () => {
+  const { session, plans } = answering('claude', true);
+  await plans.buildPlan(session.id);
+  assert.equal(session.mode, 'auto');
+});
+
+test('your notes go with the plan you approve', async () => {
+  const claude = answering('claude', true);
+  await claude.plans.buildPlan(claude.session.id, { notes: 'Keep old keys readable' });
+  const plan = claude.approvals[0]?.answers.plan ?? '';
+  assert.match(plan, /^# Plan\n\nDo it\.\n\n## Notes from you\n\nKeep old keys readable\n$/);
+  const codex = answering('codex', false);
+  await codex.plans.buildPlan(codex.session.id, { notes: 'Keep old keys readable' });
+  assert.match(
+    codex.sent[0] ?? '',
+    /I edited it:[\s\S]*## Notes from you\n\nKeep old keys readable/,
+  );
+  const fresh = answering('claude', false);
+  assert.match(
+    await fresh.plans.handOffPlan(fresh.session.id, 'Use the new API'),
+    /^Implement this plan:[\s\S]*## Notes from you\n\nUse the new API/,
+  );
+  // Blank notes change nothing, so an unedited plan isn't pasted back.
+  const blank = answering('claude', true);
+  await blank.plans.buildPlan(blank.session.id, { notes: '   ' });
+  assert.deepEqual(blank.approvals[0]?.answers, {});
+});
+
+test('a build that fails to start restores the mode you had', async () => {
+  const { session, plans } = answering('codex', false);
+  (plans as unknown as { deps: { send: () => Promise<void> } }).deps.send = async () => {
+    throw new Error('offline');
+  };
+  await assert.rejects(plans.buildPlan(session.id, { approvals: 'manual' }), /offline/);
+  assert.equal(session.mode, 'plan');
+  assert.equal(session.plan?.status, 'ready');
+});

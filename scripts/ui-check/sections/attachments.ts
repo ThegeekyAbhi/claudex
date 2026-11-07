@@ -66,6 +66,35 @@ export async function checkAttachments(ctx: UiCheckContext): Promise<void> {
   );
   await page.locator('.composer .attachment-image').nth(1).locator('img').waitFor();
   assert.equal(await box.inputValue(), 'Keep my words');
+  await page.evaluate(() =>
+    window.postMessage(
+      {
+        type: 'attached',
+        draftKey: 'claude-two',
+        attachment: {
+          kind: 'thread',
+          id: 'long-context',
+          title: 'A very long context title '.repeat(20),
+          history: 'recent',
+        },
+      },
+      '*',
+    ),
+  );
+  const contextChip = page
+    .locator('.composer .attachment-chip')
+    .filter({ hasText: 'A very long context title' });
+  await contextChip.waitFor();
+  const chipBounds = await contextChip.boundingBox();
+  const imageBounds = await thumbnail.first().boundingBox();
+  assert.ok(chipBounds && imageBounds);
+  assert.ok(chipBounds.width <= 221, 'long context stays inside its chip');
+  assert.ok(
+    chipBounds.x >= imageBounds.x + imageBounds.width ||
+      chipBounds.y >= imageBounds.y + imageBounds.height,
+    'context and image do not overlap',
+  );
+  await contextChip.getByRole('button', { name: /Remove Context/ }).click();
   await box.press('Enter');
   await page.waitForFunction(() =>
     (window as any).sent.some(

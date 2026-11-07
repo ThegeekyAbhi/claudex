@@ -3,7 +3,7 @@ import type { Message, ToolInfo } from '../../../shared/model';
 import { Icon, type IconName } from '../../components/icons';
 import { MarkdownText } from '../../lib/markdown';
 import { Chevron, StepState } from './step-state';
-import { duration, verb } from './view-model';
+import { duration, isPlanEdit, verb } from './view-model';
 
 const ICONS: Record<ToolInfo['kind'], IconName> = {
   command: 'terminal',
@@ -25,7 +25,11 @@ export function ToolStep({ message }: { message: Message }) {
       <Icon name={ICONS[tool.kind]} size={13} />
       <span className="flex-1 min-w-0 truncate">
         <span className="text-foreground">{verb(tool)}</span>{' '}
-        {code ? <code>{tool.title}</code> : <span>{tool.title}</span>}
+        {code ? (
+          <code>{tool.title}</code>
+        ) : (
+          <span>{isPlanEdit(tool) ? 'the plan' : tool.title}</span>
+        )}
       </span>
       {tool.durationMs !== undefined && tool.durationMs >= 1000 ? (
         <span className="text-[10.5px] text-muted-foreground shrink-0">

@@ -87,7 +87,7 @@ export function SetupCard({
             key={step.label}
             data-state={step.state}
             aria-current={step.state === 'current' ? 'step' : undefined}
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-muted-foreground data-[state=current]:text-foreground"
+            className="relative flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-muted-foreground data-[state=current]:text-foreground"
           >
             <span
               className={`grid size-4 shrink-0 place-items-center rounded-full border text-[9.5px] ${

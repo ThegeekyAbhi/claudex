@@ -287,7 +287,7 @@ export function ModelSelector({
                     tabIndex={item === pane ? 0 : -1}
                     aria-selected={!searching && item === pane}
                     data-agent={profileProvider(item)}
-                    className="rail-item justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[12px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-agent-tint aria-selected:text-foreground aria-selected:enabled:hover:bg-agent-tint max-[900px]:gap-[5px] max-[900px]:px-[5px]"
+                    className="rail-item relative justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[12px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-agent-tint aria-selected:text-foreground aria-selected:enabled:hover:bg-agent-tint max-[900px]:gap-[5px] max-[900px]:px-[5px]"
                     aria-label={profileLabel(item)}
                     aria-describedby={status ? statusId : undefined}
                     title={status?.text}
@@ -316,7 +316,7 @@ export function ModelSelector({
           <span className="flex-1" />
           <button
             type="button"
-            className="rail-item justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[11.5px] text-muted-foreground enabled:hover:text-foreground"
+            className="rail-item relative justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[11.5px] text-muted-foreground enabled:hover:text-foreground"
             title="Add another account for Claude Code or Codex, with its own folder"
             onClick={() => {
               setOpen(false);

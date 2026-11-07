@@ -115,6 +115,7 @@ export class TurnLifecycle {
         [
           text,
           input.context,
+          session.continuationContext,
           guided ? this.deps.guides.PLANNING_GUIDE : undefined,
           explained ? this.deps.guides.EXPLAIN_GUIDE : undefined,
         ]
@@ -123,6 +124,7 @@ export class TurnLifecycle {
         input.images,
         input.skills,
       );
+      if (this.deps.get(id).status === 'completed') session.continuationContext = undefined;
       // The CLI accepted the history, so the next switch back sends only what follows it.
       if (input.syncs?.length && this.generations.get(id) === generation) {
         session.synced = { ...session.synced };

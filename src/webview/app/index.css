@@ -102,19 +102,6 @@ body {
   --mode-auto: var(--success);
   --mode-on-fill: var(--canvas);
   --code-foreground: var(--vscode-editor-foreground, var(--foreground));
-  --code-background: transparent;
-  --code-token-keyword: var(--vscode-symbolIcon-keywordForeground, var(--foreground));
-  --code-token-string: var(--vscode-symbolIcon-stringForeground, var(--foreground));
-  --code-token-string-expression: var(--code-token-string);
-  --code-token-comment: var(--muted);
-  --code-token-constant: var(--vscode-symbolIcon-constantForeground, var(--foreground));
-  --code-token-function: var(--vscode-symbolIcon-functionForeground, var(--foreground));
-  --code-token-parameter: var(--foreground);
-  --code-token-punctuation: var(--muted);
-  --code-token-link: var(--link);
-  --code-token-inserted: var(--add);
-  --code-token-deleted: var(--del);
-  --code-token-changed: var(--warning);
 }
 html[data-surface="sidebar"] body {
   --canvas: var(--vscode-sideBar-background, var(--vscode-editor-background, #181818));
@@ -395,8 +382,36 @@ code {
 /* Markdown written by agents. */
 :where(.markdown) {
   line-height: 1.65;
-  font-size: 13px;
+  font-size: 13.5px;
   overflow-wrap: anywhere;
+}
+/*
+ * A reply is read, not scanned: body text sits a step softer than headings and bold labels, so
+ * the structure stands out, and prose stops at a comfortable line length (about 45-90
+ * characters reads best). Code, tables and cards still use the full column.
+ */
+:where(.markdown.reply) {
+  color: color-mix(in srgb, var(--foreground) 88%, var(--canvas));
+}
+body.vscode-high-contrast :where(.markdown.reply),
+body.vscode-high-contrast-light :where(.markdown.reply) {
+  color: var(--foreground);
+}
+:where(.markdown.reply, .markdown.note) > :is(p, ul, ol, blockquote, h1, h2, h3, h4) {
+  max-width: 72ch;
+}
+:where(.markdown:not(.note)) :is(strong, h1, h2, h3, h4, li > strong:first-child) {
+  color: var(--foreground);
+}
+/* A short update between steps: the turn's answer is what should draw the eye. */
+:where(.markdown.note) {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+/* Your own message, in its bubble: plain and close-set. */
+:where(.markdown.said) {
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 :where(.markdown) > :first-child {
   margin-top: 0;
@@ -405,7 +420,7 @@ code {
   margin-bottom: 0;
 }
 :where(.markdown) p {
-  margin: 0.7em 0;
+  margin: 0.75em 0;
 }
 :where(.markdown) h1,
 :where(.markdown) h2,
@@ -413,7 +428,7 @@ code {
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.01em;
-  margin: 1.5em 0 0.5em;
+  margin: 1.6em 0 0.5em;
   scroll-margin-top: 8px;
 }
 :where(.markdown) h1 {
@@ -424,7 +439,7 @@ code {
   font-size: 15px;
 }
 :where(.markdown) h3 {
-  font-size: 13px;
+  font-size: 13.5px;
 }
 :where(.markdown) strong {
   font-weight: 600;
@@ -452,12 +467,29 @@ code {
   color: var(--code-foreground);
   overflow-wrap: normal;
 }
+/*
+ * Syntax colours: VS Code's Dark+ on dark themes, Light+ on light ones. Each token carries both
+ * (from Shiki), so switching themes needs no re-render. High contrast themes keep plain text, which
+ * those themes have already made readable.
+ */
+.tok {
+  color: var(--tok-dark, var(--code-foreground));
+}
+body.vscode-light .tok {
+  color: var(--tok-light, var(--code-foreground));
+}
+body.vscode-high-contrast .tok,
+body.vscode-high-contrast-light .tok {
+  color: inherit;
+}
+/* The text's own colour: VS Code tints webview code teal, which turns every name into a chip. */
 :where(.markdown) code {
   font-family: var(--mono);
-  font-size: 0.92em;
-  background: var(--selection);
+  font-size: 0.88em;
+  color: inherit;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
   border-radius: 4px;
-  padding: 1px 4px;
+  padding: 0.1em 0.35em;
 }
 :where(.markdown) pre code {
   padding: 0;
@@ -494,10 +526,18 @@ code {
 :where(.markdown) ul,
 :where(.markdown) ol {
   padding-left: 20px;
-  margin: 0.7em 0;
+  margin: 0.75em 0;
 }
 :where(.markdown) li {
-  margin: 0.25em 0;
+  margin: 0.35em 0;
+}
+:where(.markdown) a {
+  color: var(--link);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+:where(.markdown) a:hover {
+  text-decoration: underline;
 }
 :where(.markdown) li::marker {
   color: var(--faint);
@@ -516,4 +556,10 @@ code {
 [data-slot="dropdown-menu-content"],
 [role="menu"] {
   animation: none;
+}
+
+/* High contrast: your messages keep a clear edge instead of relying on a tint. */
+body.vscode-high-contrast .user-message .bubble,
+body.vscode-high-contrast-light .user-message .bubble {
+  border: 1px solid var(--border-strong);
 }

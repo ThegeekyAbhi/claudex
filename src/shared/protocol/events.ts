@@ -1,22 +1,33 @@
 import { TERMINAL_STATUSES } from '../domain/agents';
-import type { AgentEvent, Session, TranscriptEvent } from '../domain/session';
+import type { AgentEvent, Message, Session, TranscriptEvent } from '../domain/session';
 
-export function applyTranscript(session: Session, event: TranscriptEvent): void {
+export function applyTranscript(
+  session: Session,
+  event: TranscriptEvent,
+  index?: Map<string, Message>,
+): void {
   const id = event.type === 'message' ? event.message.id : event.id;
-  const existing = session.messages.find((message) => message.id === id);
+  const existing = index ? index.get(id) : session.messages.find((message) => message.id === id);
   if (event.type === 'message') {
     const ended = event.message.role === 'thinking' ? { endedAt: Date.now() } : {};
     if (existing) Object.assign(existing, event.message, ended);
-    else session.messages.push({ startedAt: Date.now(), ...event.message, ...ended });
+    else {
+      const added = { startedAt: Date.now(), ...event.message, ...ended };
+      session.messages.push(added);
+      index?.set(id, added);
+    }
   } else if (event.type === 'delta') {
     if (existing) existing.text += event.text;
-    else
-      session.messages.push({
+    else {
+      const added: Message = {
         id,
         role: event.role ?? 'assistant',
         text: event.text,
         startedAt: Date.now(),
-      });
+      };
+      session.messages.push(added);
+      index?.set(id, added);
+    }
   } else if (existing) {
     if (event.text !== undefined) existing.text = event.text;
     if (event.tool && existing.tool) existing.tool = { ...existing.tool, ...event.tool };

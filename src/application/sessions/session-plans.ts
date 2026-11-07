@@ -1,5 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import { applyTranscript, canBuildPlan, type Session, type SessionInput } from '../../shared/model';
+import {
+  applyTranscript,
+  canBuildPlan,
+  planWithNotes,
+  type Session,
+  type SessionInput,
+} from '../../shared/model';
+
+/** How you chose to build: Auto, or each edit approved by you; and anything you added. */
+export interface BuildOptions {
+  approvals?: 'auto' | 'manual';
+  notes?: string;
+}
+
 import type { PlanFiles } from './session-types';
 
 interface Dependencies {
@@ -50,16 +63,16 @@ export class SessionPlans {
     if (!text.trim()) throw new Error('The plan file is empty.');
     return text;
   }
-  async buildPlan(id: string): Promise<void> {
+  async buildPlan(id: string, options: BuildOptions = {}): Promise<void> {
     if (this.building.has(id)) throw new Error('Implementation is already being requested.');
     this.building.add(id);
     try {
-      await this.buildReadyPlan(id);
+      await this.buildReadyPlan(id, options);
     } finally {
       this.building.delete(id);
     }
   }
-  private async buildReadyPlan(id: string): Promise<void> {
+  private async buildReadyPlan(id: string, options: BuildOptions): Promise<void> {
     this.deps.assertAvailable(id);
     const session = this.deps.get(id);
     if (!session.plan) throw new Error('This thread has no plan to build.');
@@ -72,7 +85,7 @@ export class SessionPlans {
     waiting();
     if (!canBuildPlan(session)) throw new Error('Wait for a finished plan before implementing.');
     const plan = session.plan;
-    const text = await this.deps.currentPlanText(session);
+    const text = planWithNotes(await this.deps.currentPlanText(session), options.notes);
     const request = waiting();
     if (session.plan !== plan || !canBuildPlan(session) || !text.trim())
       throw new Error('The plan changed or is no longer ready. Review it before implementing.');
@@ -83,7 +96,8 @@ export class SessionPlans {
       status: session.plan.status,
     };
     session.plan.text = text;
-    session.mode = 'auto';
+    // Manual leaves the mode unset, so the CLI's own default asks before each edit.
+    session.mode = options.approvals === 'manual' ? undefined : 'auto';
     delete session.reportedMode;
     session.plan.status = 'approved';
     if (request) {
@@ -110,12 +124,12 @@ export class SessionPlans {
     if (session.status === 'failed') restore();
   }
   /** The prompt for another agent, which hasn't seen this thread. */
-  async handOffPlan(id: string): Promise<string> {
+  async handOffPlan(id: string, notes?: string): Promise<string> {
     const session = this.deps.get(id);
     this.deps.assertAvailable(id);
     if (!canBuildPlan(session)) throw new Error('Wait for a finished plan before implementing.');
     const plan = session.plan;
-    const text = await this.deps.currentPlanText(session);
+    const text = planWithNotes(await this.deps.currentPlanText(session), notes);
     if (session.plan !== plan || !canBuildPlan(session) || !text.trim())
       throw new Error('The plan changed or is no longer ready.');
     if (session.approval?.kind === 'plan') this.deps.keepPlanning(id);

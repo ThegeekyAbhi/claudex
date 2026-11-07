@@ -14,6 +14,18 @@ export interface SyncOutcome {
   skipped: number;
 }
 
+/** The notice above rows read from a terminal. */
+const TERMINAL_RUN = 'terminal-run-';
+function terminalNotice(rows: Message[]): string {
+  const tools = rows.filter((message) => message.role === 'tool').length;
+  const said = rows.length - tools;
+  const counts = [
+    `${said} message${said === 1 ? '' : 's'}`,
+    ...(tools ? [`${tools} tool call${tools === 1 ? '' : 's'}`] : []),
+  ].join(', ');
+  return `From the terminal: ${counts}.`;
+}
+
 /**
  * Where to read from. A thread saved by a Claudex without this field has no record of what it last
  * matched; its last change is the safe stand-in, so nothing it already shows is added twice. A
@@ -59,17 +71,17 @@ export function mergeNative(
     fresh.push(row);
   }
   const tools = fresh.filter((message) => message.role === 'tool').length;
-  const said = fresh.length - tools;
   if (fresh.length && options.announce) {
-    const counts = [
-      `${said} message${said === 1 ? '' : 's'}`,
-      ...(tools ? [`${tools} tool call${tools === 1 ? '' : 's'}`] : []),
-    ].join(', ');
-    session.messages.push({
-      id: randomUUID(),
-      role: 'notice',
-      text: `From the terminal: ${counts}.`,
-    });
+    // While the terminal is still going, with nothing here in between, its rows join the notice
+    // already above them, which counts them all, rather than each read adding another.
+    let last = session.messages.length - 1;
+    while (last >= 0 && !session.messages[last].id.startsWith(TERMINAL_RUN)) last -= 1;
+    const since = last < 0 ? [] : session.messages.slice(last + 1);
+    const continuing = last >= 0 && since.every((message) => message.nativeRef);
+    const run = [...(continuing ? since : []), ...fresh];
+    const text = terminalNotice(run);
+    if (continuing) session.messages[last] = { ...session.messages[last], text };
+    else session.messages.push({ id: `${TERMINAL_RUN}${randomUUID()}`, role: 'notice', text });
   }
   session.messages.push(...fresh);
   // Said once: the same old entries stay unreadable on every later read.

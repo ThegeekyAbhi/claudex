@@ -174,7 +174,6 @@ export class WorkspaceController {
     });
     this.history = new NativeHistory({
       sessions: this.sessions,
-      terminals: this.terminals,
       output: this.output,
       extension: this.context,
       publish: this.publish.bind(this),
@@ -435,13 +434,19 @@ export class WorkspaceController {
     if (id) {
       this.sessions.get(id);
       this.syncInBackground(id);
-    }
+    } else void this.history.follow(undefined);
     if (surface) surface.selectedId = id;
     this.selectedId = id;
     await this.context.workspaceState.update('selectedId', id);
   }
-  /** Brings in turns run elsewhere, such as a terminal, without holding up the click. */
+  /**
+   * Brings in turns run elsewhere, such as a terminal, without holding up the click, and keeps
+   * following this thread's transcript while it's open.
+   */
   private syncInBackground(id: string): void {
+    void this.history
+      .follow(id)
+      .catch((error) => this.output.appendLine(`History: ${String(error)}`));
     void this.history
       .sync(id)
       .then((outcome) => {
@@ -562,6 +567,7 @@ export class WorkspaceController {
   async dispose(): Promise<void> {
     if (this.updateTimer) clearTimeout(this.updateTimer);
     for (const watcher of this.documentWatchers.values()) watcher.dispose();
+    this.history.dispose();
     // Terminals belong to VS Code; leave their native sessions accessible.
     await this.sessions.dispose();
   }

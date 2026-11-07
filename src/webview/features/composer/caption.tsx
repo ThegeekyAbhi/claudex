@@ -5,6 +5,7 @@ import type { ComposerProps } from './types';
 import type { useComposer } from './use-composer';
 
 export function ComposerCaption({
+  onContinue,
   session,
   choice,
   onChoice,
@@ -14,7 +15,10 @@ export function ComposerCaption({
   menuSide,
   selectMode,
   worktree,
-}: Pick<ComposerProps, 'session' | 'choice' | 'onChoice' | 'onDismissNudge'> &
+}: { onContinue: () => void } & Pick<
+  ComposerProps,
+  'session' | 'choice' | 'onChoice' | 'onDismissNudge'
+> &
   Pick<
     ReturnType<typeof useComposer>,
     'nudge' | 'focusInput' | 'menuSide' | 'selectMode' | 'worktree'
@@ -81,9 +85,9 @@ export function ComposerCaption({
             <button
               type="button"
               className="cursor-pointer bg-transparent p-0 text-[var(--link)] hover:underline"
-              onClick={() => send({ type: 'handoff', id: session.id })}
+              onClick={onContinue}
             >
-              Hand off
+              Continue with…
             </button>
           ) : null}
           <button

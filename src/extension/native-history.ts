@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { type FSWatcher, watch } from 'node:fs';
 import path from 'node:path';
 import * as vscode from 'vscode';
 import type { Sessions } from '../application/sessions/session-manager';
 import { mergeNative, type SyncOutcome, syncCursor } from '../application/sessions/session-sync';
+import { markBefore, readAppended, type TailMark } from '../providers/history/claude-tail';
 import {
   claudeTranscript,
   codexTranscript,
@@ -27,8 +29,13 @@ import {
 import { launcherFor, legacyHistoryDir } from './launcher';
 
 const LIST_LIMIT = 40;
-/** Re-reading a transcript on every click would start a process each time. */
+/** When a transcript's file time can't be read, how often it may be read anyway. */
 const RECHECK_MS = 15_000;
+/**
+ * How long a watched transcript must be quiet before it's read. The CLI writes a turn as many
+ * lines in quick succession; reading once they settle shows them together.
+ */
+const SETTLE_MS = { claude: 250, codex: 1_000 } as const;
 /** Listing starts a process per account, so switching windows back and forth reuses the last. */
 const RELIST_MS = 60_000;
 /** How long a send waits for the terminal's newest turns before going ahead without them. */
@@ -36,7 +43,6 @@ const CATCH_UP_MS = 5_000;
 
 export interface NativeHistoryContext {
   sessions: Pick<Sessions, 'sessions' | 'get' | 'create' | 'changed'>;
-  terminals: Map<string, unknown>;
   output: Pick<vscode.OutputChannel, 'appendLine'>;
   extension: Pick<vscode.ExtensionContext, 'extensionPath'>;
   publish(full?: boolean): Promise<void>;
@@ -54,8 +60,15 @@ export class NativeHistory {
   private listing?: Promise<void>;
   private listedAt = 0;
   private clock = new TranscriptClock();
-  /** The transcript's file time when it was last read in full, per thread. */
+  /** The transcript's file time when it was last read, per thread. */
   private readAt = new Map<string, number>();
+  /** Where each Claude transcript was last read to, so the next read takes only what's new. */
+  private tails = new Map<string, TailMark>();
+  private watcher?: { id: string; close(): void };
+  /** Bumped on every `follow`, so only the latest thread opened ends up followed. */
+  private following = 0;
+  /** The thread that should be followed, even before its transcript exists. */
+  private wanted?: string;
   constructor(private context: NativeHistoryContext) {}
 
   /** Found sessions no thread here is linked to yet, newest first. */
@@ -85,8 +98,13 @@ export class NativeHistory {
       ? launcherFor('codex', session.profileId).env
       : this.claudeEnv(session.profileId);
   }
-  /** The CLI's whole transcript for this thread, as rows. */
-  async read(session: Session): Promise<NativeTranscript> {
+  /**
+   * What the CLI recorded for this thread, as rows. For Claude, only the lines added since the
+   * last read are read, straight from the transcript and with no process; the first read, and
+   * any time those lines can't be trusted alone, goes through Claude Code's own reader. `mark` is
+   * where this read stopped; the caller keeps it only once the rows are in the thread.
+   */
+  async read(session: Session): Promise<NativeTranscript & { mark?: TailMark }> {
     const nativeId = session.nativeId;
     if (!nativeId) return { messages: [], skipped: 0 };
     if (session.provider === 'codex') {
@@ -97,19 +115,26 @@ export class NativeHistory {
         await readCodexTurns(executable, nativeId, session.cwd, since, env),
       );
     }
-    return claudeTranscript(
-      session,
-      await readClaudeRecords(
-        this.sdkPath(),
-        nativeId,
-        session.cwd,
-        this.claudeEnv(session.profileId),
-      ),
-    );
+    const env = this.claudeEnv(session.profileId);
+    const file = await this.clock.file('claude', nativeId, session.cwd, env).catch(() => undefined);
+    const last = this.tails.get(session.id);
+    if (file && last?.file === file) {
+      const appended = await readAppended(last);
+      if (appended)
+        return {
+          ...claudeTranscript(session, appended.records, unfinishedCalls(session)),
+          mark: appended.mark,
+        };
+    }
+    // Taken before reading, so anything written meanwhile is read again next time, not missed.
+    const mark = file ? await markBefore(file) : undefined;
+    const records = await readClaudeRecords(this.sdkPath(), nativeId, session.cwd, env);
+    return { ...claudeTranscript(session, records), ...(mark ? { mark } : {}) };
   }
   /**
    * Brings in what the CLI recorded since this thread last matched it. Skipped while a turn runs
-   * here or the thread is open in a terminal: those finish first, then this reads once.
+   * here: that turn finishes first, then this reads once. Unless forced, nothing is read when the
+   * transcript's file hasn't changed since the last read.
    */
   sync(
     id: string,
@@ -126,21 +151,34 @@ export class NativeHistory {
     if (!session?.nativeId || session.observed) return Promise.resolve(undefined);
     if (session.status === 'running' || session.status === 'waiting')
       return Promise.resolve(undefined);
-    if (this.context.terminals.has(id)) return Promise.resolve(undefined);
-    const last = this.checkedAt.get(id) ?? 0;
-    if (!options.force && Date.now() - last < RECHECK_MS) return Promise.resolve(undefined);
-    this.checkedAt.set(id, Date.now());
     const work = (async () => {
       try {
         const modified = await this.modifiedAt(session);
-        const rows = await this.read(session);
-        if (modified !== undefined) this.readAt.set(id, modified);
-        // A turn may have started here while the CLI's history was being read.
+        if (!options.force) {
+          if (modified !== undefined && modified <= (this.readAt.get(id) ?? -1)) return undefined;
+          // With no file time to go by, read at most every so often.
+          if (modified === undefined && Date.now() - (this.checkedAt.get(id) ?? 0) < RECHECK_MS)
+            return undefined;
+        }
+        this.checkedAt.set(id, Date.now());
+        const { mark, ...rows } = await this.read(session);
+        // A turn may have started here while the CLI's history was being read. The rows aren't
+        // used, so the next read starts from where this one did.
         if (session.status === 'running' || session.status === 'waiting') return undefined;
+        const synced = session.nativeSyncedAt;
+        const shown = session.messages.length;
         const outcome = mergeNative(session, rows, {
           announce: options.announce ?? session.messages.length > 0,
         });
-        this.context.sessions.changed(true);
+        if (mark) this.tails.set(id, mark);
+        else this.tails.delete(id);
+        // A new thread's transcript only appears once it has run: follow it from then on.
+        if (this.wanted === id && !this.watcher) void this.follow(id);
+        if (modified !== undefined) this.readAt.set(id, modified);
+        if (outcome.added || outcome.updated || session.messages.length !== shown)
+          this.context.sessions.changed(true);
+        // Only the read position moved: saved with the next change, and nothing to redraw.
+        else if (session.nativeSyncedAt !== synced) this.context.sessions.changed();
         return outcome;
       } finally {
         this.inFlight.delete(id);
@@ -184,6 +222,66 @@ export class NativeHistory {
       text: 'Couldn’t check the CLI’s history for turns run in a terminal before sending. Any made since the last check may not show here; the CLI still has them.',
     });
     this.context.sessions.changed(true);
+  }
+  /**
+   * Follows the open thread's transcript, so what a terminal adds shows here as it's written,
+   * with no click or refresh. Only one thread is followed at a time, and only its file is read.
+   */
+  async follow(id: string | undefined): Promise<void> {
+    this.wanted = id;
+    if (this.watcher?.id === id) return;
+    const turn = ++this.following;
+    this.watcher?.close();
+    this.watcher = undefined;
+    const session = id && this.context.sessions.sessions.find((item) => item.id === id);
+    if (!session || !session.nativeId || session.observed || !vscode.workspace.isTrusted) return;
+    const file = await this.clock
+      .file(session.provider, session.nativeId, session.cwd, this.env(session))
+      .catch(() => undefined);
+    // Another thread may have been opened while this one's file was being found.
+    if (!file || turn !== this.following) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let watcher: FSWatcher | undefined;
+    const close = () => {
+      clearTimeout(timer);
+      watcher?.close();
+      if (this.watcher?.close === close) this.watcher = undefined;
+    };
+    const read = () => {
+      void this.sync(session.id, { announce: true })
+        .then((outcome) => {
+          if (outcome && (outcome.added || outcome.updated)) void this.context.publish(true);
+        })
+        .catch((error) => this.context.output.appendLine(`History: ${String(error)}`));
+    };
+    try {
+      watcher = watch(file, { persistent: false }, (event) => {
+        // A replaced or moved file isn't the one being watched any more: once it settles, read
+        // it and follow whatever is there now, unless another thread was opened meanwhile.
+        if (event === 'rename') {
+          close();
+          setTimeout(() => {
+            if (turn !== this.following) return;
+            read();
+            void this.follow(session.id);
+          }, SETTLE_MS[session.provider]);
+          return;
+        }
+        clearTimeout(timer);
+        timer = setTimeout(read, SETTLE_MS[session.provider]);
+      });
+      watcher.on('error', close);
+    } catch (error) {
+      this.context.output.appendLine(`History: couldn’t follow ${file}: ${String(error)}`);
+      return;
+    }
+    this.watcher = { id: session.id, close };
+  }
+  dispose(): void {
+    this.following += 1;
+    this.wanted = undefined;
+    this.watcher?.close();
+    this.watcher = undefined;
   }
   /** Looks for each profile's sessions in this folder. A failing profile hides only its own. */
   refresh(options: { force?: boolean } = {}): Promise<void> {
@@ -272,4 +370,12 @@ function pick(info: NativeSessionInfo): Omit<NativeSessionEntry, 'profileId'> {
     updatedAt: info.updatedAt,
     ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
   };
+}
+/** Calls this thread still shows unfinished, whose results may be among the newest lines. */
+function unfinishedCalls(session: Session) {
+  return session.messages
+    .filter(
+      (message) => message.tool?.status === 'running' || message.tool?.status === 'interrupted',
+    )
+    .slice(-200);
 }

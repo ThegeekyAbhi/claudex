@@ -158,3 +158,26 @@ test('the no-time notice is said once even when every record lacks a time', () =
   mergeNative(session, { messages: [], skipped: 3 }, { announce: false });
   assert.equal(session.messages.filter((item) => item.role === 'notice').length, 1);
 });
+
+test('a terminal run read in pieces keeps one notice, counting all of it', () => {
+  const session = thread({
+    nativeSyncedAt: 0,
+    messages: [{ id: 'mine', role: 'user', text: 'hi' }],
+  });
+  mergeNative(
+    session,
+    { messages: [row('a', 10, { role: 'user' })], skipped: 0 },
+    { announce: true },
+  );
+  mergeNative(session, { messages: [row('b', 20)], skipped: 0 }, { announce: true });
+  const notices = () => session.messages.filter((item) => item.role === 'notice');
+  assert.equal(notices().length, 1);
+  assert.equal(notices()[0].text, 'From the terminal: 2 messages.');
+  // Once something happens here, the terminal's next turn gets a notice of its own.
+  session.messages.push({ id: 'mine-2', role: 'user', text: 'and now' });
+  mergeNative(session, { messages: [row('c', 30)], skipped: 0 }, { announce: true });
+  assert.deepEqual(
+    notices().map((item) => item.text),
+    ['From the terminal: 2 messages.', 'From the terminal: 1 message.'],
+  );
+});

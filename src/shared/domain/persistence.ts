@@ -26,6 +26,16 @@ const persistedSession = z.object({
   cwd: z.string(),
   workspace: z.string(),
   nativeId: z.string().optional(),
+  previousAgents: z
+    .array(
+      z.object({
+        provider: z.enum(['claude', 'codex']),
+        profileId: z.string().optional(),
+        nativeId: z.string().optional(),
+      }),
+    )
+    .optional(),
+  continuationContext: z.string().optional(),
   nativeSyncedAt: z.number().optional(),
   origin: z.literal('terminal').optional(),
   parentId: z.string().optional(),

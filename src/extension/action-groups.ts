@@ -23,6 +23,7 @@ export const actionGroups = {
   ],
   threads: [
     'compose',
+    'continueChat',
     'start',
     'delegate',
     'send',
@@ -34,7 +35,7 @@ export const actionGroups = {
     'worktree',
     'setMode',
   ],
-  plans: ['buildPlan', 'keepPlanning', 'viewPlan', 'savePlan'],
+  plans: ['buildPlan', 'keepPlanning', 'viewPlan', 'editPlan', 'savePlan'],
   documents: ['link', 'document', 'template', 'handoff', 'changes', 'openDiff', 'copy'],
   attachments: ['previewContext', 'searchContext', 'pickImages', 'attachImage', 'openImage'],
   terminal: [

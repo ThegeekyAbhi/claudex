@@ -365,14 +365,14 @@ export function AttachmentChip({
           : attachmentLabel(attachment);
   return (
     <span
-      className={`attachment-chip inline-flex items-center gap-1 max-w-[220px] min-h-[22px] py-px pr-1 pl-1.5 border border-subtle rounded-md bg-surface text-[11.5px] text-muted-foreground [&>span]:min-w-0 [&>span]:truncate [&>span]:text-foreground [&>svg]:shrink-0 [&_img]:size-[18px] [&_img]:object-cover [&_img]:rounded-[3px] [&_button]:p-0.5 [&_button]:text-muted-foreground [&_button]:shrink-0 ${muted ? 'opacity-50' : ''}`}
+      className={`attachment-chip inline-flex shrink-0 items-center gap-1 max-w-[min(220px,100%)] min-h-[22px] py-px pr-1 pl-1.5 border border-subtle rounded-md bg-surface text-[11.5px] text-muted-foreground [&>span]:min-w-0 [&>span]:truncate [&>span]:text-foreground [&>svg]:shrink-0 [&_img]:size-[18px] [&_img]:object-cover [&_img]:rounded-[3px] [&_button]:p-0.5 [&_button]:text-muted-foreground [&_button]:shrink-0 ${muted ? 'opacity-50' : ''}`}
       title={title}
     >
       <Icon name={icon} size={12} />
       {onOpen ? (
         <button
           type="button"
-          className="min-w-0 truncate text-foreground! p-0! border-0 bg-transparent cursor-pointer hover:underline"
+          className="min-w-0 flex-1 truncate text-foreground! p-0! border-0 bg-transparent cursor-pointer hover:underline"
           aria-label={`Preview ${attachmentLabel(attachment)}`}
           onClick={onOpen}
         >

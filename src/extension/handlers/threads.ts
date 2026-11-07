@@ -28,6 +28,7 @@ export interface ThreadsHandlersContext {
     | 'get'
     | 'sessions'
     | 'create'
+    | 'continueChat'
     | 'setModel'
     | 'setMode'
     | 'send'
@@ -245,6 +246,33 @@ export class ThreadsHandlers {
   }
   handlers(): HandlersFor<'threads'> {
     return {
+      continueChat: async (action) => {
+        this.context.requireAgent(action.agent);
+        await this.context.catchUp(action.id);
+        const session = this.context.sessions.get(action.id);
+        const input = await this.input(
+          [{ kind: 'thread', id: session.id, title: session.title, history: 'recent' }],
+          session.cwd,
+        );
+        const document = await vscode.workspace.openTextDocument({
+          content: input.context ?? '',
+          language: 'markdown',
+        });
+        await vscode.window.showTextDocument(document, { preview: true });
+        const confirmed = await vscode.window.showInformationMessage(
+          'Review the context. Continue here with the selected agent? Your next message starts its new provider session.',
+          'Continue here',
+        );
+        if (confirmed !== 'Continue here') return;
+        const target = agentTarget(action.agent);
+        this.context.sessions.continueChat(
+          session.id,
+          target.provider,
+          target.profileId,
+          document.getText(),
+        );
+        await this.context.publish(true);
+      },
       ...threadControlHandlers(this.context),
       compose: async (_action, surface) => {
         await this.context.select(undefined, surface);
