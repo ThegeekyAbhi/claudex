@@ -22,6 +22,9 @@ export interface AgentProfile {
   /** What the host found on this machine. Unset until it has looked. */
   status?: ProfileStatus;
   version?: string;
+  /** The program that runs, once found, and how it was found. Never holds credentials. */
+  executablePath?: string;
+  executableOrigin?: 'setting' | 'path' | 'knownFolder';
   /** Why the profile can't run, in words for the user. */
   problem?: string;
 }

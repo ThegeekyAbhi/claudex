@@ -12,6 +12,7 @@ import {
   type Session,
   setProfiles,
 } from '../../../../src/shared/model';
+import { writeFakeCli } from '../../../fixtures/fake-cli';
 
 function required<T>(value: T | undefined): T {
   assert.ok(value);
@@ -27,11 +28,10 @@ async function waitFor(ready: () => boolean): Promise<void> {
 
 test('Codex adapter completes its handshake and routes approvals and worker identities', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'aw-codex-fixture-'));
-  const executable = path.join(root, 'fake-codex');
-  await writeFile(
-    executable,
-    `#!${process.execPath}
-const lines = require('readline').createInterface({ input: process.stdin });
+  const executable = await writeFakeCli(
+    root,
+    'fake-codex',
+    `const lines = require('readline').createInterface({ input: process.stdin });
 function emit(value) { console.log(JSON.stringify(value)); }
 lines.on('line', line => {
   const m = JSON.parse(line);
@@ -50,7 +50,6 @@ lines.on('line', line => {
   }
 });
 `,
-    { mode: 0o700 },
   );
   const session: Session = {
     id: 'fixture',
@@ -100,11 +99,10 @@ lines.on('line', line => {
 function fixture(script: string) {
   return (async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'aw-codex-more-'));
-    const executable = path.join(root, 'fake-codex');
-    await writeFile(
-      executable,
-      `#!${process.execPath}
-const lines = require('readline').createInterface({ input: process.stdin });
+    const executable = await writeFakeCli(
+      root,
+      'fake-codex',
+      `const lines = require('readline').createInterface({ input: process.stdin });
 function emit(value) { console.log(JSON.stringify(value)); }
 const root = 'native-root';
 lines.on('line', line => {
@@ -125,7 +123,6 @@ lines.on('line', line => {
   }
 });
 `,
-      { mode: 0o700 },
     );
     return { root, executable };
   })();
@@ -379,11 +376,10 @@ test('Codex plan mode, images in and out: real payloads, stored images, truthful
   const saved = path.join(root, 'generated.png');
   await writeFile(saved, Buffer.from(png, 'base64'));
   const log = path.join(root, 'turns.log');
-  const executable = path.join(root, 'fake-codex');
-  await writeFile(
-    executable,
-    `#!${process.execPath}
-const fs = require('fs');
+  const executable = await writeFakeCli(
+    root,
+    'fake-codex',
+    `const fs = require('fs');
 const lines = require('readline').createInterface({ input: process.stdin });
 const emit = (value) => console.log(JSON.stringify(value));
 const on = (method, item) => emit({ method, params: { threadId: 'n', item } });
@@ -405,7 +401,6 @@ lines.on('line', line => {
   }
 });
 `,
-    { mode: 0o700 },
   );
   const fixture: Session = {
     id: 'fixture',

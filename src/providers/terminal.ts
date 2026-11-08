@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { effectiveEffort } from '../shared/domain/thinking';
 import type { Session } from '../shared/model';
 import { JsonRpc } from './process';
+import { spawnProvider, stopProcessTree } from './spawn';
 
 /**
  * How to continue a thread in the CLI itself, in the same mode and on the same model.
@@ -79,13 +79,13 @@ function runClaudeScript(
   executable: string,
 ): Promise<unknown[]> {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, ['--input-type=module', '-e', script, ...args], {
+    const child = spawnProvider(executable, ['--input-type=module', '-e', script, ...args], {
       cwd,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...env },
-      stdio: 'pipe',
+      env: { ELECTRON_RUN_AS_NODE: '1', ...env },
     });
+    child.stdin.end();
     const timer = setTimeout(() => {
-      child.kill();
+      stopProcessTree(child, { graceMs: 500 });
       reject(new Error('Reading the history timed out.'));
     }, 20_000);
     const out: Buffer[] = [];
@@ -213,6 +213,7 @@ async function codexRpc<T>(
     () => {},
     () => {},
     env,
+    { name: 'Codex' },
   );
   try {
     await rpc.request('initialize', {

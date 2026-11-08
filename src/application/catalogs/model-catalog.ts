@@ -1,4 +1,5 @@
 import { JsonRpc } from '../../providers/process';
+import { mergeEnv } from '../../providers/spawn';
 import type { ModelOption } from '../../shared/model';
 
 function within<T>(promise: Promise<T>, label: string, ms = 20_000): Promise<T> {
@@ -21,6 +22,7 @@ export async function listCodexModels(
     () => {},
     () => {},
     env,
+    { name: 'Codex' },
   );
   try {
     await rpc.request('initialize', {
@@ -75,7 +77,7 @@ export async function listClaudeModels(
       cwd,
       pathToClaudeCodeExecutable: executable,
       settingSources: [],
-      ...(env ? { env: { ...process.env, ...env } } : {}),
+      ...(env ? { env: mergeEnv(env) } : {}),
     },
   });
   try {

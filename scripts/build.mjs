@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { build } from 'esbuild';
+import { runBin } from './bin.mjs';
 
 await rm('dist/chunks', { recursive: true, force: true });
 await Promise.all([
@@ -41,8 +41,9 @@ await Promise.all([
 ]);
 
 // Tailwind compiles to a plain stylesheet, so the webview's CSP needs no inline styles.
-execFileSync(
-  'node_modules/.bin/tailwindcss',
+runBin(
+  '@tailwindcss/cli',
+  'tailwindcss',
   ['-i', 'src/webview/app/index.css', '-o', 'dist/app.css', '--minify'],
   { stdio: ['ignore', 'ignore', 'inherit'] },
 );

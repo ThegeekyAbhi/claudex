@@ -138,6 +138,7 @@ export class CodexAgent implements Agent {
         }
       },
       this.options.env,
+      { name: 'Codex' },
     );
     const rpc = this.rpc;
     this.ready = (async () => {

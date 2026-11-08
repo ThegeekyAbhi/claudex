@@ -98,3 +98,26 @@ test('Node layers retain Node imports and the extension can import vscode', () =
   assert.deepEqual(violations('extension/probe.ts', "import 'vscode';"), []);
   assert.deepEqual(violations('webview/probe.ts', "import '@/components/ui/button';"), []);
 });
+
+/** Provider CLIs start only through providers/spawn.ts, so every OS gets the same launch rules. */
+async function processImports(directory: string): Promise<string[]> {
+  const found: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) found.push(...(await processImports(file)));
+    else if (
+      /\.[cm]?[jt]sx?$/.test(entry.name) &&
+      /['"](?:node:)?child_process['"]/.test(await readFile(file, 'utf8'))
+    )
+      found.push(path.relative(sourceRoot, file).split(path.sep).join('/'));
+  }
+  return found;
+}
+
+test('only providers/spawn.ts starts processes in the provider and extension layers', async () => {
+  const found = [
+    ...(await processImports(path.join(sourceRoot, 'providers'))),
+    ...(await processImports(path.join(sourceRoot, 'extension'))),
+  ];
+  assert.deepEqual(found, ['providers/spawn.ts']);
+});

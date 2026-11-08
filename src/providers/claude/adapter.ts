@@ -31,6 +31,7 @@ import {
   type ToolInfo,
   type TranscriptEvent,
 } from '../../shared/model';
+import { mergeEnv } from '../spawn';
 import { claudeToolDiffs, describeClaudeTool, resultText } from '../tool-format';
 import { claudeContextTokens, claudeLimits } from '../usage';
 import { readClaudeTitle } from './title';
@@ -215,7 +216,7 @@ export class ClaudeAgent {
         includePartialMessages: true,
         forwardSubagentText: true,
         abortController: new AbortController(),
-        ...(env ? { env: { ...process.env, ...env } } : {}),
+        ...(env ? { env: mergeEnv(env) } : {}),
         ...(this.session.model ? { model: this.session.model } : {}),
         ...(this.session.effort ? { effort: this.session.effort as Options['effort'] } : {}),
         ...thinkingOptions(this.session),

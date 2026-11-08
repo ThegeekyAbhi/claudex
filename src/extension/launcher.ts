@@ -1,7 +1,7 @@
-import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import * as vscode from 'vscode';
 import type { Launcher } from '../application/sessions/session-manager';
+import { runProvider } from '../providers/spawn';
 import {
   type AgentProfile,
   type AgentSetup,
@@ -14,10 +14,12 @@ import {
   setProfiles,
 } from '../shared/model';
 import {
+  describeMissing,
   envFor,
   expandHome,
   findExecutable,
   launchProfile,
+  locateExecutable,
   resolveExecutable,
   suggestFolders,
 } from './agent-paths';
@@ -27,9 +29,13 @@ export { expandHome, HOME_ENV, profileHome } from './agent-paths';
 function settings() {
   return vscode.workspace.getConfiguration('agentWorkspace');
 }
+/** The path setting, or the bare command name. */
+function configuredExecutable(provider: Provider): string {
+  return settings().get<string>(`${provider}Path`, provider) || provider;
+}
 /** The CLI binary a provider uses, from its path setting or the PATH. */
 function baseExecutable(provider: Provider): string {
-  const configured = settings().get<string>(`${provider}Path`, provider) || provider;
+  const configured = configuredExecutable(provider);
   return resolveExecutable(configured) ?? configured;
 }
 function userValue(inspected?: {
@@ -84,37 +90,47 @@ function configuredProfiles(savedIds: string[]): { profiles: AgentProfile[]; pro
     problems,
   };
 }
-function version(executable: string, env?: Record<string, string>): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    execFile(
-      executable,
-      ['--version'],
-      { timeout: 8000, env: env ? { ...process.env, ...env } : process.env },
-      (error, stdout) => resolve(error ? undefined : String(stdout).trim().split('\n')[0]),
-    );
-  });
+/** The first line `--version` prints, or nothing when the CLI can't run or doesn't succeed. */
+async function cliVersion(
+  executable: string,
+  env?: Record<string, string>,
+): Promise<string | undefined> {
+  try {
+    const result = await runProvider(executable, ['--version'], { timeoutMs: 8000, env });
+    if (result.code !== 0) return undefined;
+    return result.stdout.trim().split(/\r?\n/)[0] || undefined;
+  } catch {
+    return undefined;
+  }
 }
 /** Checks a profile can start: its CLI runs and its folder exists. Nothing is installed or made. */
 async function check(profile: AgentProfile): Promise<AgentProfile> {
-  const executable = resolveExecutable(profile.executable ?? baseExecutable(profile.provider));
+  const command = profile.executable ?? configuredExecutable(profile.provider);
+  const search = locateExecutable(command);
+  const located = search.found;
   const cli = profile.provider === 'claude' ? 'Claude Code' : 'Codex';
-  if (!executable)
+  if (!located)
     return {
       ...profile,
       status: 'missingCli',
-      problem: profile.executable
-        ? `${profile.executable} wasn’t found.`
-        : `${cli} isn’t installed, or isn’t on the PATH VS Code sees.`,
+      problem:
+        describeMissing(command, search) ??
+        (profile.executable
+          ? `${profile.executable} wasn’t found.`
+          : `${cli} isn’t installed, or isn’t on the PATH VS Code sees.`),
     };
+  const found = { executablePath: located.path, executableOrigin: located.origin };
   if (profile.homeDir && !existsSync(expandHome(profile.homeDir)))
     return {
       ...profile,
+      ...found,
       status: 'missingFolder',
       problem: `The folder ${profile.homeDir} doesn’t exist.`,
     };
-  const found = await version(executable, envFor(profile));
-  if (!found) return { ...profile, status: 'missingCli', problem: `${executable} didn’t run.` };
-  return { ...profile, status: 'ready', version: found };
+  const version = await cliVersion(located.path, envFor(profile));
+  if (!version)
+    return { ...profile, ...found, status: 'missingCli', problem: `${located.path} didn’t run.` };
+  return { ...profile, ...found, status: 'ready', version };
 }
 /** The agents this machine has. Sets the shared list, so labels and mentions follow it. */
 export async function detectAgents(savedIds: string[]): Promise<AgentSetup> {

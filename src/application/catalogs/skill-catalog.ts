@@ -1,4 +1,5 @@
 import { JsonRpc } from '../../providers/process';
+import { mergeEnv } from '../../providers/spawn';
 import type { Skill, SkillSource } from '../../shared/model';
 
 export interface SkillList {
@@ -84,7 +85,7 @@ export async function listClaudeSkills(
       cwd,
       pathToClaudeCodeExecutable: executable,
       settingSources: ['user', 'project', 'local'],
-      ...(env ? { env: { ...process.env, ...env } } : {}),
+      ...(env ? { env: mergeEnv(env) } : {}),
     },
   });
   try {
@@ -107,6 +108,7 @@ async function withCodex<T>(
     () => {},
     () => {},
     env,
+    { name: 'Codex' },
   );
   try {
     await rpc.request('initialize', {
