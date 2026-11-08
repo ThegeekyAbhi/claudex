@@ -2,7 +2,7 @@
   "name": "claudex",
   "displayName": "Claudex - Claude Code & Codex",
   "description": "Claude Code and Codex in one AI coding workspace. Chat, carry context between agents, turn plans into code, and review diffs in VS Code.",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "publisher": "nerdyabhi",
   "icon": "media/claudex-icon.png",
   "galleryBanner": {

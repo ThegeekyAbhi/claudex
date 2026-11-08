@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   applyTranscript,
   canBuildPlan,
+  limitFailure,
   planWithNotes,
   type Session,
   type SessionInput,
@@ -121,7 +122,9 @@ export class SessionPlans {
       restore();
       throw error;
     }
-    if (session.status === 'failed') restore();
+    // A usage limit means the CLI got the request and answered it, so your decision stands:
+    // the plan stays approved in the mode you chose, ready to continue once the limit resets.
+    if (session.status === 'failed' && !limitFailure(session)) restore();
   }
   /** The prompt for another agent, which hasn't seen this thread. */
   async handOffPlan(id: string, notes?: string): Promise<string> {

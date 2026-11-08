@@ -31,6 +31,7 @@ export function useSavedViewState(state: ViewState) {
     state.seen,
     state.layouts,
     state.threadsFolded,
+    state.buildApprovals,
     persist,
   ]);
 }

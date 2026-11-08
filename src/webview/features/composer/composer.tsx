@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   attachmentLabel,
+  canBuildPlan,
   nextMode,
   profileLabel,
   profileProvider,
@@ -80,7 +81,7 @@ export function Composer(props: ComposerProps) {
   } = useComposer(props);
   return (
     <div
-      className={`composer-area pt-2 px-6 pb-2.5 shrink-0 relative [&.top]:pt-3.5 max-[900px]:py-2 max-[900px]:px-3 [.question-dock+&]:pt-0 ${top ? 'top' : ''}`}
+      className={`composer-area pt-2 px-6 pb-2.5 shrink-0 relative [&.top]:pt-3.5 max-[900px]:py-2 max-[900px]:px-3 [.question-dock+&]:pt-0 [.plan-dock+&]:pt-0 ${top ? 'top' : ''}`}
       data-mode={modeShown.mode}
     >
       {continuing && session ? (
@@ -170,7 +171,7 @@ export function Composer(props: ComposerProps) {
         ) : null}
         <div
           data-agent={profileProvider(agent)}
-          className="composer @container border border-composer-edge rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [&_textarea]:w-full [&_textarea]:pt-2.5 [&_textarea]:px-3 [&_textarea]:pb-1 [&_textarea]:block [&_textarea]:text-[13.5px] [&_textarea]:leading-[1.55] [&_textarea]:resize-none [&_textarea]:field-sizing-content [&_textarea]:min-h-[52px] [&_textarea]:max-h-[40vh] [&_textarea]:overflow-y-auto [&_textarea:focus-visible]:outline-none in-[.composer-area.top]:[&_textarea]:min-h-24"
+          className="composer @container border border-composer-edge rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [.plan-dock+*_&]:relative [&_textarea]:w-full [&_textarea]:pt-2.5 [&_textarea]:px-3 [&_textarea]:pb-1 [&_textarea]:block [&_textarea]:text-[13.5px] [&_textarea]:leading-[1.55] [&_textarea]:resize-none [&_textarea]:field-sizing-content [&_textarea]:min-h-[52px] [&_textarea]:max-h-[40vh] [&_textarea]:overflow-y-auto [&_textarea:focus-visible]:outline-none in-[.composer-area.top]:[&_textarea]:min-h-24"
         >
           {attachments.length ? (
             <div className="flex flex-wrap items-start gap-1 pt-2 px-2.5 pb-0 in-[.user]:pt-0 in-[.user]:px-0 in-[.user]:pb-1.5">
@@ -203,9 +204,11 @@ export function Composer(props: ComposerProps) {
             value={draft}
             placeholder={
               session
-                ? busy
+                ? busy && session.approval?.kind !== 'plan'
                   ? 'Draft your next message…'
-                  : 'Plan, build, / for skills, @ for context'
+                  : canBuildPlan(session)
+                    ? 'Refine the plan, or add notes for the build…'
+                    : 'Plan, build, / for skills, @ for context'
                 : 'Plan, build, / for skills, @ for context'
             }
             onChange={(event) => {

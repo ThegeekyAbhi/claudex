@@ -66,7 +66,7 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
   planned.status = 'interrupted';
   delete planned.approval;
   await update('planned');
-  assert.equal(await page.getByRole('button', { name: /Yes, implement in Auto/ }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: /Implement in Auto/ }).count(), 0);
   const beforeIncomplete = (await sentOf('buildPlan')).length;
   await page.keyboard.press('Control+Enter');
   assert.equal((await sentOf('buildPlan')).length, beforeIncomplete);
@@ -101,90 +101,70 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
   assert.equal((await sentOf('viewPlan')).at(-1).id, 'planned');
   await plan.getByRole('button', { name: 'Edit plan' }).click();
   assert.equal((await sentOf('editPlan')).at(-1).id, 'planned');
-  // Claude Code's choices, in its order.
-  const answers = page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('list', { name: 'Your answer' })
-    .getByRole('button');
-  const labels = await answers.evaluateAll((items) =>
-    items.map((item) => item.querySelector('span > span')?.textContent),
+  // The plan bar docks on the message box: one primary way forward, the rest in its menu.
+  const choices = page.getByRole('group', { name: 'Plan choices' });
+  await choices.getByRole('button', { name: 'Review the plan' }).waitFor();
+  assert.equal(
+    await choices.getByRole('button', { name: 'Review the plan' }).textContent(),
+    'Render cache',
+    'the bar names the plan by its heading',
   );
-  assert.deepEqual(labels, [
-    'Yes, implement in Auto',
-    'Yes, approve each edit',
-    'Yes, in a new chat',
-    'No, keep planning',
+  const openMenu = async () => {
+    await choices.getByRole('button', { name: 'More ways to continue' }).click();
+    return page.getByRole('menu');
+  };
+  // Claude Code's choices, in its order.
+  const menu = await openMenu();
+  const items = await menu
+    .getByRole('menuitem')
+    .evaluateAll((nodes) => nodes.map((node) => node.querySelector('span > span')?.textContent));
+  assert.deepEqual(items, [
+    'Implement in Auto',
+    'Approve each edit',
+    'In a new chat…',
+    'Keep planning',
   ]);
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: /Yes, implement in Auto/ })
-    .click();
-  await page.getByRole('button', { name: 'Confirm choice' }).click();
+  await page.screenshot({ path: 'test-results/screenshots/plan-menu.png' });
+  await page.keyboard.press('Escape');
+  await choices.getByRole('button', { name: 'Implement in Auto' }).click();
   assert.deepEqual((await sentOf('buildPlan')).at(-1), { type: 'buildPlan', id: 'planned' });
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: /Yes, approve each edit/ })
-    .click();
-  await page.getByRole('button', { name: 'Confirm choice' }).click();
+  // Choosing per-edit approval from the menu builds, and becomes the way offered first.
+  await (await openMenu()).getByRole('menuitem', { name: /Approve each edit/ }).click();
   assert.deepEqual((await sentOf('buildPlan')).at(-1), {
     type: 'buildPlan',
     id: 'planned',
     approvals: 'manual',
   });
-  // Notes go with the plan, and are the feedback when you keep planning.
-  const notes = page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('textbox', { name: 'Notes for Claude' });
-  await notes.fill('Keep the old keys readable');
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: /Yes, implement in Auto/ })
-    .click();
-  await page.getByRole('button', { name: 'Confirm choice' }).click();
-  assert.equal((await sentOf('buildPlan')).at(-1).notes, 'Keep the old keys readable');
+  await choices.getByRole('button', { name: 'Implement, approving edits' }).waitFor();
+  await (await openMenu()).getByRole('menuitem', { name: /Implement in Auto/ }).click();
+  await choices.getByRole('button', { name: 'Implement in Auto' }).waitFor();
+  // The message box holds the notes: implementing sends them along and clears the box.
+  await box.fill('Keep the old keys readable');
+  await choices.getByText('+ notes').waitFor();
   await page.screenshot({ path: 'test-results/screenshots/plan-options.png' });
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: /No, keep planning/ })
-    .click();
-  await page.getByRole('button', { name: 'Confirm choice' }).click();
+  await choices.getByRole('button', { name: 'Implement in Auto' }).click();
+  assert.equal((await sentOf('buildPlan')).at(-1).notes, 'Keep the old keys readable');
+  assert.equal(await box.inputValue(), '', 'notes sent with the build clear');
+  // Keeping planning sends them back as feedback.
+  await box.fill('Keep the old keys readable');
+  await choices.getByRole('button', { name: 'Keep planning' }).click();
   assert.deepEqual((await sentOf('keepPlanning')).at(-1), {
     type: 'keepPlanning',
     id: 'planned',
     feedback: 'Keep the old keys readable',
   });
-  assert.equal(await notes.inputValue(), '', 'sent notes clear');
+  assert.equal(await box.inputValue(), '', 'sent notes clear');
   // Without notes, keeping planning declines and Claude waits.
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: /No, keep planning/ })
-    .click();
-  await page.getByRole('button', { name: 'Confirm choice' }).click();
+  await choices.getByRole('button', { name: 'Keep planning' }).click();
   assert.deepEqual((await sentOf('keepPlanning')).at(-1), { type: 'keepPlanning', id: 'planned' });
-  // Number keys pick an option while the card has focus.
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: /Yes, implement in Auto/ })
-    .focus();
-  await page.keyboard.press('2');
-  await page.keyboard.press('Enter');
-  assert.equal((await sentOf('buildPlan')).at(-1).approvals, 'manual');
-  // A new chat picks its agent and model first.
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: /Yes, in a new chat/ })
-    .click();
-  await page.getByRole('button', { name: 'Confirm choice' }).click();
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: 'Start in Auto' })
-    .click();
+  // A new chat picks its agent and model first, in place, and Esc goes back.
+  await (await openMenu()).getByRole('menuitem', { name: /In a new chat/ }).click();
+  await choices.getByRole('button', { name: 'Start in Auto' }).waitFor();
+  await page.screenshot({ path: 'test-results/screenshots/plan-new-chat.png' });
+  await choices.getByRole('button', { name: 'Start in Auto' }).click();
   assert.equal((await sentOf('buildPlan')).at(-1).agent, 'claude');
-  await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('button', { name: /Yes, in a new chat/ })
-    .click();
-  await page.getByRole('button', { name: 'Confirm choice' }).click();
+  await page.keyboard.press('Escape');
+  await choices.getByRole('button', { name: 'Implement in Auto' }).waitFor();
   // Cmd+Enter builds with an empty composer. A message you're writing stays yours to send.
   const buildsBefore = (await sentOf('buildPlan')).length;
   await page.keyboard.press('Control+Enter');
@@ -201,27 +181,28 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
   assert.equal(await box.inputValue(), '');
   await page.mouse.move(0, 0);
   await page.screenshot({ path: 'test-results/screenshots/plan.png' });
-  // Codex offers what Codex has: no per-edit approval.
+  // In a slim side bar the bar keeps to one row, without spilling sideways.
+  await page.setViewportSize({ width: 380, height: 760 });
+  await choices.getByRole('button', { name: 'Implement in Auto' }).waitFor();
+  assert.ok(
+    await page
+      .locator('.plan-options')
+      .evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+    'the plan bar fits a narrow panel',
+  );
+  await page.screenshot({ path: 'test-results/screenshots/plan-narrow.png' });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  // Codex offers what Codex has: no per-edit approval, and nothing waiting to decline.
   planned.provider = 'codex';
   delete planned.approval;
   planned.status = 'completed';
   await update('planned');
-  const codexLabels = await page
-    .getByRole('group', { name: 'Plan choices' })
-    .getByRole('list', { name: 'Your answer' })
-    .locator('.plan-option')
-    .evaluateAll((items) => items.map((item) => item.querySelector('span > span')?.textContent));
-  assert.deepEqual(codexLabels, [
-    'Yes, implement in Auto',
-    'Yes, in a new chat',
-    'No, keep planning',
-  ]);
-  // Nothing is waiting to decline, so keeping planning needs your notes.
-  const keepsBefore = (await sentOf('keepPlanning')).length;
-  await page.getByRole('button', { name: /No, keep planning/ }).click();
-  await page.getByRole('button', { name: 'Confirm choice' }).click();
-  assert.equal((await sentOf('keepPlanning')).length, keepsBefore);
-  await page.getByText('Add notes for Codex, then choose this again.').waitFor();
+  const codexItems = await (await openMenu())
+    .getByRole('menuitem')
+    .evaluateAll((nodes) => nodes.map((node) => node.querySelector('span > span')?.textContent));
+  assert.deepEqual(codexItems, ['Implement in Auto', 'In a new chat…']);
+  await page.keyboard.press('Escape');
+  assert.equal(await choices.getByRole('button', { name: 'Keep planning' }).count(), 0);
   planned.provider = 'claude';
   planned.status = 'waiting';
   planned.approval = { id: 'plan-1', title: 'Build this plan?', detail: '', kind: 'plan' };

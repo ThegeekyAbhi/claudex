@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from 'react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   type AgentKind,
   agentKind,
@@ -10,44 +17,57 @@ import {
   type Session,
 } from '../../../shared/model';
 import { send } from '../../app/bridge';
-import { Button } from '../../components/ui/button';
+import { Icon, type IconName } from '../../components/icons';
+import { Menu } from '../../components/menus';
 import { EffortMenu } from '../models/effort-menu';
 import { ModelSelector } from '../models/model-selector';
+import { planTitle } from './plan-title';
 
-export const BuildContext = createContext<{ catalog: Catalog; sessions: Session[] } | null>(null);
+export type BuildApprovals = 'auto' | 'manual';
+export const BuildContext = createContext<{
+  catalog: Catalog;
+  sessions: Session[];
+  /** How you last built a plan, offered first next time. */
+  approvals?: BuildApprovals;
+  onApprovals?(approvals: BuildApprovals): void;
+} | null>(null);
 /** The shortcut as each system writes it: ⌘ on a Mac, Ctrl elsewhere. */
-const BUILD_KEY = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘↵' : 'Ctrl ↵';
+const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+const BUILD_KEY = MAC ? '⌘↵' : 'Ctrl↵';
 
-type Choice = 'auto' | 'manual' | 'new' | 'keep';
-interface Option {
-  id: Choice;
+interface BuildOption {
+  id: BuildApprovals;
   label: string;
+  /** The primary button's wording when this is your usual way to build. */
+  action: string;
   hint: string;
+  icon: IconName;
 }
 /**
- * What each CLI offers when a plan is ready, and nothing more: Claude Code can implement in Auto or
- * ask before each edit, start fresh, or keep planning; Codex can implement or stay in Plan mode.
+ * What each CLI offers when a plan is ready, and nothing more: Claude Code can implement in Auto
+ * or ask before each edit; Codex implements in Auto. Either can start a new chat or keep planning.
  */
-export function planOptions(agent: AgentKind): Option[] {
+export function buildOptions(agent: AgentKind): BuildOption[] {
   const name = profileLabel(agent);
-  const claude = profileProvider(agent) === 'claude';
   return [
     {
       id: 'auto',
-      label: 'Yes, implement in Auto',
-      hint: `${name} makes the changes and reviews approvals itself.`,
+      label: 'Implement in Auto',
+      action: 'Implement in Auto',
+      hint: `${name} makes the changes and handles approvals itself.`,
+      icon: 'autoMode',
     },
-    ...(claude
+    ...(profileProvider(agent) === 'claude'
       ? [
           {
             id: 'manual' as const,
-            label: 'Yes, approve each edit',
+            label: 'Approve each edit',
+            action: 'Implement, approving edits',
             hint: 'Every edit and command waits for you.',
+            icon: 'approveEdits' as const,
           },
         ]
       : []),
-    { id: 'new', label: 'Yes, in a new chat', hint: 'A fresh thread starts with only the plan.' },
-    { id: 'keep', label: 'No, keep planning', hint: `Your notes go back to ${name}.` },
   ];
 }
 
@@ -75,132 +95,164 @@ function useRecent(): Session[] {
   );
 }
 
-/** Your answer to a ready plan, with optional notes, the way the CLIs ask for it. */
-export function PlanOptions({ session }: { session: Session }) {
+/** Brings the plan back into view, for a last look before deciding. */
+function revealPlan() {
+  const cards = document.querySelectorAll<HTMLElement>('.plan-card');
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  cards[cards.length - 1]?.scrollIntoView({
+    block: 'start',
+    behavior: reduced ? 'auto' : 'smooth',
+  });
+}
+
+const RING =
+  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus,var(--accent))]';
+const QUIET = `inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-muted-foreground enabled:hover:bg-muted enabled:hover:text-foreground ${RING}`;
+/** Tinted like the mode chip: Auto's colour inside data-mode="auto", plain otherwise. */
+const TINTED = `inline-flex h-7 items-center gap-1.5 text-[12px] font-medium ${RING} focus-visible:ring-inset bg-muted text-foreground enabled:hover:bg-[color-mix(in_srgb,var(--foreground)_14%,transparent)] in-data-[mode]:bg-mode-tint in-data-[mode]:text-mode in-data-[mode]:enabled:hover:bg-[color-mix(in_srgb,var(--mode)_24%,transparent)]`;
+const MENU_ITEM =
+  'flex w-full cursor-pointer select-none items-start gap-2.5 rounded-[5px] px-2 py-1.5 text-left outline-none data-highlighted:bg-muted';
+
+function MenuRow({
+  icon,
+  label,
+  hint,
+  trail,
+}: {
+  icon: IconName;
+  label: string;
+  hint: string;
+  trail?: ReactNode;
+}) {
+  return (
+    <>
+      <span className="mt-px flex shrink-0 text-muted-foreground">
+        <Icon name={icon} size={14} />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-px">
+        <span className="text-[12px]">{label}</span>
+        <small className="text-[11px] leading-[1.4] text-muted-foreground">{hint}</small>
+      </span>
+      {trail}
+    </>
+  );
+}
+
+/**
+ * Your answer to a ready plan, docked on the message box. The message box holds your notes:
+ * send them to keep planning, or implement and they go along with the plan.
+ */
+export function PlanOptions({
+  session,
+  notes = '',
+  onNotesUsed,
+}: {
+  session: Session;
+  /** What you've typed in the message box, sent along as notes when you implement. */
+  notes?: string;
+  onNotesUsed?(): void;
+}) {
   const agent = agentKind(session);
   const context = useContext(BuildContext);
-  const options = planOptions(agent);
-  const [notes, setNotes] = useState('');
-  const [selected, setSelected] = useState<Choice>('auto');
-  const submitted = useRef(false);
+  const options = buildOptions(agent);
+  const usual =
+    options.find((option) => option.id === context?.approvals) ?? (options[0] as BuildOption);
   const [fresh, setFresh] = useState(false);
   const [choice, setChoice] = useState<BuildChoice>({ agent });
-  const [hint, setHint] = useState('');
-  const notesBox = useRef<HTMLTextAreaElement>(null);
   const recent = useRecent();
   const selectedAgent = choice.agent ?? agent;
   const name = profileLabel(agent);
   const waiting = session.approval?.kind === 'plan';
-  const withNotes = notes.trim() ? { notes } : {};
-  function pick(id: Choice) {
-    if (submitted.current) return;
-    if (id !== 'new' && !(id === 'keep' && !notes.trim())) submitted.current = true;
-    setHint('');
-    if (id === 'auto') send({ type: 'buildPlan', id: session.id, ...withNotes });
-    else if (id === 'manual')
-      send({ type: 'buildPlan', id: session.id, approvals: 'manual', ...withNotes });
-    else if (id === 'new') setFresh(true);
-    else if (notes.trim() || waiting) {
-      send({ type: 'keepPlanning', id: session.id, ...(notes.trim() ? { feedback: notes } : {}) });
-      setNotes('');
-    } else {
-      // Without a waiting request there's nothing to decline; notes are what keeps planning.
-      setHint(`Add notes for ${name}, then choose this again.`);
-      notesBox.current?.focus();
-    }
+  const hasNotes = Boolean(notes.trim());
+  const withNotes = hasNotes ? { notes } : {};
+  const title = planTitle(session.plan?.text ?? '');
+  const freshRow = useRef<HTMLDivElement>(null);
+  // The choice already sent, and the thread state it was sent in: a double click doesn't ask twice,
+  // while another choice, different notes, or the same one once the thread moves on, still can.
+  const submitted = useRef<{ id: string; state: string } | null>(null);
+  const state = `${session.status}|${session.approval?.id ?? ''}|${session.mode ?? ''}|${notes}`;
+  function repeat(id: string): boolean {
+    if (submitted.current?.id === id && submitted.current.state === state) return true;
+    submitted.current = { id, state };
+    return false;
   }
-  // ⌘/Ctrl+Enter implements in Auto, as before, unless you're writing in the message box.
-  const latest = useRef(pick);
-  latest.current = pick;
+  function used() {
+    if (hasNotes) onNotesUsed?.();
+  }
+  function build(option: BuildOption) {
+    if (repeat(option.id)) return;
+    if (option.id !== (context?.approvals ?? 'auto')) context?.onApprovals?.(option.id);
+    send({
+      type: 'buildPlan',
+      id: session.id,
+      ...(option.id === 'manual' ? { approvals: 'manual' as const } : {}),
+      ...withNotes,
+    });
+    used();
+  }
+  function start() {
+    if (repeat('start')) return;
+    send({ type: 'buildPlan', id: session.id, ...choice, agent: selectedAgent, ...withNotes });
+    used();
+  }
+  function keepPlanning() {
+    send({ type: 'keepPlanning', id: session.id, ...(hasNotes ? { feedback: notes } : {}) });
+    used();
+  }
+  // ⌘/Ctrl+Enter takes the highlighted way forward, unless you're writing in the message box,
+  // where it sends what you wrote.
+  const latest = useRef(() => {});
+  latest.current = () => (fresh ? start() : build(usual));
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return;
       const box = document.querySelector<HTMLTextAreaElement>('.composer textarea');
       if (box?.value.trim()) return;
       event.preventDefault();
-      latest.current('auto');
+      latest.current();
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
+  useEffect(() => {
+    if (fresh) freshRow.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  }, [fresh]);
+  const notesTag = hasNotes ? (
+    <span className="rounded-sm bg-[color-mix(in_srgb,currentColor_16%,transparent)] px-1 text-[10.5px] font-normal">
+      + notes
+    </span>
+  ) : null;
   return (
-    <fieldset
-      className="plan-options mb-2 rounded-lg border border-subtle bg-surface p-3 outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
-      aria-label="Plan choices"
-      tabIndex={-1}
-      onKeyDown={(event) => {
-        if (event.target instanceof HTMLTextAreaElement) {
-          if (event.key === 'Escape') {
+    <div className="plan-dock relative shrink-0 px-6 pt-2 pb-0 max-[900px]:px-3">
+      <fieldset
+        aria-label="Plan choices"
+        className="plan-options mx-auto -mb-2.5 min-w-0 max-w-[780px] rounded-t-lg border border-strong bg-canvas pb-2.5"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && fresh) {
             event.preventDefault();
-            event.currentTarget.querySelector<HTMLButtonElement>('.plan-option')?.focus();
+            setFresh(false);
           }
-          return;
-        }
-        if (event.target instanceof HTMLSelectElement || event.metaKey || event.ctrlKey) return;
-        if (event.key === 'Enter' && (event.target as HTMLElement).closest('.plan-option')) {
-          event.preventDefault();
-          pick(selected);
-          return;
-        }
-        const index = Number(event.key) - 1;
-        const option = options[index];
-        if (!option || event.altKey) return;
-        event.preventDefault();
-        submitted.current = false;
-        setSelected(option.id);
-        event.currentTarget
-          .querySelector<HTMLButtonElement>(`.plan-option[data-choice="${option.id}"]`)
-          ?.focus();
-      }}
-    >
-      <label className="block">
-        <span className="sr-only">Notes for {name}</span>
-        <textarea
-          ref={notesBox}
-          rows={1}
-          value={notes}
-          placeholder={`Notes for ${name} (optional): what to change, or what to keep in mind`}
-          onChange={(event) => {
-            setNotes(event.target.value);
-            setHint('');
-          }}
-          className="field-sizing-content block max-h-40 min-h-8 w-full resize-none rounded-md border border-subtle bg-raised px-2.5 py-1.5 text-[12.5px] leading-[1.5] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-[var(--focus,var(--accent))]"
-        />
-      </label>
-      {hint ? <p className="m-0 mt-1.5 text-[11.5px] text-warning">{hint}</p> : null}
-      <ol className="m-0 mt-2 grid list-none gap-1 p-0" aria-label="Your answer">
-        {options.map((option, index) => (
-          <li key={option.id}>
+        }}
+      >
+        {fresh ? (
+          <div
+            ref={freshRow}
+            className="flex min-h-10 flex-wrap items-center gap-1 py-1 pr-1.5 pl-1 text-[12px]"
+          >
             <button
               type="button"
-              className={`plan-option group w-full justify-start gap-2.5 rounded-md border px-2.5 py-1.5 text-left text-[12.5px] ${
-                selected === option.id
-                  ? 'border-transparent bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-foreground enabled:hover:bg-[color-mix(in_srgb,var(--accent)_24%,transparent)]'
-                  : 'border-subtle text-foreground enabled:hover:bg-raised'
-              } ${option.id === 'new' && fresh ? 'bg-raised' : ''}`}
-              aria-expanded={option.id === 'new' ? fresh : undefined}
-              onClick={() => {
-                submitted.current = false;
-                setSelected(option.id);
-              }}
-              data-choice={option.id}
-              aria-pressed={selected === option.id}
+              className={QUIET}
+              aria-label="Back to plan choices"
+              title="Back · Esc"
+              onClick={() => setFresh(false)}
             >
-              <kbd className="grid size-[18px] shrink-0 place-items-center rounded border border-subtle font-mono text-[10.5px] text-muted-foreground">
-                {index + 1}
-              </kbd>
-              <span className="min-w-0 flex-1">
-                <span className="block">{option.label}</span>
-                <span className="block truncate text-[11.5px] text-muted-foreground">
-                  {option.hint}
-                </span>
+              <span className="flex rotate-180">
+                <Icon name="chevron" size={13} />
               </span>
-              {index === 0 ? (
-                <span className="shrink-0 text-[10.5px] text-muted-foreground">{BUILD_KEY}</span>
-              ) : null}
+              <span className="font-medium text-foreground">New chat</span>
             </button>
-            {option.id === 'new' && fresh && context ? (
-              <div className="ml-7 mt-1 mb-1 flex flex-wrap items-center gap-1.5">
+            {context ? (
+              <>
                 <ModelSelector
                   catalog={context.catalog}
                   agent={selectedAgent}
@@ -218,58 +270,152 @@ export function PlanOptions({ session }: { session: Session }) {
                   onEffort={(effort) => setChoice({ ...choice, effort })}
                 />
                 {recent.length ? (
-                  <select
-                    aria-label="Recently used models"
-                    className="max-w-40 bg-surface text-xs"
-                    value=""
-                    onChange={(event) => {
-                      const item = recent[Number(event.target.value)];
-                      if (item)
+                  <Menu
+                    label="Recent"
+                    icon={<Icon name="history" size={13} />}
+                    ariaLabel="Recently used models"
+                    heading="Recently used"
+                    items={recent.map((item) => ({
+                      key: item.id,
+                      label: `${profileLabel(agentKind(item))} · ${item.model ?? 'Default'}`,
+                      selected: agentKind(item) === selectedAgent && item.model === choice.model,
+                      onSelect: () =>
                         setChoice({
                           agent: agentKind(item),
                           model: item.model,
                           effort: item.effort,
-                        });
-                    }}
-                  >
-                    <option value="" disabled>
-                      Recently used
-                    </option>
-                    {recent.map((item, index) => (
-                      <option key={item.id} value={index}>
-                        {profileLabel(agentKind(item))} · {item.model ?? 'Default'}
-                      </option>
-                    ))}
-                  </select>
+                        }),
+                    }))}
+                  />
                 ) : null}
-                <Button
-                  size="sm"
-                  className="ml-auto h-7 px-2.5 text-xs"
-                  onClick={() => {
-                    if (submitted.current) return;
-                    submitted.current = true;
-                    send({
-                      type: 'buildPlan',
-                      id: session.id,
-                      ...choice,
-                      agent: selectedAgent,
-                      ...withNotes,
-                    });
-                  }}
-                >
-                  Start in Auto
-                </Button>
-              </div>
+              </>
             ) : null}
-          </li>
-        ))}
-      </ol>
-      <Button size="sm" className="mt-2 h-7 text-xs" onClick={() => pick(selected)}>
-        Confirm choice ↵
-      </Button>
-      <p className="m-0 mt-2 text-[11px] text-muted-foreground">
-        Or reply in the message box to keep planning.
-      </p>
-    </fieldset>
+            <span data-mode="auto" className="ml-auto flex">
+              <button
+                type="button"
+                className={`${TINTED} rounded-md px-2.5`}
+                title={`A fresh thread starts with only the plan · ${BUILD_KEY}`}
+                onClick={start}
+              >
+                <Icon name="autoMode" size={13} />
+                Start in Auto
+                {notesTag}
+              </button>
+            </span>
+          </div>
+        ) : (
+          <div className="flex min-h-10 items-center gap-1.5 py-1 pr-1.5 pl-3 text-[12px]">
+            <span data-mode="plan" className="flex shrink-0 text-mode">
+              <Icon name="plan" size={14} />
+            </span>
+            <strong className="shrink-0 font-medium text-foreground">Plan ready</strong>
+            <button
+              type="button"
+              className={`min-w-0 truncate rounded px-1 text-left text-faint enabled:hover:text-foreground ${RING}`}
+              title={title ? `Review the plan: ${title}` : 'Review the plan'}
+              aria-label="Review the plan"
+              onClick={revealPlan}
+            >
+              {title || 'Review'}
+            </button>
+            <span className="flex-1" />
+            {waiting ? (
+              <button
+                type="button"
+                className={`${QUIET} max-[420px]:hidden`}
+                title={
+                  hasNotes
+                    ? `Your message goes back to ${name} as feedback`
+                    : `${name} stays in Plan mode and waits for your feedback`
+                }
+                onClick={keepPlanning}
+              >
+                Keep planning
+              </button>
+            ) : null}
+            <span
+              data-mode={usual.id === 'auto' ? 'auto' : undefined}
+              className="flex shrink-0 overflow-hidden rounded-md"
+            >
+              <button
+                type="button"
+                className={`${TINTED} pr-2 pl-2.5`}
+                aria-label={usual.action}
+                aria-keyshortcuts={MAC ? 'Meta+Enter' : 'Control+Enter'}
+                title={`${usual.hint}${hasNotes ? ' Your message goes along as notes.' : ''} · ${BUILD_KEY}`}
+                onClick={() => build(usual)}
+              >
+                <Icon name={usual.icon} size={13} />
+                <span className="max-[480px]:hidden">{usual.action}</span>
+                <span className="hidden max-[480px]:inline">Implement</span>
+                {notesTag ?? (
+                  <kbd className="font-sans text-[10.5px] font-normal opacity-60 max-[560px]:hidden">
+                    {BUILD_KEY}
+                  </kbd>
+                )}
+              </button>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={`${TINTED} w-6 justify-center border-l border-[color-mix(in_srgb,currentColor_22%,transparent)]`}
+                    aria-label="More ways to continue"
+                  >
+                    <Icon name="chevronDown" size={12} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="z-40 w-75 max-w-[calc(100vw-16px)] rounded-lg border border-strong bg-overlay p-1 text-foreground shadow-md animate-menu-in [transform-origin:var(--radix-dropdown-menu-content-transform-origin)] focus:outline-none motion-reduce:animate-none"
+                  side="top"
+                  align="end"
+                  sideOffset={6}
+                  collisionPadding={8}
+                >
+                  {options.map((option) => (
+                    <DropdownMenuItem
+                      key={option.id}
+                      className={MENU_ITEM}
+                      onSelect={() => build(option)}
+                    >
+                      <MenuRow
+                        icon={option.icon}
+                        label={option.label}
+                        hint={option.hint}
+                        trail={
+                          option.id === usual.id ? (
+                            <kbd className="mt-px font-sans text-[10.5px] text-faint">
+                              {BUILD_KEY}
+                            </kbd>
+                          ) : null
+                        }
+                      />
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuItem className={MENU_ITEM} onSelect={() => setFresh(true)}>
+                    <MenuRow
+                      icon="plus"
+                      label="In a new chat…"
+                      hint="A fresh thread with only the plan, on any agent."
+                    />
+                  </DropdownMenuItem>
+                  {waiting ? (
+                    <>
+                      <DropdownMenuSeparator className="mx-1 my-1 h-px bg-subtle" />
+                      <DropdownMenuItem className={MENU_ITEM} onSelect={keepPlanning}>
+                        <MenuRow
+                          icon="plan"
+                          label="Keep planning"
+                          hint={`Your message goes back to ${name} as feedback.`}
+                        />
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </span>
+          </div>
+        )}
+      </fieldset>
+    </div>
   );
 }

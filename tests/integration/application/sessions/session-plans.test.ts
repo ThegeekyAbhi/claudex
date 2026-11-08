@@ -179,3 +179,19 @@ test('a build that fails to start restores the mode you had', async () => {
   assert.equal(session.mode, 'plan');
   assert.equal(session.plan?.status, 'ready');
 });
+
+test('a build whose turn starts and then fails keeps your approval', async () => {
+  // A usage limit ends the turn, but "Implement the plan." already reached the CLI.
+  const { session, plans } = answering('claude', false);
+  (plans as unknown as { deps: { send: () => Promise<void> } }).deps.send = async () => {
+    session.messages.push(
+      { id: 'u', role: 'user', text: 'Implement the plan.' },
+      { id: 'a', role: 'assistant', text: "You've hit your 5-hour limit · resets 2:10am" },
+    );
+    session.status = 'failed';
+  };
+  await plans.buildPlan(session.id);
+  assert.equal(session.mode, 'auto');
+  assert.equal(session.plan?.status, 'approved');
+  assert.equal(canBuildPlan(session), false);
+});

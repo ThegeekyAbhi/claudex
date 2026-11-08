@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { agentLabel, canBuildPlan, type Session } from '../../../shared/model';
+import { agentLabel, type Session } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon, type IconName } from '../../components/icons';
 import { MarkdownText } from '../../lib/markdown';
@@ -65,7 +65,6 @@ export function PlanCard({ session }: { session: Session }) {
   const approved = plan.status === 'approved';
   const expanded = open ?? !approved;
   const clamped = expanded && tall && open !== true;
-  const offered = canBuildPlan(session);
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
@@ -135,17 +134,11 @@ export function PlanCard({ session }: { session: Session }) {
           </button>
         </div>
       ) : null}
-      {offered || plan.status === 'incomplete' ? (
+      {plan.status === 'incomplete' ? (
         <div className="px-3 pb-3">
-          {offered ? (
-            <p className="m-0 mt-2 text-xs text-muted-foreground">
-              Choose how to continue above the message box.
-            </p>
-          ) : (
-            <p className="m-0 mt-2 text-xs text-muted-foreground">
-              Continue planning in the message box.
-            </p>
-          )}
+          <p className="m-0 mt-2 text-xs text-muted-foreground">
+            Continue planning in the message box.
+          </p>
         </div>
       ) : null}
     </section>

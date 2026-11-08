@@ -44,6 +44,8 @@ export interface ViewState {
   layouts?: Record<string, string>;
   /** You folded the thread list in the wide layout. */
   threadsFolded?: boolean;
+  /** How you last chose to build a plan, when it wasn't Auto. */
+  buildApprovals?: 'manual';
 }
 interface HostApi {
   postMessage(

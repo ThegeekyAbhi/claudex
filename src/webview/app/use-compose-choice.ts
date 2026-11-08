@@ -11,6 +11,10 @@ import type { ComposeChoice, ViewState } from './bridge';
 export function useComposeChoice(saved: ViewState | undefined, agents: AgentSetup | undefined) {
   const [choice, setChoice] = useState<ComposeChoice>(saved?.compose ?? { agent: 'codex' });
   const [dismissedNudges, setDismissedNudges] = useState<string[]>(saved?.dismissedNudges ?? []);
+  // How you last built a plan, so the plan bar offers it first next time.
+  const [buildApprovals, setBuildApprovals] = useState<'auto' | 'manual'>(
+    saved?.buildApprovals === 'manual' ? 'manual' : 'auto',
+  );
   // A new chat starts on an agent you have: if the saved one isn't installed or was removed,
   // the first that can run takes its place, preferring another profile of the same CLI.
   useEffect(() => {
@@ -25,5 +29,13 @@ export function useComposeChoice(saved: ViewState | undefined, agents: AgentSetu
   function rememberMode(agent: AgentKind, mode: AgentMode) {
     setChoice((current) => ({ ...current, modes: { ...current.modes, [agent]: mode } }));
   }
-  return { choice, setChoice, dismissedNudges, setDismissedNudges, rememberMode };
+  return {
+    choice,
+    setChoice,
+    dismissedNudges,
+    setDismissedNudges,
+    rememberMode,
+    buildApprovals,
+    setBuildApprovals,
+  };
 }

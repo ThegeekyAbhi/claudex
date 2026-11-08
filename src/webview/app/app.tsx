@@ -147,19 +147,20 @@ export function App() {
               }
             />
           ) : null}
-          {session && canBuildPlan(session) ? (
-            <div className="shrink-0 px-6 max-h-[40vh] overflow-y-auto">
-              <div className="max-w-[780px] mx-auto">
-                <PlanOptions key={session.id + session.plan?.updatedAt} session={session} />
-              </div>
-            </div>
-          ) : null}
           {conversation.asking ? (
             <QuestionCard
               key={conversation.asking.approval.id}
               approval={conversation.asking.approval}
               sessionId={conversation.asking.sessionId}
               from={conversation.asking.from}
+            />
+          ) : null}
+          {session && canBuildPlan(session) && !session.observed && !session.inTerminal ? (
+            <PlanOptions
+              key={session.id + session.plan?.updatedAt}
+              session={session}
+              notes={draft}
+              onNotesUsed={() => drafts.setTexts((current) => ({ ...current, [draftKey]: '' }))}
             />
           ) : null}
           {session?.observed ? (
@@ -274,7 +275,12 @@ export function App() {
   return (
     <AccountsNavigation.Provider value={tabs.accounts.open}>
       <BuildContext.Provider
-        value={{ catalog: snapshot.catalog ?? emptyCatalog, sessions: snapshot.sessions }}
+        value={{
+          catalog: snapshot.catalog ?? emptyCatalog,
+          sessions: snapshot.sessions,
+          approvals: compose.buildApprovals,
+          onApprovals: compose.setBuildApprovals,
+        }}
       >
         <ImageBase.Provider value={host.imageBase}>
           <TooltipProvider delayDuration={350} skipDelayDuration={200}>

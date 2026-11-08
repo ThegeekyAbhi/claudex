@@ -7,7 +7,8 @@ import type { useWorkspaceLayout } from './use-workspace-layout';
 
 export interface SavedViewSources {
   drafts: Pick<ReturnType<typeof useDrafts>, 'texts' | 'attachments'>;
-  compose: Pick<ReturnType<typeof useComposeChoice>, 'choice' | 'dismissedNudges'>;
+  compose: Pick<ReturnType<typeof useComposeChoice>, 'choice' | 'dismissedNudges'> &
+    Partial<Pick<ReturnType<typeof useComposeChoice>, 'buildApprovals'>>;
   tabs: Omit<ReturnType<typeof useTabs>['saved'], 'accountsActive'> & { accountsActive?: boolean };
   threads: Pick<ReturnType<typeof useThreadView>, 'scroll' | 'threadView' | 'seen'>;
   layout?: Pick<ReturnType<typeof useWorkspaceLayout>, 'layouts'> & {
@@ -36,5 +37,6 @@ export function savedViewState({
     seen: threads.seen,
     ...(layout && Object.keys(layout.layouts).length ? { layouts: layout.layouts } : {}),
     ...(layout?.threads?.folded ? { threadsFolded: true } : {}),
+    ...(compose.buildApprovals === 'manual' ? { buildApprovals: 'manual' as const } : {}),
   };
 }
