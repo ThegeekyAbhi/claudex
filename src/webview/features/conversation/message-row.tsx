@@ -1,7 +1,10 @@
 import { memo, useState } from 'react';
 import type { Message } from '../../../shared/model';
+import { CopyButton } from '../../components/copy-button';
 import { MarkdownText } from '../../lib/markdown';
 import { AttachmentChip } from '../attachments/context-menu';
+import { InlineReferences } from '../composer/inline-references';
+import { hasReference } from '../composer/references';
 import { ImageMessage } from '../images/image-view';
 
 export type Guides = { planning: string; explain: string };
@@ -52,14 +55,16 @@ export function SentPrompt({
       </div>
       {message?.attachments?.length ? (
         <div className="flex flex-wrap items-start gap-1 pb-1">
-          {message.attachments.map((item, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a sent message's attachments never change
-            <AttachmentChip key={index} attachment={item} />
-          ))}
+          {message.attachments
+            .filter((item) => item.kind !== 'file' && item.kind !== 'folder')
+            .map((item, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a sent message's attachments never change
+              <AttachmentChip key={index} attachment={item} />
+            ))}
         </div>
       ) : null}
       <div className={`whitespace-pre-wrap wrap-anywhere ${long && !all ? 'line-clamp-3' : ''}`}>
-        {text}
+        <InlineReferences text={text} attachments={message?.attachments ?? []} />
       </div>
       {long ? (
         <button
@@ -86,14 +91,24 @@ function YourMessage({ message, guides }: { message: Message; guides: Guides }) 
       <div className="bubble w-fit max-w-[min(85%,560px)] px-3.5 py-2 rounded-2xl rounded-br-md bg-[color-mix(in_srgb,var(--accent)_12%,var(--raised))] text-foreground in-[.subagent-transcript]:max-w-none in-[.subagent-transcript]:w-auto in-[.subagent-transcript]:rounded-[8px] in-[.subagent-transcript]:text-[12px]">
         {message.attachments?.length ? (
           <div className="flex flex-wrap justify-end items-start gap-1 pb-1.5">
-            {message.attachments.map((item, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: a sent message's attachments never change
-              <AttachmentChip key={index} attachment={item} />
-            ))}
+            {message.attachments
+              .filter((item) => item.kind !== 'file' && item.kind !== 'folder')
+              .map((item, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: a sent message's attachments never change
+                <AttachmentChip key={index} attachment={item} />
+              ))}
           </div>
         ) : null}
         <div className={`markdown said ${long && !all ? 'line-clamp-[12]' : ''}`}>
-          <MarkdownText text={message.text} />
+          <MarkdownText text={message.text} attachments={message.attachments} />
+          <InlineReferences
+            text=""
+            attachments={(message.attachments ?? []).filter(
+              (item) =>
+                (item.kind === 'file' || item.kind === 'folder') &&
+                !hasReference(message.text, item, message.attachments ?? []),
+            )}
+          />
         </div>
         {long ? (
           <button
@@ -144,6 +159,7 @@ export const MessageRow = memo(function MessageRow({
       <div className={note ? 'markdown note' : 'markdown reply'}>
         <MarkdownText text={text} streaming={streaming} />
       </div>
+      {text && !streaming ? <CopyButton text={text} /> : null}
     </article>
   );
 });

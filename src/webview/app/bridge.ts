@@ -76,6 +76,7 @@ export interface ProfileResult {
 }
 export type HostMessage =
   | ProfileResult
+  | { type: 'copyResult'; requestId: string; ok: boolean }
   | {
       type: 'snapshot';
       snapshot: SnapshotUpdate;

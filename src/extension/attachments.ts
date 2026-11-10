@@ -7,6 +7,7 @@ import {
   buildPacket,
   IMAGE_EXTENSION,
   type ImageInput,
+  numberImages,
   type Session,
   type SessionInput,
   type SkillRequest,
@@ -108,13 +109,21 @@ export async function resolveAttachments(
   const shown: Attachment[] = [];
   const skills: SkillRequest[] = [];
   const syncs: NonNullable<SessionInput['syncs']> = [];
-  for (const attachment of attachments) {
+  for (const attachment of numberImages(attachments)) {
     if (attachment.kind === 'file' || attachment.kind === 'folder') {
       const target = await resolveInside(root, attachment.path);
       if (attachment.kind === 'file' && IMAGE_EXTENSION.test(attachment.path)) {
         const file = await store.copy(target, MAX_ATTACHED_IMAGE);
         images.push(store.input(file));
-        shown.push({ kind: 'image', file, name: path.basename(attachment.path) });
+        shown.push({
+          kind: 'image',
+          file,
+          name: path.basename(attachment.path),
+          reference: attachment.reference,
+        });
+        lines.push(
+          `Image attachment ${images.length} is [Image #${attachment.reference}], filename: ${JSON.stringify(path.basename(attachment.path))}.`,
+        );
         continue;
       }
       paths.push(attachment.kind === 'folder' ? `${attachment.path}/` : attachment.path);
@@ -122,7 +131,9 @@ export async function resolveAttachments(
     } else if (attachment.kind === 'image') {
       images.push(store.input(attachment.file));
       if (attachment.reference)
-        lines.push(`Image attachment ${images.length} is [Image #${attachment.reference}].`);
+        lines.push(
+          `Image attachment ${images.length} is [Image #${attachment.reference}], filename: ${JSON.stringify(attachment.name)}.`,
+        );
       shown.push(attachment);
     } else if (attachment.kind === 'thread' && attachment.history) {
       const thread = options.sessions.find((item) => item.id === attachment.id);

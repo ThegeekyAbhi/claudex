@@ -64,7 +64,7 @@ export function createContext(page: Page, browserErrors: ReturnType<typeof colle
       expected,
     );
   }
-  const box = page.locator('textarea[aria-label="Message your agent"]');
+  const box = page.locator('[role="textbox"][aria-label="Message your agent"]');
   const thinkingToggle = page.getByRole('button', { name: 'Thinking', exact: true });
   const nav = page.getByRole('navigation', { name: 'Agent sessions' });
   const threads = page.getByRole('navigation', { name: 'Agent sessions' });

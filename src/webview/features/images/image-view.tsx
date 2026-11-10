@@ -2,14 +2,6 @@ import { createContext, useContext, useState } from 'react';
 import type { MessageImage } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
-} from '../../components/ui/dialog';
-
 /** Where this webview may load stored images from. The host supplies it. */
 export const ImageBase = createContext('');
 export function useImageUrl(file?: string): string | undefined {
@@ -17,113 +9,33 @@ export function useImageUrl(file?: string): string | undefined {
   return file && base ? `${base}/${file}` : undefined;
 }
 export function ImagePreview({
+  file,
   url,
   alt,
   className,
 }: {
+  file: string;
   url?: string;
   alt: string;
   className?: string;
 }) {
   const [failedUrl, setFailedUrl] = useState<string>();
-  const [actualSize, setActualSize] = useState(false);
-  const [dimensions, setDimensions] = useState<{ url: string; label: string }>();
   const failed = Boolean(url && failedUrl === url);
   return (
-    <Dialog onOpenChange={() => setActualSize(false)}>
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className={`image-preview group relative cursor-zoom-in ${className ?? ''}`}
-          aria-label={`View image full size: ${alt}`}
-          disabled={!url || failed}
-        >
-          {url && !failed ? (
-            <>
-              <img
-                src={url}
-                alt={alt}
-                onLoad={(event) => {
-                  const image = event.currentTarget;
-                  setDimensions({ url, label: `${image.naturalWidth} × ${image.naturalHeight}` });
-                }}
-                onError={() => setFailedUrl(url)}
-              />
-              <span
-                className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md bg-surface border border-subtle px-2 py-1 text-[11px] text-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
-                aria-hidden="true"
-              >
-                <Icon name="search" size={13} />
-              </span>
-            </>
-          ) : (
-            <span className="text-[11px] text-muted-foreground">Image unavailable</span>
-          )}
-        </button>
-      </DialogTrigger>
-      <DialogContent
-        className="lightbox top-4 bottom-4 left-4 right-4 translate-x-0 translate-y-0 w-auto max-w-none sm:max-w-none min-w-0 grid-rows-[auto_minmax(0,1fr)] p-0 bg-surface border-subtle gap-0 overflow-hidden"
-        showCloseButton={false}
-        aria-describedby={undefined}
-      >
-        <div className="flex flex-wrap items-center gap-2 border-b border-subtle px-3 py-2">
-          <div className="flex-1 min-w-0">
-            <DialogTitle className="truncate text-[12px] font-medium" title={alt}>
-              Image viewer: {alt}
-            </DialogTitle>
-            {dimensions && dimensions.url === url ? (
-              <span className="text-[11px] text-muted-foreground">{dimensions.label}</span>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              aria-pressed={!actualSize}
-              onClick={() => setActualSize(false)}
-              className="text-[11px] px-2 py-1 aria-pressed:bg-accent"
-            >
-              Fit
-            </button>
-            <button
-              type="button"
-              aria-pressed={actualSize}
-              onClick={() => setActualSize(true)}
-              className="text-[11px] px-2 py-1 aria-pressed:bg-accent"
-            >
-              Actual size
-            </button>
-            <DialogClose asChild>
-              <button
-                type="button"
-                aria-label="Close image"
-                className="p-2 text-muted-foreground enabled:hover:text-foreground"
-              >
-                <Icon name="close" size={16} />
-              </button>
-            </DialogClose>
-          </div>
-        </div>
-        <section
-          className="min-h-0 min-w-0 overflow-auto bg-background p-3"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard scrolling
-          tabIndex={0}
-          aria-label="Image preview"
-        >
-          {failed ? (
-            <output>This image is no longer available.</output>
-          ) : (
-            <img
-              src={url}
-              alt={alt}
-              className={
-                actualSize ? 'block max-w-none m-auto' : 'block w-full h-full object-contain'
-              }
-              onError={() => setFailedUrl(url)}
-            />
-          )}
-        </section>
-      </DialogContent>
-    </Dialog>
+    <button
+      type="button"
+      className={`image-preview group relative cursor-zoom-in ${className ?? ''}`}
+      aria-label={`View image full size: ${alt}`}
+      title={alt}
+      disabled={!url || failed}
+      onClick={() => send({ type: 'openImage', file })}
+    >
+      {url && !failed ? (
+        <img src={url} alt={alt} onError={() => setFailedUrl(url)} />
+      ) : (
+        <span className="text-[11px] text-muted-foreground">Image unavailable</span>
+      )}
+    </button>
   );
 }
 const imageCard =
@@ -144,7 +56,7 @@ export function ImageMessage({ image }: { image: MessageImage }) {
         ) : null}
       </output>
     );
-  if (image.status === 'failed' || !url)
+  if (image.status === 'failed' || !url || !image.file)
     return (
       <div className={`${imageCard} px-3 py-2 text-error`} role="alert">
         <span className="flex items-center gap-1.5">
@@ -157,6 +69,7 @@ export function ImageMessage({ image }: { image: MessageImage }) {
   return (
     <figure className={imageCard}>
       <ImagePreview
+        file={file}
         url={url}
         alt={alt}
         className="flex items-center justify-center w-full min-h-24 p-3 border-0 rounded-none bg-background enabled:hover:bg-background [&_img]:block [&_img]:max-w-full [&_img]:max-h-[min(280px,40vh)] [&_img]:object-contain"

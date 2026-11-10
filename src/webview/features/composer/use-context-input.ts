@@ -1,8 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { type AgentKind, type Attachment, withMention } from '../../../shared/model';
+import {
+  type AgentKind,
+  type Attachment,
+  attachmentToken,
+  MAX_ATTACHMENTS,
+  numberImages,
+  withMention,
+} from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { caretRect, type MenuAnchor, placeMenu } from '../../lib/caret';
 import { requestContext, type Trigger, triggerAt } from '../attachments/context-menu';
+import type { ComposerEditorHandle } from './editor-dom';
+import { referenceParts } from './references';
 import type { ComposerProps } from './types';
 
 function readFile(file: File): Promise<string> {
@@ -26,7 +35,7 @@ export function useContextInput({
   ComposerProps,
   'draft' | 'attachments' | 'draftKey' | 'focusKey' | 'onDraft' | 'onAttachments' | 'onError'
 > & { agent: AgentKind }) {
-  const textarea = useRef<HTMLTextAreaElement>(null);
+  const textarea = useRef<ComposerEditorHandle>(null);
   const [trigger, setTrigger] = useState<Trigger>();
   /** Escape hides the menu until the text changes. */
   const [dismissed, setDismissed] = useState<number>();
@@ -40,6 +49,11 @@ export function useContextInput({
   useEffect(() => {
     textarea.current?.focus();
   }, [focusKey]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read the selection after the changed draft commits
+  useLayoutEffect(() => {
+    if (textarea.current && document.activeElement === textarea.current.element)
+      readTrigger(textarea.current);
+  }, [draft]);
   const query = trigger?.query;
   const skillTrigger = trigger?.mark === '/';
   // Results are searched by the host, a moment after typing settles.
@@ -64,7 +78,7 @@ export function useContextInput({
   const triggerStart = menuOpen ? trigger?.start : undefined;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a changed draft can rewrap the line
   useLayoutEffect(() => {
-    const box = textarea.current;
+    const box = textarea.current?.element;
     const area = menuFrame.current;
     if (triggerStart === undefined || !box || !area) {
       setAnchor(undefined);
@@ -89,7 +103,7 @@ export function useContextInput({
       box.removeEventListener('scroll', measure);
     };
   }, [triggerStart, draft]);
-  function readTrigger(element: HTMLTextAreaElement) {
+  function readTrigger(element: ComposerEditorHandle) {
     setTrigger(triggerAt(element.value, element.selectionStart));
   }
   function removeToken() {
@@ -101,10 +115,73 @@ export function useContextInput({
     textarea.current?.focus();
     return next;
   }
+  function insertTokens(tokens: string[], start: number, end = start) {
+    const before = draft.slice(0, start);
+    const after = draft.slice(end);
+    const inserted = `${before && !/\s$/.test(before) ? ' ' : ''}${tokens.join(' ')} `;
+    onDraft(`${before}${inserted}${after}`);
+    pendingCaret.current = start + inserted.length;
+    setTrigger(undefined);
+  }
+  const previousImages = useRef({ draftKey, files: new Set<string>() });
+  useEffect(() => {
+    if (previousImages.current.draftKey !== draftKey)
+      previousImages.current = { draftKey, files: new Set() };
+    const images = attachments.filter((item) => item.kind === 'image');
+    const added = images.filter((item) => !previousImages.current.files.has(item.file));
+    previousImages.current.files = new Set(images.map((item) => item.file));
+    const referenced = new Set(referenceParts(draft, attachments).map((part) => part.attachment));
+    const missingPaths = attachments.filter(
+      (item) => (item.kind === 'file' || item.kind === 'folder') && !referenced.has(item),
+    );
+    const tokens = [...added, ...missingPaths]
+      .map(attachmentToken)
+      .filter((token) => !draft.includes(token));
+    if (tokens.length) {
+      const box = textarea.current;
+      insertTokens(tokens, box?.selectionStart ?? draft.length, box?.selectionEnd ?? draft.length);
+    }
+  });
   function attach(attachment: Attachment) {
-    removeToken();
-    const same = (item: Attachment) => JSON.stringify(item) === JSON.stringify(attachment);
-    if (!attachments.some(same)) onAttachments([...attachments, attachment]);
+    const same = (item: Attachment) =>
+      (item.kind === 'file' || item.kind === 'folder') && item.kind === attachment.kind
+        ? item.path === attachment.path
+        : JSON.stringify(item) === JSON.stringify(attachment);
+    const existing = attachments.find(same);
+    if (existing) {
+      if (attachment.kind === 'file' || attachment.kind === 'folder') {
+        insertTokens(
+          [attachmentToken(existing)],
+          trigger?.start ?? draft.length,
+          trigger?.end ?? draft.length,
+        );
+        textarea.current?.focus();
+      } else removeToken();
+      return;
+    }
+    if (attachments.length >= MAX_ATTACHMENTS) {
+      onError(`You can attach up to ${MAX_ATTACHMENTS} items per message.`);
+      return;
+    }
+    const next = numberImages([...attachments, attachment]);
+    const added = next[next.length - 1];
+    onAttachments(next);
+    if (added.kind === 'file' || added.kind === 'folder') {
+      const box = textarea.current;
+      insertTokens(
+        [attachmentToken(added)],
+        trigger?.start ?? box?.selectionStart ?? draft.length,
+        trigger?.end ?? box?.selectionEnd ?? draft.length,
+      );
+      textarea.current?.focus();
+    } else removeToken();
+  }
+  function removeAttachment(attachment: Attachment) {
+    onAttachments(attachments.filter((item) => item !== attachment));
+    if (attachment.kind === 'image' || attachment.kind === 'file' || attachment.kind === 'folder') {
+      const token = attachmentToken(attachment);
+      onDraft(draft.replaceAll(`${token} `, '').replaceAll(token, ''));
+    }
   }
   function pickAgent(name: string) {
     if (!trigger) return;
@@ -115,11 +192,19 @@ export function useContextInput({
     textarea.current?.focus();
   }
   async function addFiles(files: File[]) {
+    let remaining = MAX_ATTACHMENTS - attachments.length;
     for (const file of files) {
+      if (remaining <= 0) {
+        onError(
+          `You can attach up to ${MAX_ATTACHMENTS} items per message. Extra images were not added.`,
+        );
+        break;
+      }
       if (file.size > 10 * 1024 * 1024) {
         onError(`${file.name} is larger than the 10 MB limit.`);
         continue;
       }
+      remaining--;
       send({
         type: 'attachImage',
         draftKey,
@@ -140,6 +225,7 @@ export function useContextInput({
     readTrigger,
     removeToken,
     attach,
+    removeAttachment,
     pickAgent,
     addFiles,
   };

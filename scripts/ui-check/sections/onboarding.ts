@@ -69,7 +69,10 @@ export async function checkOnboarding(ctx: UiCheckContext): Promise<void> {
   // A starter prompt fills the message box and sends nothing.
   const sendsBefore = (await sentOf('start')).length;
   await card.getByRole('button', { name: 'Explore this project' }).click();
-  assert.match(await box.inputValue(), /^Explain how this project is structured/);
+  assert.match(
+    (await box.getAttribute('data-value')) ?? '',
+    /^Explain how this project is structured/,
+  );
   assert.equal((await sentOf('start')).length, sendsBefore);
   await box.fill('');
 

@@ -16,7 +16,7 @@ export async function checkChildThreads(ctx: UiCheckContext): Promise<void> {
   await page.getByRole('option', { name: /@claude2/ }).waitFor();
   assert.match((await page.getByRole('option').first().textContent()) ?? '', /@claude/);
   await box.press('Enter');
-  assert.equal(await box.inputValue(), '@claude use ');
+  assert.equal(await box.getAttribute('data-value'), '@claude use ');
   await box.fill('');
 
   // An agent can be run from the composer without leaving the thread.
@@ -25,7 +25,7 @@ export async function checkChildThreads(ctx: UiCheckContext): Promise<void> {
   await page.screenshot({ path: 'test-results/screenshots/mention.png' });
   await box.press('ArrowDown');
   await box.press('Enter');
-  assert.equal(await box.inputValue(), '@claude2 ');
+  assert.equal(await box.getAttribute('data-value'), '@claude2 ');
   // A mention doesn't replace your main agent's chip. Another one says who it goes to.
   const mainModel = await page.getByRole('button', { name: /^Model:/ }).getAttribute('aria-label');
   assert.doesNotMatch(mainModel ?? '', /Claude 2/);

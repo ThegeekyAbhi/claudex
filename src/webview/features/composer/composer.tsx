@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import {
   attachmentLabel,
   canBuildPlan,
@@ -13,11 +13,13 @@ import { AttachmentChip, ContextMenu } from '../attachments/context-menu';
 import { SkillMenu } from '../skills/skill-menu';
 import { UsageIndicator } from '../usage/usage-indicator';
 import { ComposerCaption } from './caption';
+import { ComposerEditor } from './composer-editor';
 import { ComposerControls } from './controls';
+import { ImageStrip } from './image-strip';
 import type { ComposerProps } from './types';
 import { useComposer } from './use-composer';
 
-export function Composer(props: ComposerProps) {
+export function Composer(props: ComposerProps): ReactElement {
   const [continuing, setContinuing] = useState(false);
   const {
     catalog,
@@ -34,7 +36,6 @@ export function Composer(props: ComposerProps) {
     top,
     contextResults,
     onDraft,
-    onAttachments,
     onChoice,
     onDismissNudge,
     onSubmit,
@@ -76,9 +77,13 @@ export function Composer(props: ComposerProps) {
     readTrigger,
     removeToken,
     attach,
+    removeAttachment,
     pickAgent,
     addFiles,
   } = useComposer(props);
+  const contextAttachments = attachments.filter(
+    (item) => item.kind !== 'file' && item.kind !== 'folder' && item.kind !== 'image',
+  );
   return (
     <div
       className={`composer-area pt-2 px-6 pb-2.5 shrink-0 relative [&.top]:pt-3.5 max-[900px]:py-2 max-[900px]:px-3 [.question-dock+&]:pt-0 [.plan-dock+&]:pt-0 ${top ? 'top' : ''}`}
@@ -171,17 +176,21 @@ export function Composer(props: ComposerProps) {
         ) : null}
         <div
           data-agent={profileProvider(agent)}
-          className="composer @container border border-composer-edge rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [.plan-dock+*_&]:relative [&_textarea]:w-full [&_textarea]:pt-2.5 [&_textarea]:px-3 [&_textarea]:pb-1 [&_textarea]:block [&_textarea]:text-[13.5px] [&_textarea]:leading-[1.55] [&_textarea]:resize-none [&_textarea]:field-sizing-content [&_textarea]:min-h-[52px] [&_textarea]:max-h-[40vh] [&_textarea]:overflow-y-auto [&_textarea:focus-visible]:outline-none in-[.composer-area.top]:[&_textarea]:min-h-24"
+          className="composer @container border border-composer-edge rounded-lg bg-raised max-w-[780px] m-auto focus-within:border-agent-edge [.question-dock+*_&]:relative [.plan-dock+*_&]:relative"
         >
-          {attachments.length ? (
+          <ImageStrip
+            images={attachments.filter((item) => item.kind === 'image')}
+            onRemove={removeAttachment}
+          />
+          {contextAttachments.length ? (
             <div className="flex flex-wrap items-start gap-1 pt-2 px-2.5 pb-0 in-[.user]:pt-0 in-[.user]:px-0 in-[.user]:pb-1.5">
-              {attachments.map((item, index) => (
+              {contextAttachments.map((item, index) => (
                 <AttachmentChip
                   // biome-ignore lint/suspicious/noArrayIndexKey: attachments are unique and only append or remove
                   key={index}
                   attachment={item}
                   muted={missingSkills.includes(item)}
-                  onRemove={() => onAttachments(attachments.filter((other) => other !== item))}
+                  onRemove={() => removeAttachment(item)}
                   onOpen={
                     item.kind === 'thread' && item.history
                       ? () =>
@@ -197,11 +206,14 @@ export function Composer(props: ComposerProps) {
               ))}
             </div>
           ) : null}
-          <textarea
+          <ComposerEditor
             ref={textarea}
             aria-label="Message your agent"
-            rows={top ? 4 : 2}
             value={draft}
+            attachments={attachments}
+            draftKey={draftKey}
+            onAttachments={props.onAttachments}
+            onImages={(files) => void addFiles(files)}
             placeholder={
               session
                 ? busy && session.approval?.kind !== 'plan'
@@ -211,21 +223,12 @@ export function Composer(props: ComposerProps) {
                     : 'Plan, build, / for skills, @ for context'
                 : 'Plan, build, / for skills, @ for context'
             }
-            onChange={(event) => {
-              onDraft(event.target.value);
+            onChange={(value) => {
+              onDraft(value);
               setDismissed(undefined);
-              readTrigger(event.target);
             }}
-            onSelect={(event) => readTrigger(event.currentTarget)}
+            onSelect={readTrigger}
             onBlur={() => setTrigger(undefined)}
-            onPaste={(event) => {
-              const files = Array.from(event.clipboardData.files).filter((file) =>
-                file.type.startsWith('image/'),
-              );
-              if (!files.length) return;
-              event.preventDefault();
-              void addFiles(files);
-            }}
             onKeyDown={(event) => {
               if (menuOpen && menuKeys.current?.(event)) {
                 event.preventDefault();

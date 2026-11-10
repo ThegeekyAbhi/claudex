@@ -25,7 +25,16 @@ export function useWorkspaceEffects(
       }
       if (event.key === 'Escape') setError('');
     };
+    const preserveCopy = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'c')
+        event.stopPropagation();
+    };
+    // Keep the browser's native copy behavior without forwarding this key to editor commands.
+    document.addEventListener('keydown', preserveCopy);
     window.addEventListener('keydown', listener);
-    return () => window.removeEventListener('keydown', listener);
+    return () => {
+      document.removeEventListener('keydown', preserveCopy);
+      window.removeEventListener('keydown', listener);
+    };
   }, [setError]);
 }

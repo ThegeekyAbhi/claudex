@@ -14,7 +14,7 @@ export async function checkNewChatModes(ctx: UiCheckContext): Promise<void> {
     const list = (
       document.querySelector('[aria-label="Add context"]') as Element
     ).getBoundingClientRect();
-    const area = (document.querySelector('.composer textarea') as Element).getBoundingClientRect();
+    const area = (document.querySelector('.composer-input') as Element).getBoundingClientRect();
     return { top: list.top, areaTop: area.top, left: list.left, areaLeft: area.left };
   });
   assert.ok(newChatPlacement.top > newChatPlacement.areaTop, 'opens below the caret');
@@ -64,8 +64,8 @@ export async function checkNewChatModes(ctx: UiCheckContext): Promise<void> {
     planStart.draftKey,
   );
   await page.waitForFunction(() => {
-    const area = document.querySelector('textarea') as HTMLTextAreaElement | null;
-    return area?.value === '';
+    const area = document.querySelector<HTMLElement>('.composer-input');
+    return area?.dataset.value === '';
   });
   await page.getByRole('button', { name: 'Mode: Plan' }).click();
   await page.getByRole('menuitemradio', { name: /Auto/ }).click();

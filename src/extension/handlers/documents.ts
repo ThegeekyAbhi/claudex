@@ -315,8 +315,24 @@ export class DocumentsHandlers {
       openDiff: async (action) => {
         await this.openDiff(action.id, action.file, action.original);
       },
-      copy: async (action) => {
-        await vscode.env.clipboard.writeText(action.text);
+      copy: async (action, surface) => {
+        try {
+          await vscode.env.clipboard.writeText(action.text);
+        } catch (error) {
+          if (!action.requestId) throw error;
+          await surface.webview.postMessage({
+            type: 'copyResult',
+            requestId: action.requestId,
+            ok: false,
+          });
+          return;
+        }
+        if (action.requestId)
+          await surface.webview.postMessage({
+            type: 'copyResult',
+            requestId: action.requestId,
+            ok: true,
+          });
       },
     };
   }

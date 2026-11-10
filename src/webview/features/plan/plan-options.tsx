@@ -206,8 +206,8 @@ export function PlanOptions({
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return;
-      const box = document.querySelector<HTMLTextAreaElement>('.composer textarea');
-      if (box?.value.trim()) return;
+      const box = document.querySelector<HTMLElement>('.composer-input');
+      if (box?.dataset.value?.trim()) return;
       event.preventDefault();
       latest.current();
     }

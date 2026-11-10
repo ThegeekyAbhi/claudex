@@ -1,48 +1,17 @@
-const MIRRORED = [
-  'boxSizing',
-  'fontFamily',
-  'fontSize',
-  'fontWeight',
-  'fontStyle',
-  'letterSpacing',
-  'lineHeight',
-  'paddingTop',
-  'paddingRight',
-  'paddingBottom',
-  'paddingLeft',
-  'borderTopWidth',
-  'borderRightWidth',
-  'borderBottomWidth',
-  'borderLeftWidth',
-  'borderStyle',
-  'tabSize',
-  'textIndent',
-  'textTransform',
-  'wordSpacing',
-] as const;
-/** A textarea won't say where a character is, so a hidden copy with the same wrapping measures it. */
-export function caretRect(textarea: HTMLTextAreaElement, index: number) {
-  const style = getComputedStyle(textarea);
-  const mirror = document.createElement('div');
-  for (const name of MIRRORED) mirror.style[name] = style[name];
-  mirror.style.position = 'absolute';
-  mirror.style.visibility = 'hidden';
-  mirror.style.top = '0';
-  mirror.style.left = '0';
-  mirror.style.whiteSpace = 'pre-wrap';
-  mirror.style.overflowWrap = 'break-word';
-  mirror.style.width = `${textarea.offsetWidth}px`;
-  mirror.textContent = textarea.value.slice(0, index);
-  const marker = document.createElement('span');
-  marker.textContent = '​';
-  mirror.append(marker);
-  document.body.append(mirror);
-  const box = textarea.getBoundingClientRect();
-  const top = box.top + marker.offsetTop - textarea.scrollTop;
-  const left = box.left + marker.offsetLeft - textarea.scrollLeft;
-  const height = marker.offsetHeight;
-  mirror.remove();
-  return { left, top, bottom: top + height };
+import { editorPoint } from '../features/composer/editor-dom';
+
+export function caretRect(editor: HTMLElement, index: number) {
+  const point = editorPoint(editor, index);
+  const range = document.createRange();
+  range.setStart(point.node, point.offset);
+  range.collapse(true);
+  const rect = range.getBoundingClientRect();
+  if (rect.height) return rect;
+  const box = editor.getBoundingClientRect();
+  const style = getComputedStyle(editor);
+  const top = box.top + Number.parseFloat(style.paddingTop);
+  const left = box.left + Number.parseFloat(style.paddingLeft);
+  return { left, top, bottom: top + Number.parseFloat(style.lineHeight) };
 }
 export const MENU_MAX_HEIGHT = 320;
 const GAP = 4;

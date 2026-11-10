@@ -13,8 +13,8 @@ import { useWorkspaceEffects, useWorkspaceUI } from './use-workspace-ui';
 
 export function useAppState() {
   const saved = useInitialViewState();
-  const drafts = useDrafts(saved);
   const ui = useWorkspaceUI();
+  const drafts = useDrafts(saved, ui.setError);
   // Callbacks run after render; each concern handles only its own state transitions.
   const host = useHostMessages({
     drafts,

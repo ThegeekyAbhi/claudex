@@ -54,7 +54,11 @@ export async function checkSkills(ctx: UiCheckContext): Promise<void> {
   assert.equal(await skillMenu.getByText('release', { exact: true }).count(), 0);
   await page.screenshot({ path: 'test-results/screenshots/skills-menu.png' });
   await box.press('Enter');
-  assert.equal(await box.inputValue(), '', 'the search text goes when the skill is picked');
+  assert.equal(
+    await box.getAttribute('data-value'),
+    '',
+    'the search text goes when the skill is picked',
+  );
   const chip = page.locator('.composer .attachment-chip', { hasText: 'review' });
   await chip.waitFor();
   assert.equal(await page.getByText('Used skill').count(), 0, 'a selection is not use');

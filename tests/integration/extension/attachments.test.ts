@@ -152,3 +152,22 @@ test('image reference numbers survive validation and map to provider image order
   assert.match(result.context ?? '', /Image attachment 1 is \[Image #3\]/);
   assert.equal(result.attachments?.[0].kind === 'image' && result.attachments[0].reference, 3);
 });
+
+test('mixed workspace and pasted images have matching references and filenames', async () => {
+  const { options } = await setup();
+  const file = await options.store.save(PNG);
+  const result = await resolveAttachments(
+    [
+      { kind: 'file', path: 'src/shot.png' },
+      { kind: 'file', path: 'src/a.ts' },
+      { kind: 'image', file, name: 'pasted.png' },
+    ],
+    options,
+  );
+  assert.match(result.context ?? '', /Image attachment 1 is \[Image #1\], filename: "shot.png"/);
+  assert.match(result.context ?? '', /Image attachment 2 is \[Image #2\], filename: "pasted.png"/);
+  assert.deepEqual(
+    result.attachments?.filter((item) => item.kind === 'image').map((item) => item.reference),
+    [1, 2],
+  );
+});

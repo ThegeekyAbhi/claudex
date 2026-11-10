@@ -17,10 +17,10 @@ export async function checkTabs(ctx: UiCheckContext): Promise<void> {
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
   assert.equal(await draftTabs(), draftsBefore + 3);
-  assert.equal(await box.inputValue(), '', 'a new chat starts empty');
+  assert.equal(await box.getAttribute('data-value'), '', 'a new chat starts empty');
   await tabNamed(/Plan the cache/).waitFor();
   await tabNamed(/unsent words/).click();
-  assert.equal(await box.inputValue(), 'unsent words');
+  assert.equal(await box.getAttribute('data-value'), 'unsent words');
   await page.screenshot({ path: 'test-results/screenshots/draft-tabs.png' });
   await update('planned');
   await tabNamed(/unsent words/).waitFor();

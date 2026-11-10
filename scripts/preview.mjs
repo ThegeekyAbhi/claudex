@@ -22,7 +22,7 @@ createServer(async (request, response) => {
     response.end(vscodeDefaults);
     return;
   }
-  if (/^\/fixture-images\/sample(?:-2)?\.png$/.test(route)) {
+  if (/^\/fixture-images\/sample(?:-\d+)?\.png$/.test(route)) {
     response.setHeader('Content-Type', 'image/png');
     response.end(Buffer.from(fixtureImage, 'base64'));
     return;

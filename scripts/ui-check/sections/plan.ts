@@ -144,7 +144,7 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
   await page.screenshot({ path: 'test-results/screenshots/plan-options.png' });
   await choices.getByRole('button', { name: 'Implement in Auto' }).click();
   assert.equal((await sentOf('buildPlan')).at(-1).notes, 'Keep the old keys readable');
-  assert.equal(await box.inputValue(), '', 'notes sent with the build clear');
+  assert.equal(await box.getAttribute('data-value'), '', 'notes sent with the build clear');
   // Keeping planning sends them back as feedback.
   await box.fill('Keep the old keys readable');
   await choices.getByRole('button', { name: 'Keep planning' }).click();
@@ -153,7 +153,7 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
     id: 'planned',
     feedback: 'Keep the old keys readable',
   });
-  assert.equal(await box.inputValue(), '', 'sent notes clear');
+  assert.equal(await box.getAttribute('data-value'), '', 'sent notes clear');
   // Without notes, keeping planning declines and Claude waits.
   await choices.getByRole('button', { name: 'Keep planning' }).click();
   assert.deepEqual((await sentOf('keepPlanning')).at(-1), { type: 'keepPlanning', id: 'planned' });
@@ -178,7 +178,7 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
     id: 'planned',
     feedback: 'Use a smaller cache',
   });
-  assert.equal(await box.inputValue(), '');
+  assert.equal(await box.getAttribute('data-value'), '');
   await page.mouse.move(0, 0);
   await page.screenshot({ path: 'test-results/screenshots/plan.png' });
   // In a slim side bar the bar keeps to one row, without spilling sideways.

@@ -77,7 +77,7 @@ export function QuestionCard({
           )
         : {},
     });
-    document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus();
+    document.querySelector<HTMLElement>('.composer-input')?.focus();
   }
   function advance() {
     if (!answered(question)) return;

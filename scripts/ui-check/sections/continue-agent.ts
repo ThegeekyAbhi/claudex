@@ -39,7 +39,11 @@ export async function checkContinueAgent(ctx: UiCheckContext): Promise<void> {
     name: 'Preview Context from Cache the render graph',
   });
   await contextChip.waitFor();
-  assert.equal(await box.inputValue(), 'Carry on from here', 'the draft moves with you');
+  assert.equal(
+    await box.getAttribute('data-value'),
+    'Carry on from here',
+    'the draft moves with you',
+  );
   const continuedModel = await page
     .getByRole('button', { name: /^Model:/ })
     .getAttribute('aria-label');
@@ -75,7 +79,7 @@ export async function checkContinueAgent(ctx: UiCheckContext): Promise<void> {
     .getByRole('button', { name: /Continued from Codex: Cache the render graph/ })
     .waitFor();
   await contextChip.waitFor();
-  assert.equal(await box.inputValue(), 'Check it again');
+  assert.equal(await box.getAttribute('data-value'), 'Check it again');
   await box.press('Enter');
   const resumed = (await sentOf('send')).at(-1);
   assert.equal(resumed.id, 'continue-linked');

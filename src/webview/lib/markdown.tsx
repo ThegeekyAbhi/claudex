@@ -2,10 +2,13 @@ import { Children, isValidElement, memo, type ReactElement, type ReactNode } fro
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remend from 'remend';
+import type { Attachment } from '../../shared/model';
 import { send } from '../app/bridge';
 import { Icon } from '../components/icons';
+import { ReferenceIcon } from '../components/reference-icon';
 import { ColouredLines } from './coloured-lines';
 import { MermaidBlock } from './mermaid-block';
+import { remarkReferences } from './remark-references';
 import { useHighlight } from './use-highlight';
 import { VisualBlock, VisualPlaceholder } from './visual-block';
 import { VISUAL_MAX_SOURCE } from './visual-document';
@@ -74,12 +77,27 @@ function heading(Tag: 'h1' | 'h2' | 'h3') {
     <Tag data-slug={slug(textOf(children))}>{children}</Tag>
   );
 }
-function components(streaming: boolean): Components {
+function components(streaming: boolean, attachments?: Attachment[]): Components {
   return {
     h1: heading('h1'),
     h2: heading('h2'),
     h3: heading('h3'),
     blockquote: Blockquote,
+    span: ({ children, className, title }) => {
+      const attachment = className?.includes('inline-reference')
+        ? attachments?.find(
+            (item) => (item.kind === 'file' || item.kind === 'folder') && item.path === title,
+          )
+        : undefined;
+      return (
+        <span className={className} title={title}>
+          {attachment && (attachment.kind === 'file' || attachment.kind === 'folder') ? (
+            <ReferenceIcon kind={attachment.kind} path={attachment.path} />
+          ) : null}
+          {attachment ? <span className="reference-label">{children}</span> : children}
+        </span>
+      );
+    },
     // Remote images could reveal activity to a server, so they stay as text.
     img: ({ alt }) => <span className="text-muted-foreground">[Image: {alt || 'attachment'}]</span>,
     a: ({ href, children }) => (
@@ -149,13 +167,23 @@ const PLUGINS = [remarkGfm];
 export const MarkdownText = memo(function MarkdownText({
   text,
   streaming = false,
+  attachments,
 }: {
   text: string;
   /** Repairs half-written syntax and holds off on highlighting until the text settles. */
   streaming?: boolean;
+  attachments?: Attachment[];
 }) {
+  let renderers = streaming ? STREAMING : SETTLED;
+  if (attachments?.length) renderers = components(streaming, attachments);
   return (
-    <Markdown remarkPlugins={PLUGINS} skipHtml components={streaming ? STREAMING : SETTLED}>
+    <Markdown
+      remarkPlugins={
+        attachments?.length ? [...PLUGINS, [remarkReferences, { attachments }]] : PLUGINS
+      }
+      skipHtml
+      components={renderers}
+    >
       {streaming ? remend(text) : text}
     </Markdown>
   );

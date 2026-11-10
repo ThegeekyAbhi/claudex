@@ -189,7 +189,7 @@ export async function checkProfiles(ctx: UiCheckContext): Promise<void> {
   await page.screenshot({ path: 'test-results/screenshots/accounts.png' });
   // Switching tabs keeps both the setup page and the unsent chat intact.
   await page.getByRole('button', { name: 'Close Accounts', exact: true }).click();
-  assert.equal(await box.inputValue(), 'Keep this draft');
+  assert.equal(await box.getAttribute('data-value'), 'Keep this draft');
   await box.fill('@c');
   await page.getByRole('option', { name: /@claude-work/ }).waitFor();
   assert.equal(await page.getByRole('option', { name: /@claude2/ }).count(), 0);

@@ -27,7 +27,7 @@ export async function checkTerminalDrafts(ctx: UiCheckContext): Promise<void> {
   terminalThread.inTerminal = false;
   Object.assign(terminalThread, terminalBefore);
   await update('codex-one');
-  assert.equal(await box.inputValue(), 'Keep this draft');
+  assert.equal(await box.getAttribute('data-value'), 'Keep this draft');
   await box.fill('');
 
   // Per-thread drafts survive switching.
@@ -35,7 +35,7 @@ export async function checkTerminalDrafts(ctx: UiCheckContext): Promise<void> {
   await update('claude-two');
   await box.fill('Draft for Claude');
   await update('codex-one');
-  assert.equal(await box.inputValue(), 'Draft for Codex');
+  assert.equal(await box.getAttribute('data-value'), 'Draft for Codex');
   await update('claude-two');
   await box.press('Meta+Enter');
   const [sentMessage] = await sentOf('send');

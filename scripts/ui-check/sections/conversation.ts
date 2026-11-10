@@ -17,6 +17,55 @@ export async function checkConversation(ctx: UiCheckContext): Promise<void> {
   await page.getByRole('button', { name: 'Thought for 4s' }).click();
   await page.getByText('so a renamed clip could reuse').waitFor();
   await page.getByText('Failed: running').waitFor();
+  const response = page
+    .locator('article.assistant')
+    .filter({ has: page.getByRole('button', { name: 'Copy full response' }) })
+    .first();
+  const responseText = await response.locator('.markdown').innerText();
+  await response.getByRole('button', { name: 'Copy full response' }).click();
+  const copied = (await sentOf('copy')).at(-1);
+  assert.ok(copied.text.length >= responseText.length, 'copy includes the full Markdown source');
+  const copyButton = response.locator('.response-copy');
+  assert.equal(await copyButton.innerText(), '', 'copy is icon only');
+  assert.equal(await copyButton.getAttribute('data-copied'), 'false', 'sending is not success');
+  await page.evaluate(
+    (requestId) => window.postMessage({ type: 'copyResult', requestId, ok: true }, '*'),
+    copied.requestId,
+  );
+  await page.waitForFunction(() => document.querySelector('.response-copy[data-copied="true"]'));
+  await copyButton.click();
+  const nextCopy = (await sentOf('copy')).at(-1);
+  await page.evaluate(
+    (requestId) => window.postMessage({ type: 'copyResult', requestId, ok: true }, '*'),
+    copied.requestId,
+  );
+  assert.equal(await copyButton.getAttribute('data-copied'), 'false', 'stale success is ignored');
+  await page.evaluate(
+    (requestId) => window.postMessage({ type: 'copyResult', requestId, ok: false }, '*'),
+    nextCopy.requestId,
+  );
+  await response.getByText('Could not copy response. Try again.').waitFor({ state: 'attached' });
+  assert.equal(await copyButton.getAttribute('data-copied'), 'false');
+  const selection = await response.locator('.markdown').evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selected = window.getSelection();
+    selected?.removeAllRanges();
+    selected?.addRange(range);
+    (document.activeElement as HTMLElement)?.blur();
+    return selected?.toString();
+  });
+  for (const modifier of ['Meta', 'Control']) {
+    await page.keyboard.press(`${modifier}+c`);
+    assert.equal(await page.evaluate(() => window.getSelection()?.toString()), selection);
+    assert.equal(
+      await page
+        .locator('.composer-input')
+        .evaluate((element) => document.activeElement === element),
+      false,
+    );
+  }
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   await page.screenshot({ path: 'test-results/screenshots/conversation.png' });
   await page.getByRole('button', { name: 'Allow once' }).click();
   const [approval] = await sentOf('approve');

@@ -11,6 +11,7 @@ import {
 } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { AgentMark, Icon, type IconName } from '../../components/icons';
+import { ReferenceIcon } from '../../components/reference-icon';
 import { type MenuAnchor, menuAnchorStyle } from '../../lib/caret';
 import { ImagePreview, useImageUrl } from '../images/image-view';
 
@@ -264,6 +265,8 @@ export function ContextMenu({
           >
             {row.agent ? (
               <AgentMark agent={row.agent} />
+            ) : row.path ? (
+              <ReferenceIcon kind={row.icon === 'folder' ? 'folder' : 'file'} path={row.path} />
             ) : row.icon ? (
               <Icon name={row.icon} size={14} />
             ) : null}
@@ -324,17 +327,18 @@ export function AttachmentChip({
   if (attachment.kind === 'image')
     return (
       <span
-        className={`attachment-image relative inline-flex shrink-0 ${muted ? 'opacity-50' : ''}`}
+        className={`attachment-image relative inline-flex shrink-0 flex-col w-20 max-w-full min-w-0 rounded-lg border border-subtle bg-surface p-1 ${muted ? 'opacity-50' : ''}`}
       >
         <ImagePreview
+          file={attachment.file}
           url={url}
           alt={attachmentLabel(attachment)}
-          className="w-24 h-18 p-1 border border-subtle rounded-md bg-surface overflow-hidden [&_img]:block [&_img]:size-full [&_img]:object-contain"
+          className="w-full h-14 p-0 border-0 rounded-md bg-background overflow-hidden [&_img]:block [&_img]:size-full [&_img]:object-contain"
         />
         {onRemove ? (
           <button
             type="button"
-            className="absolute top-0.5 right-0.5 p-1 rounded-full bg-surface border border-subtle text-muted-foreground cursor-pointer"
+            className="absolute top-1.5 right-1.5 size-6 flex items-center justify-center rounded-md bg-surface border border-subtle text-muted-foreground cursor-pointer hover:text-foreground hover:bg-raised"
             aria-label={`Remove ${attachmentLabel(attachment)}`}
             onClick={onRemove}
           >
@@ -368,7 +372,11 @@ export function AttachmentChip({
       className={`attachment-chip inline-flex shrink-0 items-center gap-1 max-w-[min(220px,100%)] min-h-[22px] py-px pr-1 pl-1.5 border border-subtle rounded-md bg-surface text-[11.5px] text-muted-foreground [&>span]:min-w-0 [&>span]:truncate [&>span]:text-foreground [&>svg]:shrink-0 [&_img]:size-[18px] [&_img]:object-cover [&_img]:rounded-[3px] [&_button]:p-0.5 [&_button]:text-muted-foreground [&_button]:shrink-0 ${muted ? 'opacity-50' : ''}`}
       title={title}
     >
-      <Icon name={icon} size={12} />
+      {attachment.kind === 'file' || attachment.kind === 'folder' ? (
+        <ReferenceIcon kind={attachment.kind} path={attachment.path} />
+      ) : (
+        <Icon name={icon} size={12} />
+      )}
       {onOpen ? (
         <button
           type="button"

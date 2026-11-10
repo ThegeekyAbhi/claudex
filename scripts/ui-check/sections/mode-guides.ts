@@ -69,7 +69,7 @@ export async function checkModeGuides(ctx: UiCheckContext): Promise<void> {
   await box.fill('One more thing');
   assert.equal(await page.getByRole('button', { name: 'Implement', exact: true }).count(), 0);
   assert.equal(await page.getByRole('button', { name: /Yes, implement in Auto/ }).count(), 0);
-  assert.equal(await box.inputValue(), 'One more thing');
+  assert.equal(await box.getAttribute('data-value'), 'One more thing');
   assert.equal((await sentOf('send')).length, sendsBefore);
   await box.fill('');
   moded.mode = undefined;

@@ -3,7 +3,7 @@ import type { AgentKind } from '../domain/agents';
 import { agentModeEnum } from '../domain/modes';
 import { APPEARANCES } from '../domain/preferences';
 import { findProfile, PROFILE_ID } from '../domain/profiles';
-import { attachmentSchema, IMAGE_FILE } from '../domain/session';
+import { attachmentSchema, IMAGE_FILE, MAX_ATTACHMENTS } from '../domain/session';
 
 /** A profile that exists now. The host also checks it can run before starting anything. */
 const agentEnum = z
@@ -11,7 +11,7 @@ const agentEnum = z
   .regex(PROFILE_ID)
   .refine((id) => findProfile(id) !== undefined, { message: 'Unknown agent.' });
 const optionName = z.string().min(1).max(200);
-const attachments = z.array(attachmentSchema).max(30).optional();
+const attachments = z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional();
 const thinking = z.enum(['default', 'on', 'off']);
 const buildChoice = {
   agent: agentEnum.optional(),
@@ -199,7 +199,11 @@ export const actionSchema = z.discriminatedUnion('type', [
     folder: z.enum(['home', 'skills']).optional(),
   }),
   z.object({ type: z.literal('refreshAgents') }),
-  z.object({ type: z.literal('copy'), text: z.string().max(2_000_000) }),
+  z.object({
+    type: z.literal('copy'),
+    text: z.string().max(2_000_000),
+    requestId: z.string().min(1).max(100).optional(),
+  }),
   z.object({
     type: z.literal('searchContext'),
     requestId: z.number(),

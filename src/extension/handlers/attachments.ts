@@ -104,11 +104,10 @@ export class AttachmentsHandlers {
         const uri = vscode.Uri.file(this.context.images.path(action.file));
         if (action.reveal) await vscode.commands.executeCommand('revealFileInOS', uri);
         else
-          await vscode.commands.executeCommand(
-            'vscode.open',
-            uri,
-            this.context.surfaces.codeColumn(),
-          );
+          await vscode.commands.executeCommand('vscode.open', uri, {
+            viewColumn: this.context.surfaces.codeColumn(),
+            preview: true,
+          });
       },
     };
   }
