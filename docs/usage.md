@@ -1,13 +1,13 @@
 # Claudex user guide
 
-[Back to the overview](../README.md)
+[Back to the overview](../README.md) · [GIF visual guide](visual-guide.md)
 
 ## Use
 
 1. Choose **New thread**, type, and press **Enter** (**Shift+Enter** for a new line). Nothing else is asked. The thread takes the name Claude or Codex gives it, falling back to your first line; click the name to rename it.
 2. Pick the model and reasoning effort from the model menu: agents on the left, that agent's models on the right. Use ← → to change agent, and type to search all of them. **Default** leaves your CLI's own configuration in place. Models come from your installed CLIs, with older versions under **More models**. The location control sits under the message box.
 3. Choose a mode next to it, or cycle with ⇧Tab. **Ask** answers without changing anything, **Plan** researches and writes a plan, and **Auto** works while the CLI's own reviewer handles approval requests, asking you when it can't decide. New chats start in Auto. It reduces prompts but doesn't guarantee safety, and Claude's Auto can push to your default branch unless you state otherwise. If Auto can't apply, the chip says what's really running, such as **Manual** for an unsupported Claude model or **Your Codex settings** when the approval policy isn't `on-request`, and the thread says why. Threads saved in the old Agent mode reopen as **Default**. Your last choice is remembered per agent for new threads. Bypass and full access are never offered.
-   - **Plans:** while drafting you see a quiet **Planning…** row. When it's ready, a **Created plan** card offers **View Plan** and **Implement plan** (⌘⏎). View Plan opens the plan in the center as a Markdown document, saved in the extension's own folder rather than your repo. Edit it with **Open as text**: implementing reads the file when you click, so your edits count. The card also offers Auto or a linked agent. To change the plan, just type in the message box.
+   - **Plans:** while drafting you see a quiet **Planning…** row. When it's ready, the plan appears inline with **Open plan** and **Edit plan** actions, plus an **Implement in Auto** button (⌘⏎). The plan is saved as Markdown in the extension's own folder rather than your repo. Edit it with **Edit plan**: implementing reads the file when you click, so your edits count. The card also offers Auto or a linked agent. To change the plan, just type in the message box.
    - **Guided planning:** Plan mode asks for clear, evidence-based plans using the 7 Cs of communication, useful Mermaid diagrams, and acceptance tests. Expand **Planning guide** under your message to inspect the instructions. Disable **Claudex: Guided Planning** to use only the provider's native planning guidance. Turn it on or off from the toggle beside the composer controls in Plan mode.
    - **Implement plan:** the plan card's button switches the thread to Auto and builds. A Plan reply with no plan card shows **Implement** above the composer. If a build can't start, the plan and mode go back as they were, and the notice says why.
    - **Visual explanations:** in Ask mode, agents can add a sandboxed visual (a `visual` code fence holding HTML or SVG) when a picture explains something better. Scripts, network requests, and remote images are blocked. Turn it on or off from the toggle in Ask mode, or with `agentWorkspace.richExplanations`.
@@ -30,6 +30,28 @@
    - **Continue in another agent:** pick another agent in the model menu, or use **… → Continue in** another agent or profile. Your draft moves with a **Context from …** chip; click it to see exactly what will be sent, or remove it. Nothing goes until you press Enter. The other agent receives your messages, its replies, commands with their reported status and exit codes, files changed, and the plan, kept by this extension and built with no extra model call. Going back to an agent that already has a linked thread resumes that same native session and sends only what happened since. Hidden reasoning, provider-side context, and approvals never transfer, and a thread still working in the same checkout must finish or be stopped first. `agentWorkspace.crossAgentContext` chooses `recent` (about 10k tokens, the default), `full` (about 75k), or `off`, which moves only your draft as before. The history goes to the other provider, so mind what your project allows.
 7. Use **Docs** for plans, task briefs, reviews, and handoffs in `docs/agent-work/`. Agents can write there too, and the list updates itself. A handoff opens the other provider with an editable draft that is never sent automatically.
 8. Use the terminal button in the top bar to continue a thread in the native CLI, in the same mode and on the same model where the CLI has a flag for it (Codex has none for Plan, and the thread says so). A running turn is stopped first, after asking. Send at least one message first so a provider session ID exists. While it's open, the composer offers **Show terminal** and **Back to chat**. When it closes, what happened there is added to the chat under a "From terminal" notice.
+
+## Multiple accounts
+
+Use separate profiles for personal and work Claude Code or Codex accounts:
+
+1. Open the model selector below the composer and choose **Manage account**.
+2. Choose **Add account**, select **Claude Code** or **Codex**, and enter an account name.
+3. Leave **Account folder** set to **Create a separate account**, or choose **Use an existing folder…** to reuse an existing CLI setup.
+4. Choose **Add account**, then **Open sign-in terminal**. Complete authentication in the installed CLI’s terminal.
+5. Return to chat, open the model selector, choose the account, and select a model. Selecting it does not send your draft.
+
+Adding a profile does not complete sign-in. **CLI installed** reports executable availability, not authentication status. Each separate account folder has its own sign-in, settings, and skills.
+
+![Add Claude and Codex profiles. Demonstration uses sample accounts.](../media/guide/accounts-add.gif)
+
+[Still image: added accounts and sign-in action](../media/guide/accounts-add.png)
+
+![Switch account profiles and choose a model. Demonstration uses sample accounts.](../media/guide/accounts-switch.gif)
+
+[Still image: selected account with an unsent draft](../media/guide/accounts-switch.png)
+
+Choose an account in **Accounts** to rename it or inspect its folder. Removing a custom profile keeps its account files and chat history on this machine; chats using that profile need it restored to continue.
 
 ## Local boundaries
 

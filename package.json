@@ -338,6 +338,8 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "package": "pnpm build && node scripts/package.mjs",
     "preview": "node scripts/preview.mjs",
+    "docs:features": "pnpm build && node --import tsx scripts/capture-features.ts",
+    "docs:accounts": "pnpm build && node --import tsx scripts/capture-accounts.ts",
     "smoke": "node --import tsx scripts/smoke.ts",
     "smoke:delegate": "node --import tsx scripts/smoke-delegate.ts",
     "test:ui": "pnpm build && node --import tsx scripts/ui-check.ts",
