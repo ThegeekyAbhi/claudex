@@ -1,10 +1,19 @@
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { agentKind, agentLabel, profileLabel, runnableProfiles } from '../../shared/model';
 import { Icon } from '../components/icons';
 import { Hint, OverflowMenu } from '../components/menus';
+import { PlanCard } from '../features/plan/plan-card';
 import { threadSignal } from '../features/threads/tab-state';
 import { ThreadTabs } from '../features/threads/thread-tabs';
 import { send } from './bridge';
 import type { useAppState } from './state';
+
+const PLAN_STATUS = {
+  drafting: 'writing',
+  ready: 'ready',
+  incomplete: 'unfinished',
+  approved: 'built',
+} as const;
 
 export function AppHeader({
   host,
@@ -78,6 +87,30 @@ export function AppHeader({
               </button>
             </span>
           </Hint>
+        ) : null}
+        {session?.plan && !tabs.accounts.active ? (
+          <Popover>
+            <Hint label="This thread's plan">
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="plan-chip icon-button gap-1 text-muted-foreground px-[6px] py-[3px] text-[11.5px] enabled:hover:text-foreground aria-expanded:text-foreground"
+                  aria-label={`Plan, ${PLAN_STATUS[session.plan.status]}`}
+                >
+                  <Icon name="plan" size={14} />
+                  <span className="max-[900px]:hidden">
+                    Plan · {PLAN_STATUS[session.plan.status]}
+                  </span>
+                </button>
+              </PopoverTrigger>
+            </Hint>
+            <PopoverContent
+              align="end"
+              className="plan-popover w-[min(640px,calc(100vw-24px))] max-h-[70vh] overflow-y-auto p-0 border-strong [&_.plan-card]:my-0 [&_.plan-card]:border-0"
+            >
+              <PlanCard session={session} startOpen />
+            </PopoverContent>
+          </Popover>
         ) : null}
         <Hint label="Changes">
           <button

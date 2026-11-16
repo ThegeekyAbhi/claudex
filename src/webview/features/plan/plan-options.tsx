@@ -97,7 +97,7 @@ function useRecent(): Session[] {
 
 /** Brings the plan back into view, for a last look before deciding. */
 function revealPlan() {
-  const cards = document.querySelectorAll<HTMLElement>('.plan-card');
+  const cards = document.querySelectorAll<HTMLElement>('.conversation-scroll .plan-card');
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   cards[cards.length - 1]?.scrollIntoView({
     block: 'start',

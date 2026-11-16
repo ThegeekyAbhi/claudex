@@ -118,6 +118,36 @@ export function segmentHas(
 }
 
 /**
+ * Where the plan card goes: after a segment, at the end while it is still being written, or
+ * nowhere in the transcript when its place is outside the loaded messages (the header shows it).
+ */
+export function planPlacement(
+  segments: ReturnType<typeof segment>,
+  plan: Session['plan'],
+  messages: Message[],
+): number | 'end' | 'hidden' {
+  if (!plan) return 'hidden';
+  if (plan.status === 'drafting' || !segments.length) {
+    const index = segments.findIndex((item) => segmentHas(item, plan.after));
+    return index === -1 ? 'end' : index;
+  }
+  if (plan.after) {
+    const index = segments.findIndex((item) => segmentHas(item, plan.after));
+    if (index !== -1) return index;
+    if (messages.some((message) => message.id === plan.after)) return 'hidden';
+  }
+  // Older plans saved no place; the last message started before the plan was written is it.
+  let found = -1;
+  segments.forEach((item, index) => {
+    const first = item.type === 'activity' ? item.items[0] : item.message;
+    if (first.startedAt !== undefined && first.startedAt <= plan.updatedAt) found = index;
+  });
+  if (found !== -1) return found;
+  // One still waiting on you stays in view; a built one never trails later turns.
+  return plan.status === 'approved' ? 'hidden' : 'end';
+}
+
+/**
  * One exchange: your message, the work it took, and the answer. A finished turn's work folds
  * into one line, so a thread reads as question and answer; nothing is dropped, only folded.
  * Indices are positions in the `segment()` list the turn was made from.

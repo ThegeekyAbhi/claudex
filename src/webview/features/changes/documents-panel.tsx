@@ -5,6 +5,38 @@ import { moveTabFocus } from '../../lib/roving-tabs';
 import { ChangesView } from './diff-view';
 
 export type PanelTab = 'changes' | 'docs';
+
+const PLAN_STATUS = { ready: 'ready', incomplete: 'unfinished', approved: 'built' } as const;
+/** Every thread's saved plan, newest first, so an earlier plan is one click away. */
+function PlansList({ sessions }: { sessions: Session[] }) {
+  const plans = sessions
+    .filter((session) => session.plan?.file && session.plan.status !== 'drafting')
+    .sort((a, b) => (b.plan?.updatedAt ?? 0) - (a.plan?.updatedAt ?? 0))
+    .slice(0, 30);
+  if (!plans.length) return null;
+  return (
+    <div className="plans-list mt-2 border-t border-subtle px-2 pt-3">
+      <span className="block text-[11px] font-[450] text-faint mx-2 mb-[3px]">Thread plans</span>
+      {plans.map((session) => (
+        <button
+          type="button"
+          key={session.id}
+          className="w-full justify-start gap-1.5 text-[12px] px-2 py-1 min-w-0"
+          title={`Open the plan from “${session.title}”`}
+          onClick={() => send({ type: 'viewPlan', id: session.id })}
+        >
+          <Icon name="plan" size={13} />
+          <span className="truncate">{session.title}</span>
+          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+            {session.plan && session.plan.status !== 'drafting'
+              ? PLAN_STATUS[session.plan.status]
+              : ''}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
 export function SidePanel({
   snapshot,
   session,
@@ -105,6 +137,7 @@ export function SidePanel({
               </p>
             ) : null}
           </div>
+          <PlansList sessions={snapshot.sessions} />
           <div className="p-[12px_8px] mt-2 border-t border-subtle flex flex-col gap-0.5 [&>button]:justify-start [&>button]:text-[12px] [&>button]:text-muted-foreground [&>button]:px-2 [&>button]:py-1">
             <span className="block text-[11px] font-[450] text-faint mx-2 mb-[3px] truncate">
               Start a document

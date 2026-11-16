@@ -14,8 +14,8 @@ import { TurnWork } from './turn-work';
 import {
   findChild,
   noteIndices,
+  planPlacement,
   segment,
-  segmentHas,
   segmentKey,
   turns,
   workDuration,
@@ -68,7 +68,8 @@ export function Conversation({
   const activity = mascotActivity(session);
   const lastIndex = segments.length - 1;
   // After the message it followed, so what you build from it reads below it.
-  const planIndex = segments.findIndex((item) => segmentHas(item, session.plan?.after));
+  const placement = planPlacement(segments, session.plan, session.messages);
+  const planIndex = typeof placement === 'number' ? placement : -1;
   const planCard = session.plan ? <PlanCard session={session} /> : null;
   const lastIsActivity = segments[lastIndex]?.type === 'activity';
   const childApprovals = sessions.filter(
@@ -203,7 +204,7 @@ export function Conversation({
               </Fragment>
             );
           })}
-          {planIndex === -1 ? planCard : null}
+          {placement === 'end' ? planCard : null}
           {session.transition && !session.approval ? (
             <output className="text-muted-foreground">
               {session.transition === 'stopping' ? 'Stopping…' : 'Resuming in Auto…'}

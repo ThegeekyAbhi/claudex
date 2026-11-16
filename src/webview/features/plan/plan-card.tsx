@@ -37,12 +37,19 @@ function HeaderAction({
 }
 
 /** The plan in the transcript, readable in place, with your answer to it underneath. */
-export function PlanCard({ session }: { session: Session }) {
+export function PlanCard({
+  session,
+  startOpen,
+}: {
+  session: Session;
+  /** Shown on request (from the header), so it opens rather than starting folded. */
+  startOpen?: boolean;
+}) {
   const plan = session.plan;
   const activity = mascotActivity(session);
   const [tall, setTall] = useState(false);
   // Open once you open it; an implemented plan starts folded, since its work follows.
-  const [open, setOpen] = useState<boolean | null>(null);
+  const [open, setOpen] = useState<boolean | null>(startOpen ? true : null);
   const [copied, setCopied] = useState(false);
   const text = plan?.text ?? '';
   // Measured whenever the body mounts, which is once drafting ends.
@@ -74,6 +81,29 @@ export function PlanCard({ session }: { session: Session }) {
       // The clipboard can be unavailable; the plan stays selectable.
     }
   }
+  // Built plans fold to one quiet line, so the work that follows reads without it in the way.
+  if (approved && !expanded)
+    return (
+      <div className="plan-card plan-folded my-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+        <Icon name="plan" size={13} />
+        <button
+          type="button"
+          className="gap-1 px-1 py-0.5 text-[11.5px] text-muted-foreground enabled:hover:text-foreground enabled:hover:bg-transparent"
+          aria-expanded={false}
+          onClick={() => setOpen(true)}
+        >
+          Plan · {agentLabel(session)} · built
+          <Icon name="chevronDown" size={12} />
+        </button>
+        {plan.file ? (
+          <HeaderAction
+            icon="external"
+            label="Open plan"
+            onClick={() => send({ type: 'viewPlan', id: session.id })}
+          />
+        ) : null}
+      </div>
+    );
   return (
     <section
       aria-label="Plan"
@@ -121,7 +151,7 @@ export function PlanCard({ session }: { session: Session }) {
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-b from-transparent to-[var(--surface)]" />
         ) : null}
       </div>
-      {(tall && expanded) || !expanded ? (
+      {((tall || approved) && expanded) || !expanded ? (
         <div className={`flex px-3 ${expanded ? 'pb-2' : 'py-2'}`}>
           <button
             type="button"

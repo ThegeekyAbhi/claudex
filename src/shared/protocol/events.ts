@@ -34,6 +34,12 @@ export function applyTranscript(
     if (event.tool?.status && event.tool.status !== 'running') existing.endedAt = Date.now();
   }
 }
+/** The last message the transcript shows, so the plan has a visible place to follow. */
+function planAnchor(messages: Session['messages']): { after?: string } {
+  for (let index = messages.length - 1; index >= 0; index--)
+    if (!messages[index].tool?.diffSource) return { after: messages[index].id };
+  return {};
+}
 export function applyEvent(session: Session, event: AgentEvent): void {
   session.updatedAt = Date.now();
   if (event.type === 'status') {
@@ -48,7 +54,10 @@ export function applyEvent(session: Session, event: AgentEvent): void {
       status: event.final ? 'ready' : 'drafting',
       updatedAt: Date.now(),
       ...(session.plan?.file ? { file: session.plan.file } : {}),
-      ...(session.messages.length ? { after: session.messages.at(-1)?.id } : {}),
+      // Streamed parts of one plan keep the place the plan began; a new plan takes a new one.
+      ...(drafting && session.plan?.after
+        ? { after: session.plan.after }
+        : planAnchor(session.messages)),
     };
   } else if (event.type === 'nativeId') session.nativeId = event.id;
   else if (event.type === 'activeModel') session.activeModel = event.model;
