@@ -8,6 +8,7 @@ import { PlanCard } from '../plan/plan-card';
 import { isQuestion } from '../questions/question-card';
 import { ActivityGroup } from './activity-group';
 import { ApprovalForm } from './approval-form';
+import { type MessageActionHandlers, MessageActionsContext } from './message-actions';
 import { MessageRow } from './message-row';
 import { SubagentCard } from './subagent-card';
 import { TurnWork } from './turn-work';
@@ -35,6 +36,7 @@ export function Conversation({
   onScroll,
   onOpenThread,
   onUseResult,
+  actions,
 }: {
   session: Session;
   sessions: Session[];
@@ -42,6 +44,8 @@ export function Conversation({
   onScroll: (id: string, top: number) => void;
   onOpenThread: (session: Session) => void;
   onUseResult: (text: string) => void;
+  /** Per-message actions: quote, fork, edit, new chat. */
+  actions?: MessageActionHandlers;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -137,125 +141,129 @@ export function Conversation({
     );
   };
   return (
-    <div className="flex-1 min-h-0 relative flex flex-col">
-      <div
-        className="conversation-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden pt-4 px-6 pb-6 [scrollbar-gutter:stable] max-[900px]:pt-3 max-[900px]:px-4 max-[900px]:pb-4"
-        ref={container}
-        onScroll={(event) => {
-          const element = event.currentTarget;
-          follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
-          setShowJump(!follow.current);
-          onScroll(session.id, element.scrollTop);
-        }}
-      >
-        {/* Positioned, so nothing hidden inside can stretch the page past the conversation. */}
-        <div className="relative max-w-[780px] m-auto">
-          {session.messages.length > limit ? (
-            <button
-              type="button"
-              className="w-full text-muted-foreground text-[12px] mb-2"
-              onClick={() => {
-                const element = container.current;
-                const height = element?.scrollHeight ?? 0;
-                follow.current = false;
-                setLimit((value) => value + 100);
-                requestAnimationFrame(() => {
-                  if (element) element.scrollTop += element.scrollHeight - height;
-                });
-              }}
-            >
-              Load earlier messages ({session.messages.length - limit})
-            </button>
-          ) : null}
-          {!session.messages.length ? (
-            <div className="session-empty py-8 text-muted-foreground text-[12px] wrap-anywhere">
-              <p>
-                {agentLabel(session)} will work in <code>{session.cwd}</code>.
-              </p>
-            </div>
-          ) : null}
-          {grouped.map((turn) => {
-            const indices = range(turn.start, turn.end);
-            if (!turn.fold) return indices.map(at);
-            const key = segmentKey(segments[turn.start]);
-            const work = new Set(turn.work);
-            const open = Boolean(opened[key]);
-            const firstWork = turn.work[0] ?? turn.start;
-            const workRows = workMessages(segments, turn.work);
-            const answer = turn.answer !== undefined ? segments[turn.answer] : undefined;
-            return (
-              <Fragment key={`turn-${key}`}>
-                {indices.filter((index) => index < firstWork).map(at)}
-                <TurnWork
-                  messages={workRows}
-                  took={workDuration(
-                    workRows,
-                    answer?.type === 'message' ? answer.message : undefined,
-                  )}
-                  open={open}
-                  onToggle={() => setOpened((all) => ({ ...all, [key]: !open }))}
-                  sessionId={session.id}
-                >
-                  {turn.work.map(at)}
-                </TurnWork>
-                {indices.filter((index) => index > firstWork && !work.has(index)).map(at)}
-                {/* A plan written during folded work shows after the turn, not inside the fold. */}
-                {!open && work.has(planIndex) ? planCard : null}
-              </Fragment>
-            );
-          })}
-          {placement === 'end' ? planCard : null}
-          {session.transition && !session.approval ? (
-            <output className="text-muted-foreground">
-              {session.transition === 'stopping' ? 'Stopping…' : 'Resuming in Auto…'}
-            </output>
-          ) : null}
-          {session.approval && session.approval.kind !== 'plan' && !isQuestion(session.approval) ? (
-            <ApprovalForm
-              key={session.approval.id}
-              approval={session.approval}
-              sessionId={session.id}
-              session={session}
-            />
-          ) : null}
-          {childApprovals.map((child) =>
-            child.approval ? (
-              <ApprovalForm
-                key={child.approval.id}
-                approval={child.approval}
-                sessionId={child.id}
-                session={child}
-              />
-            ) : null,
-          )}
-          {activity &&
-          (activity === 'attentive' || !lastIsActivity) &&
-          session.plan?.status !== 'drafting' &&
-          !session.transition ? (
-            <output className="flex items-center gap-2 text-muted-foreground text-[12px] my-3">
-              <Mascot activity={activity} />
-              <span>{ACTIVITY_LABELS[activity]}</span>
-            </output>
-          ) : null}
-        </div>
-      </div>
-      {showJump ? (
-        <button
-          type="button"
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 rounded-full border border-subtle bg-overlay text-muted-foreground shadow-[var(--shadow)] text-[11px] px-3 py-1 enabled:hover:text-foreground"
-          onClick={() => {
-            follow.current = true;
-            container.current?.scrollTo({
-              top: container.current.scrollHeight,
-              behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-                ? 'auto'
-                : 'smooth',
-            });
+    <MessageActionsContext.Provider value={actions ?? null}>
+      <div className="flex-1 min-h-0 relative flex flex-col">
+        <div
+          className="conversation-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden pt-4 px-6 pb-6 [scrollbar-gutter:stable] max-[900px]:pt-3 max-[900px]:px-4 max-[900px]:pb-4"
+          ref={container}
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+            setShowJump(!follow.current);
+            onScroll(session.id, element.scrollTop);
           }}
         >
-          Jump to latest ↓
-        </button>
-      ) : null}
-    </div>
+          {/* Positioned, so nothing hidden inside can stretch the page past the conversation. */}
+          <div className="relative max-w-[780px] m-auto">
+            {session.messages.length > limit ? (
+              <button
+                type="button"
+                className="w-full text-muted-foreground text-[12px] mb-2"
+                onClick={() => {
+                  const element = container.current;
+                  const height = element?.scrollHeight ?? 0;
+                  follow.current = false;
+                  setLimit((value) => value + 100);
+                  requestAnimationFrame(() => {
+                    if (element) element.scrollTop += element.scrollHeight - height;
+                  });
+                }}
+              >
+                Load earlier messages ({session.messages.length - limit})
+              </button>
+            ) : null}
+            {!session.messages.length ? (
+              <div className="session-empty py-8 text-muted-foreground text-[12px] wrap-anywhere">
+                <p>
+                  {agentLabel(session)} will work in <code>{session.cwd}</code>.
+                </p>
+              </div>
+            ) : null}
+            {grouped.map((turn) => {
+              const indices = range(turn.start, turn.end);
+              if (!turn.fold) return indices.map(at);
+              const key = segmentKey(segments[turn.start]);
+              const work = new Set(turn.work);
+              const open = Boolean(opened[key]);
+              const firstWork = turn.work[0] ?? turn.start;
+              const workRows = workMessages(segments, turn.work);
+              const answer = turn.answer !== undefined ? segments[turn.answer] : undefined;
+              return (
+                <Fragment key={`turn-${key}`}>
+                  {indices.filter((index) => index < firstWork).map(at)}
+                  <TurnWork
+                    messages={workRows}
+                    took={workDuration(
+                      workRows,
+                      answer?.type === 'message' ? answer.message : undefined,
+                    )}
+                    open={open}
+                    onToggle={() => setOpened((all) => ({ ...all, [key]: !open }))}
+                    sessionId={session.id}
+                  >
+                    {turn.work.map(at)}
+                  </TurnWork>
+                  {indices.filter((index) => index > firstWork && !work.has(index)).map(at)}
+                  {/* A plan written during folded work shows after the turn, not inside the fold. */}
+                  {!open && work.has(planIndex) ? planCard : null}
+                </Fragment>
+              );
+            })}
+            {placement === 'end' ? planCard : null}
+            {session.transition && !session.approval ? (
+              <output className="text-muted-foreground">
+                {session.transition === 'stopping' ? 'Stopping…' : 'Resuming in Auto…'}
+              </output>
+            ) : null}
+            {session.approval &&
+            session.approval.kind !== 'plan' &&
+            !isQuestion(session.approval) ? (
+              <ApprovalForm
+                key={session.approval.id}
+                approval={session.approval}
+                sessionId={session.id}
+                session={session}
+              />
+            ) : null}
+            {childApprovals.map((child) =>
+              child.approval ? (
+                <ApprovalForm
+                  key={child.approval.id}
+                  approval={child.approval}
+                  sessionId={child.id}
+                  session={child}
+                />
+              ) : null,
+            )}
+            {activity &&
+            (activity === 'attentive' || !lastIsActivity) &&
+            session.plan?.status !== 'drafting' &&
+            !session.transition ? (
+              <output className="flex items-center gap-2 text-muted-foreground text-[12px] my-3">
+                <Mascot activity={activity} />
+                <span>{ACTIVITY_LABELS[activity]}</span>
+              </output>
+            ) : null}
+          </div>
+        </div>
+        {showJump ? (
+          <button
+            type="button"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 rounded-full border border-subtle bg-overlay text-muted-foreground shadow-[var(--shadow)] text-[11px] px-3 py-1 enabled:hover:text-foreground"
+            onClick={() => {
+              follow.current = true;
+              container.current?.scrollTo({
+                top: container.current.scrollHeight,
+                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                  ? 'auto'
+                  : 'smooth',
+              });
+            }}
+          >
+            Jump to latest ↓
+          </button>
+        ) : null}
+      </div>
+    </MessageActionsContext.Provider>
   );
 }

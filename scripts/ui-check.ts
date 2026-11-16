@@ -17,6 +17,7 @@ import { checkImages } from './ui-check/sections/images';
 import { checkLayout } from './ui-check/sections/layout';
 import { checkMarkdown } from './ui-check/sections/markdown';
 import { checkMascot } from './ui-check/sections/mascot';
+import { checkMessageActions } from './ui-check/sections/message-actions';
 import { checkModeGuides } from './ui-check/sections/mode-guides';
 import { checkModels } from './ui-check/sections/models';
 import { checkNewChatModes } from './ui-check/sections/new-chat-modes';
@@ -79,6 +80,7 @@ try {
     checkPlan,
     checkMarkdown,
     checkReading,
+    checkMessageActions,
     checkImages,
     checkContextMenu,
     checkAttachments,
@@ -96,7 +98,7 @@ try {
   ];
   for (const section of sections) await section(ctx);
   console.log(
-    'UI checks passed: no-prompt start, model and effort menus, appearance, mode colours, guide toggles, sandboxed visuals, thread filters, thread tabs and signals, modes, plan card, Markdown and highlighting, readable replies and folded work, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, continuing in another agent, agent profiles, changes panel, first-run setup, side bar widths, resizable panes, and 4 viewport sizes.',
+    'UI checks passed: no-prompt start, model and effort menus, appearance, mode colours, guide toggles, sandboxed visuals, thread filters, thread tabs and signals, modes, plan card, built plans and the plan chip, message actions, side questions, Markdown and highlighting, readable replies and folded work, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, continuing in another agent, agent profiles, changes panel, first-run setup, side bar widths, resizable panes, and 4 viewport sizes.',
   );
 } catch (error) {
   await page.screenshot({ path: 'test-results/screenshots/failure.png' });

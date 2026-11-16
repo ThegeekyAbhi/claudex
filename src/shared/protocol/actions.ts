@@ -58,10 +58,34 @@ export const actionSchema = z.discriminatedUnion('type', [
     history: z.enum(['recent', 'full']),
     /** The thread that will receive it, if it exists yet, so only what it hasn't seen shows. */
     targetId: z.string().max(200).optional(),
+    /** The chip's cut-off, when the new chat starts from an earlier message. */
+    upTo: z.string().max(200).optional(),
   }),
   z.object({
     type: z.literal('send'),
     id: z.string(),
+    text: z.string().trim().min(1).max(200_000),
+    attachments,
+  }),
+  /** `/btw`: asked of the thread's conversation without tools, and kept out of its history. */
+  z.object({
+    type: z.literal('sideQuestion'),
+    id: z.string().max(200),
+    requestId: z.string().max(100),
+    text: z.string().trim().min(1).max(20_000),
+    earlier: z
+      .array(z.object({ question: z.string().max(20_000), answer: z.string().max(100_000) }))
+      .max(20)
+      .optional(),
+  }),
+  z.object({ type: z.literal('stopSideQuestion'), requestId: z.string().max(100) }),
+  /** A new thread with the same agent, branched natively after this message's turn. */
+  z.object({ type: z.literal('fork'), id: z.string().max(200), messageId: z.string().max(400) }),
+  /** Replaces one of your messages and everything after it with new text. */
+  z.object({
+    type: z.literal('rewind'),
+    id: z.string().max(200),
+    messageId: z.string().max(400),
     text: z.string().trim().min(1).max(200_000),
     attachments,
   }),

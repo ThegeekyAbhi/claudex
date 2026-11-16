@@ -36,6 +36,18 @@ import { claudeToolDiffs, describeClaudeTool, resultText } from '../tool-format'
 import { claudeContextTokens, claudeLimits } from '../usage';
 import { readClaudeTitle } from './title';
 
+/** Resumes the thread's session, or branches a new one from another session's turn. */
+export function claudeResumeOptions(
+  session: Pick<Session, 'nativeId' | 'forkFrom'>,
+): Pick<Options, 'resume' | 'forkSession' | 'resumeSessionAt'> {
+  if (session.forkFrom && !session.nativeId)
+    return {
+      resume: session.forkFrom.nativeId,
+      forkSession: true,
+      ...(session.forkFrom.at ? { resumeSessionAt: session.forkFrom.at } : {}),
+    };
+  return session.nativeId ? { resume: session.nativeId } : {};
+}
 /** The Messages API's limit for one image. */
 function thinkingOptions(session: Session): Pick<Options, 'thinking'> {
   if (session.thinking === 'off') return { thinking: { type: 'disabled' } };
@@ -210,7 +222,7 @@ export class ClaudeAgent {
       options: {
         cwd: this.session.cwd,
         pathToClaudeCodeExecutable: this.executable,
-        resume: this.session.nativeId,
+        ...claudeResumeOptions(this.session),
         settingSources: ['user', 'project', 'local'],
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         includePartialMessages: true,
@@ -230,13 +242,22 @@ export class ClaudeAgent {
     this.turnFinished = new Promise<void>((resolve) => {
       finishTurn = resolve;
     });
+    let lastEntry: string | undefined;
     try {
       for await (const message of currentQuery) {
         if ('session_id' in message && message.session_id)
           this.emit({ type: 'nativeId', id: message.session_id });
+        // The turn's last saved entry is where a fork that keeps this turn has to start.
+        if (
+          (message.type === 'assistant' || message.type === 'user') &&
+          !message.parent_tool_use_id &&
+          message.uuid
+        )
+          lastEntry = message.uuid;
         this.receive(message);
         if (message.type === 'result') {
           sawResult = true;
+          if (lastEntry) this.emit({ type: 'nativeTurn', ref: lastEntry });
           finishPrompt();
           this.reportContext(message);
           this.result(message);

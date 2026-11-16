@@ -20,6 +20,7 @@ test('registered host handler keys cover the schema exactly once and match their
         import { DocumentsHandlers } from './src/extension/handlers/documents';
         import { AttachmentsHandlers } from './src/extension/handlers/attachments';
         import { TerminalHandlers } from './src/extension/handlers/terminal';
+        import { SideQuestionsHandlers } from './src/extension/handlers/side-questions';
 
         export const registered = {
           unrestricted: Object.keys(
@@ -32,6 +33,7 @@ test('registered host handler keys cover the schema exactly once and match their
           documents: Object.keys(new DocumentsHandlers({}).handlers()),
           attachments: Object.keys(new AttachmentsHandlers({}).handlers()),
           terminal: Object.keys(new TerminalHandlers({}).handlers()),
+          sideQuestions: Object.keys(new SideQuestionsHandlers({}).handlers()),
         };
       `,
     },

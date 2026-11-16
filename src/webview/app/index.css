@@ -792,6 +792,33 @@ body.vscode-high-contrast-light .user-message .bubble {
   color: var(--muted);
   transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.message-actions > .response-copy {
+  margin-right: 0;
+}
+.message-action {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.message-action:disabled {
+  opacity: 0.4;
+}
+@media (hover: hover) {
+  .message-action:enabled:hover {
+    background: var(--raised);
+    color: var(--foreground);
+  }
+}
 .response-copy.code-copy {
   width: 24px;
   height: 24px;
@@ -825,6 +852,21 @@ body.vscode-high-contrast-light .user-message .bubble {
   transform: none;
 }
 @media (hover: hover) and (pointer: fine) {
+  .user-message > .message-actions,
+  .assistant > .message-actions > .message-action,
+  .assistant > .message-actions > button[aria-haspopup] {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .user-message:hover > .message-actions,
+  .user-message > .message-actions:focus-within,
+  .assistant:hover > .message-actions > .message-action,
+  .assistant:hover > .message-actions > button[aria-haspopup],
+  .assistant > .message-actions:focus-within > *,
+  .assistant > .message-actions > [aria-expanded="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
   .response-copy:hover {
     background: var(--raised);
     color: var(--foreground);

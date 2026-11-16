@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Message, Session } from '../../shared/model';
+import { currentOwner } from './native-position';
 
 /** The CLI's transcript as rows, oldest first; see `src/providers/history/transcript.ts`. */
 export interface NativeRows {
@@ -83,6 +84,9 @@ export function mergeNative(
     if (continuing) session.messages[last] = { ...session.messages[last], text };
     else session.messages.push({ id: `${TERMINAL_RUN}${randomUUID()}`, role: 'notice', text });
   }
+  // Read from this agent's own history, so its ids are this agent's.
+  const owner = currentOwner(session);
+  for (const row of fresh) if (row.nativeRef && !row.nativeOwner) row.nativeOwner = owner;
   session.messages.push(...fresh);
   // Said once: the same old entries stay unreadable on every later read.
   const skippedId = `${session.id}-native-skipped`;

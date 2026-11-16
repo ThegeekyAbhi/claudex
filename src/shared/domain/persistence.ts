@@ -36,6 +36,7 @@ const persistedSession = z.object({
     )
     .optional(),
   continuationContext: z.string().optional(),
+  forkFrom: z.object({ nativeId: z.string(), at: z.string().optional() }).optional(),
   nativeSyncedAt: z.number().optional(),
   origin: z.literal('terminal').optional(),
   parentId: z.string().optional(),
@@ -103,6 +104,11 @@ const persistedSession = z.object({
       planningGuideVersion: z.string().optional(),
       explainGuideVersion: z.string().optional(),
       nativeRef: z.string().optional(),
+      nativeTurn: z.string().optional(),
+      nativeSession: z.string().optional(),
+      nativeOwner: z
+        .object({ provider: z.enum(['claude', 'codex']), profileId: z.string().optional() })
+        .optional(),
       tool: z
         .object({
           kind: z.enum(['command', 'read', 'edit', 'search', 'web', 'agent', 'skill', 'other']),

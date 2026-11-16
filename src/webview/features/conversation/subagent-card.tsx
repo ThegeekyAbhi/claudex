@@ -13,6 +13,7 @@ import { ACTIVITY_LABELS, mascotActivity } from '../mascot/activity';
 import { isQuestion } from '../questions/question-card';
 import { ActivityGroup } from './activity-group';
 import { ApprovalForm } from './approval-form';
+import { MessageActionsContext } from './message-actions';
 import { type Guides, MessageRow, SentPrompt } from './message-row';
 import { Chevron } from './step-state';
 import { duration, segment } from './view-model';
@@ -35,7 +36,10 @@ function ChildTranscript({ session, guides }: { session: Session; guides: Guides
             sessionId={session.id}
           />
         ) : item.message.role === 'user' ? null : (
-          <MessageRow key={item.message.id} message={item.message} guides={guides} />
+          // A worker's replies belong to its lead's turn, so they offer no branching of their own.
+          <MessageActionsContext.Provider key={item.message.id} value={null}>
+            <MessageRow message={item.message} guides={guides} />
+          </MessageActionsContext.Provider>
         ),
       )}
       {!session.messages.length ? (

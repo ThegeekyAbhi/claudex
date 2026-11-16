@@ -141,6 +141,7 @@ export async function resolveAttachments(
       const packet = buildPacket(thread, {
         history: attachment.history,
         since: options.synced?.[thread.id],
+        ...(attachment.upTo ? { upTo: attachment.upTo } : {}),
       });
       if (!packet.empty) lines.push(packet.text);
       if (packet.through) syncs.push({ from: thread.id, through: packet.through });
@@ -149,6 +150,7 @@ export async function resolveAttachments(
         id: thread.id,
         title: thread.title,
         history: attachment.history,
+        ...(attachment.upTo ? { upTo: attachment.upTo } : {}),
       });
     } else if (attachment.kind === 'thread') {
       const thread = options.sessions.find((item) => item.id === attachment.id);

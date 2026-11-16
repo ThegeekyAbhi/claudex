@@ -10,6 +10,7 @@ import {
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
 import { AttachmentChip, ContextMenu } from '../attachments/context-menu';
+import { sideQuestionText } from '../side-question/use-side-questions';
 import { SkillMenu } from '../skills/skill-menu';
 import { UsageIndicator } from '../usage/usage-indicator';
 import { ComposerCaption } from './caption';
@@ -21,6 +22,8 @@ import { useComposer } from './use-composer';
 
 export function Composer(props: ComposerProps): ReactElement {
   const [continuing, setContinuing] = useState(false);
+  /** `/btw` asks beside the thread, so it can be sent while a turn runs. */
+  const aside = Boolean(props.session && sideQuestionText(props.draft) !== undefined);
   const {
     catalog,
     skills,
@@ -199,6 +202,7 @@ export function Composer(props: ComposerProps): ReactElement {
                             id: item.id,
                             history: item.history ?? 'recent',
                             ...(session ? { targetId: session.id } : {}),
+                            ...(item.upTo ? { upTo: item.upTo } : {}),
                           })
                       : undefined
                   }
@@ -295,7 +299,7 @@ export function Composer(props: ComposerProps): ReactElement {
               >
                 <Icon name="clip" />
               </button>
-              {busy && !canDelegate ? (
+              {busy && !canDelegate && !aside ? (
                 <button
                   type="button"
                   className="send-button bg-primary text-primary-foreground size-[26px] p-1 rounded-full shrink-0 enabled:hover:bg-accent-hover [&.stop]:bg-transparent [&.stop]:text-foreground [&.stop]:border-strong in-data-[mode]:[&:not(.stop)]:bg-mode in-data-[mode]:[&:not(.stop)]:text-mode-foreground in-data-[mode]:enabled:hover:[&:not(.stop)]:bg-mode stop"
@@ -313,9 +317,11 @@ export function Composer(props: ComposerProps): ReactElement {
                   title={
                     needsPrompt && target
                       ? `Add a prompt for ${profileLabel(target)}`
-                      : canDelegate
-                        ? `Run ${profileLabel(mention?.agent ?? 'codex')}`
-                        : 'Send · Enter'
+                      : aside
+                        ? 'Ask on the side · Enter'
+                        : canDelegate
+                          ? `Run ${profileLabel(mention?.agent ?? 'codex')}`
+                          : 'Send · Enter'
                   }
                   disabled={
                     !draft.trim() || blocked || noImages || missingSkills.length > 0 || needsPrompt

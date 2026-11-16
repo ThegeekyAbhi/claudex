@@ -6,6 +6,7 @@ import { AttachmentChip } from '../attachments/context-menu';
 import { InlineReferences } from '../composer/inline-references';
 import { hasReference } from '../composer/references';
 import { ImageMessage } from '../images/image-view';
+import { MessageActions } from './message-actions';
 
 export type Guides = { planning: string; explain: string };
 
@@ -121,6 +122,13 @@ function YourMessage({ message, guides }: { message: Message; guides: Guides }) 
         ) : null}
         <GuideDisclosures message={message} guides={guides} />
       </div>
+      {message.text ? (
+        <MessageActions
+          message={message}
+          own
+          copy={<CopyButton text={message.text} kind="message" />}
+        />
+      ) : null}
     </article>
   );
 }
@@ -159,7 +167,13 @@ export const MessageRow = memo(function MessageRow({
       <div className={note ? 'markdown note' : 'markdown reply'}>
         <MarkdownText text={text} streaming={streaming} />
       </div>
-      {text && !streaming ? <CopyButton text={text} /> : null}
+      {text && !streaming ? (
+        note ? (
+          <CopyButton text={text} />
+        ) : (
+          <MessageActions message={message} copy={<CopyButton text={text} />} />
+        )
+      ) : null}
     </article>
   );
 });

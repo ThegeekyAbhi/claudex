@@ -1,4 +1,5 @@
 import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from 'react';
+import { installSelectionCopy } from '../lib/selection-copy';
 
 export function useWorkspaceUI() {
   const [error, setError] = useState('');
@@ -25,15 +26,10 @@ export function useWorkspaceEffects(
       }
       if (event.key === 'Escape') setError('');
     };
-    const preserveCopy = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'c')
-        event.stopPropagation();
-    };
-    // Keep the browser's native copy behavior without forwarding this key to editor commands.
-    document.addEventListener('keydown', preserveCopy);
+    const removeSelectionCopy = installSelectionCopy(setError);
     window.addEventListener('keydown', listener);
     return () => {
-      document.removeEventListener('keydown', preserveCopy);
+      removeSelectionCopy();
       window.removeEventListener('keydown', listener);
     };
   }, [setError]);

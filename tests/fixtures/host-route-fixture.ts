@@ -25,6 +25,7 @@ export function testRoutes(overrides: RouteOverrides = {}): ActionRoutes {
       ...unexpectedHandlers('documents'),
       ...unexpectedHandlers('attachments'),
       ...unexpectedHandlers('terminal'),
+      ...unexpectedHandlers('sideQuestions'),
       ...overrides.workspace,
     },
     requireTrust: overrides.requireTrust ?? (() => {}),

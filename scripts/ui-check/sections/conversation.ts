@@ -46,25 +46,81 @@ export async function checkConversation(ctx: UiCheckContext): Promise<void> {
   );
   await response.getByText('Could not copy response. Try again.').waitFor({ state: 'attached' });
   assert.equal(await copyButton.getAttribute('data-copied'), 'false');
-  const selection = await response.locator('.markdown').evaluate((element) => {
+  const user = page.locator('article.user-message').first();
+  const userText = snapshot.sessions[0].messages.find((message) => message.role === 'user')?.text;
+  await user.hover();
+  await user.getByRole('button', { name: 'Copy full message' }).click();
+  const userCopy = (await sentOf('copy')).at(-1);
+  assert.equal(userCopy.text, userText, 'user copy preserves the original prompt');
+  await page.evaluate(
+    (requestId) => window.postMessage({ type: 'copyResult', requestId, ok: true }, '*'),
+    userCopy.requestId,
+  );
+  await user.getByRole('button', { name: 'Copied message' }).waitFor();
+
+  for (const content of [response.locator('.markdown'), user.locator('.said')]) {
+    const selection = await content.evaluate((element) => {
+      const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode();
+      if (!text) throw new Error('Expected selectable message text');
+      const range = document.createRange();
+      range.setStart(text, 1);
+      range.setEnd(text, Math.min(text.textContent?.length ?? 0, 9));
+      const selected = window.getSelection();
+      selected?.removeAllRanges();
+      selected?.addRange(range);
+      (document.activeElement as HTMLElement)?.blur();
+      return selected?.toString();
+    });
+    assert.ok(selection, 'a portion of the message is selected');
+    for (const modifier of ['Meta', 'Control']) {
+      const before = (await sentOf('copy')).length;
+      await page.keyboard.press(`${modifier}+c`);
+      const actions = await sentOf('copy');
+      assert.equal(actions.length, before + 1, 'each shortcut sends exactly one clipboard write');
+      assert.equal(actions.at(-1).text, selection, 'only the selected text is copied');
+      assert.equal(await page.evaluate(() => window.getSelection()?.toString()), selection);
+      assert.equal(
+        await page
+          .locator('.composer-input')
+          .evaluate((element) => document.activeElement === element),
+        false,
+      );
+    }
+    const menuCopy = await content.evaluate((element) => {
+      const clipboardData = new DataTransfer();
+      const event = new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData });
+      element.dispatchEvent(event);
+      return { text: clipboardData.getData('text/plain'), handled: event.defaultPrevented };
+    });
+    assert.deepEqual(menuCopy, { text: selection, handled: true });
+    assert.equal((await sentOf('copy')).at(-1).text, selection, 'menu copy reaches the host');
+  }
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  const beforeEmpty = (await sentOf('copy')).length;
+  await page.keyboard.press('Control+c');
+  assert.equal(
+    (await sentOf('copy')).length,
+    beforeEmpty,
+    'empty selections do not clear clipboard',
+  );
+
+  await ctx.box.fill('Draft text to copy');
+  await ctx.box.evaluate((element) => {
     const range = document.createRange();
     range.selectNodeContents(element);
-    const selected = window.getSelection();
-    selected?.removeAllRanges();
-    selected?.addRange(range);
-    (document.activeElement as HTMLElement)?.blur();
-    return selected?.toString();
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
   });
-  for (const modifier of ['Meta', 'Control']) {
-    await page.keyboard.press(`${modifier}+c`);
-    assert.equal(await page.evaluate(() => window.getSelection()?.toString()), selection);
-    assert.equal(
-      await page
-        .locator('.composer-input')
-        .evaluate((element) => document.activeElement === element),
-      false,
+  const draftCopy = await ctx.box.evaluate((element) => {
+    const clipboardData = new DataTransfer();
+    element.dispatchEvent(
+      new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData }),
     );
-  }
+    return clipboardData.getData('text/plain');
+  });
+  assert.equal(draftCopy, 'Draft text to copy', 'composer keeps its own copy behavior');
+  assert.equal((await sentOf('copy')).length, beforeEmpty, 'composer copy is not intercepted');
+  await ctx.box.fill('');
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
   await page.screenshot({ path: 'test-results/screenshots/conversation.png' });
   await page.getByRole('button', { name: 'Allow once' }).click();

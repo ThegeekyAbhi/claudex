@@ -11,7 +11,9 @@ import type {
   SessionInput,
 } from '../../shared/model';
 import { createAgentFactory } from './agent-factory';
+import { stampOwners } from './native-position';
 import { SessionApprovals } from './session-approvals';
+import { forkPoint, rewindPoint } from './session-branching';
 import { SessionDelegation } from './session-delegation';
 import { SessionFiles } from './session-files';
 import { SessionPersistence } from './session-persistence';
@@ -119,10 +121,13 @@ export class Sessions extends EventEmitter {
     )
       throw new Error('Stop this thread before continuing with another agent.');
     this.turns.forget(id);
+    // Earlier turns keep their agent's ids; the next agent never resumes or branches from them.
+    stampOwners(session);
     session.previousAgents = [
       ...(session.previousAgents ?? []),
       { provider: session.provider, profileId: session.profileId, nativeId: session.nativeId },
     ];
+    session.forkFrom = undefined;
     session.provider = provider;
     session.profileId = profileId;
     session.nativeId = undefined;
@@ -152,6 +157,89 @@ export class Sessions extends EventEmitter {
       text: `Continuing with ${profileId ?? provider}. Reviewed context will accompany your next message; provider permissions start fresh.`,
     });
     this.changed(true);
+  }
+  /** A thread can branch or rewind only while nothing is happening in it. */
+  private assertSettled(session: Session, what: string): void {
+    this.approvals.assertAvailable(session.id);
+    if (
+      session.observed ||
+      session.inTerminal ||
+      session.transition ||
+      ['running', 'waiting'].includes(session.status)
+    )
+      throw new Error(`Stop this thread before you ${what}.`);
+  }
+  /**
+   * A new thread with the same agent and the conversation through one turn. Your next message
+   * there makes the CLI branch its own session; this thread and its CLI session are unchanged.
+   */
+  fork(id: string, messageId: string): Session {
+    const source = this.get(id);
+    this.assertSettled(source, 'fork it');
+    const point = forkPoint(source, messageId);
+    const now = Date.now();
+    const session: Session = {
+      id: randomUUID(),
+      provider: source.provider,
+      ...(source.profileId ? { profileId: source.profileId } : {}),
+      cwd: source.cwd,
+      workspace: source.workspace,
+      title: `${source.title} (fork)`,
+      titleSource: 'user',
+      status: 'idle',
+      forkFrom: point.from,
+      continuedFrom: source.id,
+      // The copied turns may come from earlier agents; keeping the record keeps them theirs.
+      ...(source.previousAgents?.length
+        ? { previousAgents: structuredClone(source.previousAgents) }
+        : {}),
+      ...(source.model ? { model: source.model } : {}),
+      ...(source.effort ? { effort: source.effort } : {}),
+      ...(source.mode ? { mode: source.mode } : {}),
+      // Copied rows are older than this, so reading the branch's history doesn't add them again.
+      nativeSyncedAt: now,
+      messages: [
+        ...structuredClone(point.messages),
+        {
+          id: randomUUID(),
+          role: 'notice',
+          text: `Forked from “${source.title}”. Your next message continues from here; the original thread is unchanged.`,
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.sessions.push(session);
+    this.changed(true);
+    return session;
+  }
+  /**
+   * Replaces your message and everything after it, then sends the new text. The CLI branches
+   * from the turn before, so its earlier session stays on disk; files are never reverted.
+   */
+  rewind(id: string, messageId: string, text: string, input: SessionInput = {}): Promise<void> {
+    const session = this.get(id);
+    this.assertSettled(session, 'edit an earlier message');
+    const point = rewindPoint(session, messageId);
+    this.turns.forget(id);
+    if (session.nativeId)
+      session.previousAgents = [
+        ...(session.previousAgents ?? []),
+        { provider: session.provider, profileId: session.profileId, nativeId: session.nativeId },
+      ];
+    session.nativeId = undefined;
+    session.forkFrom = point.from;
+    session.messages.splice(point.keep);
+    if (session.plan?.after && !session.messages.some((item) => item.id === session.plan?.after))
+      session.plan = undefined;
+    session.nativeSyncedAt = Date.now();
+    session.messages.push({
+      id: randomUUID(),
+      role: 'notice',
+      text: 'Edited an earlier message. Later turns were dropped from this thread; files the agent changed were not reverted.',
+    });
+    this.changed(true);
+    return this.send(id, text, input);
   }
   remove(id: string): void {
     this.approvals.assertAvailable(id);

@@ -28,6 +28,7 @@ export class AttachmentsHandlers {
     const packet = buildPacket(source, {
       history: action.history,
       since: target?.synced?.[source.id],
+      ...(action.upTo ? { upTo: action.upTo } : {}),
     });
     const content = packet.empty
       ? `Nothing new in “${source.title}” since this thread last received it. The chip will send nothing.\n`

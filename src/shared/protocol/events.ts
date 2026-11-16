@@ -59,8 +59,22 @@ export function applyEvent(session: Session, event: AgentEvent): void {
         ? { after: session.plan.after }
         : planAnchor(session.messages)),
     };
-  } else if (event.type === 'nativeId') session.nativeId = event.id;
-  else if (event.type === 'activeModel') session.activeModel = event.model;
+  } else if (event.type === 'nativeId') {
+    session.nativeId = event.id;
+    // The CLI made the branch; later turns resume it like any other session.
+    if (session.forkFrom && event.id !== session.forkFrom.nativeId) delete session.forkFrom;
+  } else if (event.type === 'nativeTurn') {
+    for (let index = session.messages.length - 1; index >= 0; index--)
+      if (session.messages[index].role === 'user') {
+        session.messages[index].nativeTurn = event.ref;
+        if (session.nativeId) session.messages[index].nativeSession = session.nativeId;
+        session.messages[index].nativeOwner = {
+          provider: session.provider,
+          ...(session.profileId ? { profileId: session.profileId } : {}),
+        };
+        break;
+      }
+  } else if (event.type === 'activeModel') session.activeModel = event.model;
   else if (event.type === 'reportedMode') session.reportedMode = event.mode;
   else if (event.type === 'runtime') session.runtime = { ...session.runtime, ...event.runtime };
   else if (event.type === 'nativeSettings') session.nativeSettings ??= event.settings;

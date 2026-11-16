@@ -16,6 +16,8 @@ export interface PacketOptions {
   history: PacketHistory;
   /** The last message the receiving thread already has. Only what came after it is sent. */
   since?: string;
+  /** The last message to include; later ones are left out. */
+  upTo?: string;
 }
 export interface Packet {
   text: string;
@@ -106,12 +108,20 @@ function render(message: Message, agent: string, limit: number): string | undefi
 export function buildPacket(source: Session, options: PacketOptions): Packet {
   const limit = PACKET_LIMITS[options.history];
   const agent = agentLabel(source);
+  // A `since` that is gone (an edit dropped it) falls back to the whole history, never less.
   const start = options.since
     ? source.messages.findIndex((message) => message.id === options.since) + 1
     : 0;
   const delta = start > 0;
-  const messages = source.messages.slice(start);
-  const through = source.messages.at(-1)?.id ?? options.since;
+  const stop = options.upTo
+    ? source.messages.findIndex((message) => message.id === options.upTo) + 1
+    : source.messages.length;
+  // A cutoff that is gone can't be honoured; the whole thread would include what came after it.
+  if (!stop && options.upTo)
+    throw new Error('That message is no longer in the thread, so its context can’t be attached.');
+  const all = source.messages.slice(0, stop);
+  const messages = all.slice(start);
+  const through = all.at(-1)?.id ?? options.since;
   const blocks = messages.flatMap((message) => {
     const text = render(message, agent, Math.floor(limit / 4));
     return text ? [{ text: guard(text), user: message.role === 'user' }] : [];
@@ -129,8 +139,13 @@ export function buildPacket(source: Session, options: PacketOptions): Packet {
   ]
     .filter(Boolean)
     .join('\n');
+  // A plan counts only if it began within the history kept; one made later is not "up to here".
+  const planIndex = source.plan?.after
+    ? all.findIndex((message) => message.id === source.plan?.after)
+    : -1;
+  const planInside = !options.upTo || planIndex >= 0;
   const plan =
-    !delta && source.plan
+    !delta && source.plan && planInside
       ? `## Plan (${source.plan.status === 'approved' ? 'you chose to build it; that does not mean it was done' : source.plan.status})\n\n${guard(cap(source.plan.text, PLAN_LIMIT))}`
       : '';
   const files = [

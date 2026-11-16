@@ -63,6 +63,8 @@ export const attachmentSchema = z.discriminatedUnion('kind', [
      * reply. Unset keeps the original behaviour. Optional, so older versions still load it.
      */
     history: z.enum(['recent', 'full']).optional(),
+    /** With `history`: the record stops at this message, for a new chat from that point. */
+    upTo: z.string().max(200).optional(),
   }),
   z.object({ kind: z.literal('diff') }),
   z.object({ kind: z.literal('terminal'), name: z.string().min(1).max(200) }),
@@ -144,6 +146,15 @@ export interface Message {
   explainGuideVersion?: string;
   /** Where this came from in the CLI's own transcript, for messages read from it. */
   nativeRef?: string;
+  /** On your message: the CLI's id for where this turn ended, so a fork can keep up to it. */
+  nativeTurn?: string;
+  /** The CLI session `nativeTurn` belongs to; a branch's copied turns still point at the source. */
+  nativeSession?: string;
+  /**
+   * The agent whose CLI `nativeTurn` or `nativeRef` belongs to. After continuing with another
+   * agent, older turns keep their owner, so their ids are never handed to the new one.
+   */
+  nativeOwner?: { provider: Provider; profileId?: string };
 }
 export interface Question {
   id: string;
@@ -217,6 +228,11 @@ export interface Session {
   nativeId?: string;
   previousAgents?: { provider: Provider; profileId?: string; nativeId?: string }[];
   continuationContext?: string;
+  /**
+   * A CLI session to branch from on the next send, kept up to `at` (a turn's end). The branch
+   * is made by the CLI itself when that turn starts; the source session is never changed.
+   */
+  forkFrom?: { nativeId: string; at?: string };
   parentId?: string;
   observed?: boolean;
   /** Running in the CLI's own terminal, so nothing here is running it. Not saved. */
@@ -345,6 +361,8 @@ export type AgentEvent =
   | TranscriptEvent
   | { type: 'status'; status: Status }
   | { type: 'nativeId'; id: string }
+  /** Where the turn ended in the CLI's own transcript: Claude's last entry, Codex's turn id. */
+  | { type: 'nativeTurn'; ref: string }
   | { type: 'title'; title: string }
   | { type: 'activeModel'; model: string }
   | { type: 'reportedMode'; mode: string }

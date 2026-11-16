@@ -147,23 +147,33 @@ export class CodexAgent implements Agent {
         capabilities: { experimentalApi: true },
       });
       rpc.write({ method: 'initialized' });
+      const fork = this.session.nativeId ? undefined : this.session.forkFrom;
       const result = this.session.nativeId
         ? await rpc.request('thread/resume', { threadId: this.session.nativeId })
-        : await rpc.request('thread/start', {
-            cwd: this.session.cwd,
-            ...(this.options.delegate
-              ? {
-                  dynamicTools: [
-                    {
-                      type: 'function',
-                      name: RUN_AGENT_TOOL,
-                      description: runAgentDescription(),
-                      inputSchema: runAgentJsonSchema(),
-                    },
-                  ],
-                }
-              : {}),
-          });
+        : fork
+          ? // A branch of another thread, kept up to one of its turns. The source is unchanged.
+            await rpc.request('thread/fork', {
+              threadId: fork.nativeId,
+              ...(fork.at ? { lastTurnId: fork.at } : {}),
+              cwd: this.session.cwd,
+              // Only the new thread's id is used; its turns come from history like any thread.
+              excludeTurns: true,
+            })
+          : await rpc.request('thread/start', {
+              cwd: this.session.cwd,
+              ...(this.options.delegate
+                ? {
+                    dynamicTools: [
+                      {
+                        type: 'function',
+                        name: RUN_AGENT_TOOL,
+                        description: runAgentDescription(),
+                        inputSchema: runAgentJsonSchema(),
+                      },
+                    ],
+                  }
+                : {}),
+            });
       this.threadId = result.thread.id;
       this.captureSettings(result);
       if (Array.isArray(result.instructionSources))
@@ -370,6 +380,7 @@ export class CodexAgent implements Agent {
             : 'failed';
       if (worker) this.emit({ type: 'worker', id: worker, status });
       else {
+        if (typeof p.turn.id === 'string') this.emit({ type: 'nativeTurn', ref: p.turn.id });
         this.turnId = undefined;
         this.emit({ type: 'status', status });
       }

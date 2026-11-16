@@ -4,11 +4,13 @@ import {
   type Attachment,
   agentKind,
   continuationLinks,
+  type Message,
   newChatMode,
   parseMention,
   type Session,
   type Snapshot,
 } from '../../shared/model';
+import { sideQuestionText } from '../features/side-question/use-side-questions';
 import { api, send } from './bridge';
 import type { useComposeChoice } from './use-compose-choice';
 import type { useDrafts } from './use-drafts';
@@ -20,8 +22,11 @@ export function useTurns(
   drafts: ReturnType<typeof useDrafts>,
   composeChoice: ReturnType<typeof useComposeChoice>,
   reportError: (text: string) => void,
+  askAside: (session: Session, question: string) => void = () => {},
 ) {
   const [submitted, setSubmitted] = useState(false);
+  /** Your earlier message being rewritten; sending replaces it and every turn after it. */
+  const [editing, setEditing] = useState<{ sessionId: string; messageId: string } | null>(null);
   /** Starting a thread can take seconds, and snapshots keep arriving during it. */
   const starting = useRef(false);
   const { session, draftKey } = tabs.current;
@@ -71,6 +76,17 @@ export function useTurns(
     reportError('');
     if (session) {
       if (session.observed) return;
+      // `/btw` goes beside the thread, so it may be asked while a turn runs.
+      const aside = sideQuestionText(draft);
+      if (aside !== undefined) {
+        if (!aside) {
+          reportError('Type a question after /btw.');
+          return;
+        }
+        askAside(session, aside);
+        drafts.setTexts((current) => ({ ...current, [session.id]: '' }));
+        return;
+      }
       if (mention) {
         send({
           type: 'delegate',
@@ -89,6 +105,17 @@ export function useTurns(
       }
       if (running || submitted) return;
       setSubmitted(true);
+      if (editing?.sessionId === session.id) {
+        send({
+          type: 'rewind',
+          id: session.id,
+          messageId: editing.messageId,
+          text: draft,
+          ...attachedField,
+        });
+        // Kept until the host takes it, so a refused edit can be fixed and sent again.
+        return;
+      }
       send({ type: 'send', id: session.id, text: draft, ...attachedField });
       return;
     }
@@ -116,10 +143,48 @@ export function useTurns(
     });
   }
 
+  /** Puts your message back in the box; the banner above it says what sending will replace. */
+  function edit(source: Session, message: Message) {
+    setEditing({ sessionId: source.id, messageId: message.id });
+    drafts.setTexts((current) => ({ ...current, [source.id]: message.text }));
+    drafts.setAttachments((current) => ({
+      ...current,
+      [source.id]: (message.attachments ?? []).filter((item) => item.kind !== 'image'),
+    }));
+  }
+  function cancelEdit() {
+    if (!editing) return;
+    drafts.setTexts((current) => ({ ...current, [editing.sessionId]: '' }));
+    drafts.setAttachments((current) => ({ ...current, [editing.sessionId]: [] }));
+    setEditing(null);
+  }
+  /** Adds a quote above whatever you have already written. */
+  function quote(source: Session, text: string) {
+    const quoted = text
+      .trim()
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    drafts.setTexts((current) => {
+      const existing = current[source.id] ?? '';
+      return {
+        ...current,
+        [source.id]: `${existing ? `${existing.trimEnd()}\n\n` : ''}${quoted}\n\n`,
+      };
+    });
+  }
+  /** A new chat whose first message carries this thread's record up to one message. */
+  function newChatFrom(source: Session, message: Message, agent: AgentKind) {
+    const history = snapshot.preferences.crossAgentContext === 'full' ? 'full' : 'recent';
+    tabs.compose({ agent, model: undefined, effort: undefined, thinking: undefined }, '', [
+      { kind: 'thread', id: source.id, title: source.title, history, upTo: message.id },
+    ]);
+  }
   function receivedSnapshot() {
     if (!starting.current) setSubmitted(false);
   }
   function sent() {
+    setEditing(null);
     starting.current = false;
     setSubmitted(false);
   }
@@ -128,5 +193,18 @@ export function useTurns(
     tabs.starting(undefined);
     setSubmitted(false);
   }
-  return { running, submitted, submit, continueIn, snapshot: receivedSnapshot, sent, failed };
+  return {
+    running,
+    submitted,
+    submit,
+    continueIn,
+    snapshot: receivedSnapshot,
+    sent,
+    failed,
+    editing: editing?.sessionId === session?.id ? editing : null,
+    edit,
+    cancelEdit,
+    quote,
+    newChatFrom,
+  };
 }

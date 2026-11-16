@@ -1,4 +1,5 @@
 import { pendingQuestion } from '../features/questions/question-card';
+import { useSideQuestions } from '../features/side-question/use-side-questions';
 import { savedViewState } from './saved-view-state';
 import { useChangesPanel } from './use-changes-panel';
 import { useComposeChoice } from './use-compose-choice';
@@ -38,7 +39,8 @@ export function useAppState() {
     host.snapshot.sessions,
     tabs.accounts.active ? undefined : tabs.current.session,
   );
-  const turns = useTurns(host.snapshot, tabs, drafts, compose, ui.setError);
+  const side = useSideQuestions();
+  const turns = useTurns(host.snapshot, tabs, drafts, compose, ui.setError, side.ask);
   const layout = useWorkspaceLayout(saved);
   useSavedViewState(savedViewState({ drafts, compose, tabs: tabs.saved, threads, layout }));
   const revealThreads = () => layout.threads.reveal(() => tabs.history.setOpen(true));
@@ -57,6 +59,7 @@ export function useAppState() {
     threads,
     changes,
     turns,
+    side,
     ui,
     conversation,
     layout,

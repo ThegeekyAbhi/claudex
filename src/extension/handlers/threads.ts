@@ -29,6 +29,8 @@ export interface ThreadsHandlersContext {
     | 'sessions'
     | 'create'
     | 'continueChat'
+    | 'fork'
+    | 'rewind'
     | 'setModel'
     | 'setMode'
     | 'send'
@@ -302,6 +304,30 @@ export class ThreadsHandlers {
         );
         void this.context.sessions
           .send(action.id, action.text, input)
+          .catch((error) => this.context.output.appendLine(String(error)));
+        void surface.webview.postMessage({ type: 'sent', id: action.id, text: action.text });
+      },
+      fork: async (action, surface) => {
+        const source = this.context.sessions.get(action.id);
+        this.context.requireAgent(agentKind(source));
+        const session = this.context.sessions.fork(action.id, action.messageId);
+        await this.context.select(session.id, surface);
+        await this.context.publish(true);
+      },
+      // The composer's edit banner says what is dropped and that files stay; sending confirms it.
+      rewind: async (action, surface) => {
+        const target = this.context.sessions.get(action.id);
+        if (this.context.terminals.has(action.id))
+          throw new Error('Close this session’s native terminal before editing a message.');
+        this.context.requireAgent(agentKind(target));
+        await this.context.catchUp(action.id);
+        const input = await this.input(
+          await this.context.checkSkills(agentKind(target), action.attachments),
+          target.workspace,
+          target,
+        );
+        void this.context.sessions
+          .rewind(action.id, action.messageId, action.text, input)
           .catch((error) => this.context.output.appendLine(String(error)));
         void surface.webview.postMessage({ type: 'sent', id: action.id, text: action.text });
       },

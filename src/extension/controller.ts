@@ -29,6 +29,7 @@ import { CatalogHandlers } from './handlers/catalog';
 import { DocumentsHandlers } from './handlers/documents';
 import { PlansHandlers } from './handlers/plans';
 import { ProfilesHandlers } from './handlers/profiles';
+import { SideQuestionsHandlers } from './handlers/side-questions';
 import { TerminalHandlers } from './handlers/terminal';
 import { ThreadsHandlers } from './handlers/threads';
 import { launcherFor } from './launcher';
@@ -59,6 +60,7 @@ export class WorkspaceController {
   private documentsHandlers: DocumentsHandlers;
   private attachmentsHandlers: AttachmentsHandlers;
   private terminalHandlers: TerminalHandlers;
+  private sideQuestionsHandlers: SideQuestionsHandlers;
   private sessions: Sessions;
   private images: ImageStore;
   private surfaces: Surfaces;
@@ -189,6 +191,12 @@ export class WorkspaceController {
       select: this.select.bind(this),
       publish: this.publish.bind(this),
     });
+    this.sideQuestionsHandlers = new SideQuestionsHandlers({
+      sessions: this.sessions,
+      requireAgent: this.catalogHandlers.requireAgent.bind(this.catalogHandlers),
+      launcherFor,
+      output: this.output,
+    });
     this.routes = {
       unrestricted: this.surfaceHandlers(),
       profiles: this.profilesHandlers.handlers(),
@@ -199,6 +207,7 @@ export class WorkspaceController {
         ...this.documentsHandlers.handlers(),
         ...this.attachmentsHandlers.handlers(),
         ...this.terminalHandlers.handlers(),
+        ...this.sideQuestionsHandlers.handlers(),
       },
       requireTrust: () => this.requireTrust(),
     };
@@ -593,6 +602,7 @@ export class WorkspaceController {
     if (this.updateTimer) clearTimeout(this.updateTimer);
     for (const watcher of this.documentWatchers.values()) watcher.dispose();
     this.history.dispose();
+    this.sideQuestionsHandlers.dispose();
     // Terminals belong to VS Code; leave their native sessions accessible.
     await this.sessions.dispose();
   }

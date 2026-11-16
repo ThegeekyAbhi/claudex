@@ -77,6 +77,15 @@ export interface ProfileResult {
 export type HostMessage =
   | ProfileResult
   | { type: 'copyResult'; requestId: string; ok: boolean }
+  /** A side question's answer as it streams; never part of the thread. */
+  | {
+      type: 'sideAnswer';
+      requestId: string;
+      delta?: string;
+      activity?: string;
+      done?: boolean;
+      error?: string;
+    }
   | {
       type: 'snapshot';
       snapshot: SnapshotUpdate;

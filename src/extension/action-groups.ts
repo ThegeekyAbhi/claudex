@@ -27,6 +27,8 @@ export const actionGroups = {
     'start',
     'delegate',
     'send',
+    'fork',
+    'rewind',
     'interrupt',
     'approve',
     'pin',
@@ -46,6 +48,7 @@ export const actionGroups = {
     'openDiff',
     'copy',
   ],
+  sideQuestions: ['sideQuestion', 'stopSideQuestion'],
   attachments: ['previewContext', 'searchContext', 'pickImages', 'attachImage', 'openImage'],
   terminal: [
     'terminal',
