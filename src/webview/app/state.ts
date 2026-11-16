@@ -21,13 +21,13 @@ export function useAppState() {
     drafts,
     turns: {
       snapshot: () => turns.snapshot(),
-      sent: () => turns.sent(),
-      failed: () => turns.failed(),
+      sent: (id, submissionId) => turns.sent(id, submissionId),
+      failed: (submissionId, key) => turns.failed(submissionId, key),
     },
     tabs: { snapshot: (id) => tabs.snapshot(id) },
     changes: {
       received: (id, result) => changes.received(id, result),
-      failed: () => changes.failed(),
+      failed: (id, requestId) => changes.failed(id, requestId),
     },
     reportError: ui.setError,
   });

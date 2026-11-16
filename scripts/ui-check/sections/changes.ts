@@ -10,6 +10,51 @@ export async function checkChanges(ctx: UiCheckContext): Promise<void> {
   await page.waitForFunction(() =>
     (window as any).sent.some((message: any) => message.type === 'changes'),
   );
+  const pending = (await sentOf('changes')).at(-1);
+  const refresh = page.getByRole('button', { name: 'Refresh changes' });
+  assert.equal(await refresh.isDisabled(), true);
+  await page.evaluate(() =>
+    window.postMessage({ type: 'error', text: 'Document action failed' }, '*'),
+  );
+  assert.equal(await refresh.isDisabled(), true);
+  await page.evaluate(
+    (pending) =>
+      window.postMessage(
+        {
+          type: 'error',
+          text: 'Old changes failed',
+          operation: {
+            kind: 'changes',
+            id: pending.id,
+            requestId: 'superseded-request',
+          },
+        },
+        '*',
+      ),
+    pending,
+  );
+  assert.equal(await refresh.isDisabled(), true);
+  await page.evaluate(
+    (pending) =>
+      window.postMessage(
+        {
+          type: 'error',
+          text: 'Changes failed',
+          operation: {
+            kind: 'changes',
+            id: pending.id,
+            requestId: pending.requestId,
+          },
+        },
+        '*',
+      ),
+    pending,
+  );
+  await page.waitForFunction(
+    () => !document.querySelector<HTMLButtonElement>('[aria-label="Refresh changes"]')?.disabled,
+  );
+  await refresh.click();
+  await page.getByRole('button', { name: 'Dismiss error' }).click();
   await page.evaluate(
     ({ patch }) =>
       window.postMessage(

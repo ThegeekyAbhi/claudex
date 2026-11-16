@@ -8,13 +8,20 @@ export interface HostMessageTargets {
     context: (message: Extract<HostMessage, { type: 'contextResults' }>) => void;
   };
   drafts: {
-    sent: (id: string, text: string) => void;
+    sent: (id: string, text: string, submissionId?: string, threadId?: string) => void;
     write: (id: string, text: string) => void;
     attach: (key: string, attachment: Attachment) => void;
   };
-  turns: { snapshot: () => void; sent: () => void; failed: () => void };
+  turns: {
+    snapshot: () => void;
+    sent: (id: string, submissionId?: string) => void;
+    failed: (submissionId: string, key: string) => boolean;
+  };
   tabs: { snapshot: (selectedId: string | undefined) => void };
-  changes: { received: (id: string, result: ChangesResult) => void; failed: () => void };
+  changes: {
+    received: (id: string, result: ChangesResult) => void;
+    failed: (id: string, requestId: string) => boolean;
+  };
   reportError: (text: string) => void;
 }
 
@@ -26,13 +33,17 @@ export function receiveHostMessage(message: HostMessage, targets: HostMessageTar
     targets.tabs.snapshot(message.selectedId);
   }
   if (message.type === 'sent') {
-    targets.drafts.sent(message.id, message.text);
-    targets.turns.sent();
+    targets.drafts.sent(message.id, message.text, message.submissionId, message.threadId);
+    targets.turns.sent(message.id, message.submissionId);
   }
   if (message.type === 'error') {
-    targets.reportError(message.text);
-    targets.turns.failed();
-    targets.changes.failed();
+    const operation = message.operation;
+    const accepted =
+      !operation ||
+      (operation.kind === 'submission'
+        ? targets.turns.failed(operation.submissionId, operation.draftKey)
+        : targets.changes.failed(operation.id, operation.requestId));
+    if (accepted) targets.reportError(message.text);
   }
   if (message.type === 'draft') targets.drafts.write(message.id, message.text);
   if (message.type === 'attached') targets.drafts.attach(message.draftKey, message.attachment);

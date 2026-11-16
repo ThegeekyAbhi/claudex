@@ -7,3 +7,5 @@ Keep agent behavior inside installed, unmodified Codex and Claude Code. Do not a
 Use pnpm 10.33.2 and preserve pnpm-lock.yaml. Run pnpm check for code changes. pnpm test:ui starts a local server and headless browser. pnpm smoke performs real provider calls and consumes normal user quota; run only when live integration testing is authorized. pnpm package builds the VSIX.
 
 Keep failed or interrupted states truthful. Never infer completed work from tool exit alone or task checkboxes. Do not grant unsupported provider requests. Preserve local session IDs and do not automatically restart work on extension activation.
+
+Webview styling ownership and cascade compatibility are documented in `docs/restructure/webview.md`.

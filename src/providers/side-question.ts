@@ -1,5 +1,6 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Session } from '../shared/model';
+import { initializeCodex } from './codex/handshake';
 import { JsonRpc, type RpcMessage } from './process';
 import type { Launcher } from './registry';
 import { mergeEnv } from './spawn';
@@ -206,11 +207,7 @@ export async function askCodex(
   };
   question.signal.addEventListener('abort', stop, { once: true });
   try {
-    await rpc.request('initialize', {
-      clientInfo: { name: 'agent_workspace', title: 'Agent Workspace', version: '0.6.0' },
-      capabilities: { experimentalApi: true },
-    });
-    rpc.write({ method: 'initialized' });
+    await initializeCodex(rpc, { experimentalApi: true });
     // Ephemeral: kept in memory only, so no rollout file and nothing in the thread's history.
     // Read-only, and every approval request is declined, so nothing on disk can change.
     const settings = {

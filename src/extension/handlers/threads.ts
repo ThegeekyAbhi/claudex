@@ -155,6 +155,7 @@ export class ThreadsHandlers {
           agent: action.delegate,
           text: action.text,
           draftKey: action.draftKey,
+          submissionId: action.submissionId,
           attachments: action.attachments,
         },
         surface,
@@ -163,7 +164,13 @@ export class ThreadsHandlers {
       await this.context.publish(true);
       return;
     }
-    void surface.webview.postMessage({ type: 'sent', id: action.draftKey, text: action.text });
+    void surface.webview.postMessage({
+      type: 'sent',
+      id: action.draftKey,
+      text: action.text,
+      submissionId: action.submissionId,
+      threadId: session.id,
+    });
     // The turn starts first: nothing here is worth keeping the agent waiting for.
     void this.context.sessions
       .send(session.id, action.text, input)
@@ -207,7 +214,13 @@ export class ThreadsHandlers {
       this.context.sessions.changed();
     };
     this.context.sessions.changed();
-    void surface.webview.postMessage({ type: 'sent', id: action.draftKey, text: action.text });
+    void surface.webview.postMessage({
+      type: 'sent',
+      id: action.draftKey,
+      text: action.text,
+      submissionId: action.submissionId,
+      threadId: parent.id,
+    });
     void this.context.sessions
       .delegate(
         parent.id,
@@ -305,7 +318,12 @@ export class ThreadsHandlers {
         void this.context.sessions
           .send(action.id, action.text, input)
           .catch((error) => this.context.output.appendLine(String(error)));
-        void surface.webview.postMessage({ type: 'sent', id: action.id, text: action.text });
+        void surface.webview.postMessage({
+          type: 'sent',
+          id: action.id,
+          text: action.text,
+          submissionId: action.submissionId,
+        });
       },
       fork: async (action, surface) => {
         const source = this.context.sessions.get(action.id);
@@ -329,7 +347,12 @@ export class ThreadsHandlers {
         void this.context.sessions
           .rewind(action.id, action.messageId, action.text, input)
           .catch((error) => this.context.output.appendLine(String(error)));
-        void surface.webview.postMessage({ type: 'sent', id: action.id, text: action.text });
+        void surface.webview.postMessage({
+          type: 'sent',
+          id: action.id,
+          text: action.text,
+          submissionId: action.submissionId,
+        });
       },
       deleteThread: async (action) => {
         const session = this.context.sessions.get(action.id);

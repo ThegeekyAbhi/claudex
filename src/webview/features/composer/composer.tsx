@@ -35,6 +35,7 @@ export function Composer(props: ComposerProps): ReactElement {
     attachments,
     draftKey,
     busy,
+    submissionPending,
     top,
     contextResults,
     onDraft,
@@ -318,16 +319,23 @@ export function Composer(props: ComposerProps): ReactElement {
                   className="send-button bg-primary text-primary-foreground size-[26px] p-1 rounded-full shrink-0 enabled:hover:bg-accent-hover [&.stop]:bg-transparent [&.stop]:text-foreground [&.stop]:border-strong in-data-[mode]:[&:not(.stop)]:bg-mode in-data-[mode]:[&:not(.stop)]:text-mode-foreground in-data-[mode]:enabled:hover:[&:not(.stop)]:bg-mode"
                   aria-label="Send message"
                   title={
-                    needsPrompt && target
-                      ? `Add a prompt for ${profileLabel(target)}`
-                      : aside
-                        ? 'Ask on the side · Enter'
-                        : canDelegate
-                          ? `Run ${profileLabel(mention?.agent ?? 'codex')}`
-                          : 'Send · Enter'
+                    submissionPending && !aside
+                      ? 'Waiting for message acceptance'
+                      : needsPrompt && target
+                        ? `Add a prompt for ${profileLabel(target)}`
+                        : aside
+                          ? 'Ask on the side · Enter'
+                          : canDelegate
+                            ? `Run ${profileLabel(mention?.agent ?? 'codex')}`
+                            : 'Send · Enter'
                   }
                   disabled={
-                    !draft.trim() || blocked || noImages || missingSkills.length > 0 || needsPrompt
+                    !draft.trim() ||
+                    blocked ||
+                    noImages ||
+                    missingSkills.length > 0 ||
+                    needsPrompt ||
+                    (submissionPending && !aside)
                   }
                   onClick={onSubmit}
                 >

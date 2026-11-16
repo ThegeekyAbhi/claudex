@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { type HostMessage, send } from '../app/bridge';
+import { requestCopy } from '../app/bridge';
 import { Icon } from './icons';
 
 export function CopyButton({
@@ -13,26 +13,16 @@ export function CopyButton({
 }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
-  const pending = useRef<string | undefined>(undefined);
+  const pending = useRef<(() => void) | undefined>(undefined);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const keyboard = useRef(false);
-  useEffect(() => {
-    const listener = (event: MessageEvent<HostMessage>) => {
-      const message = event.data;
-      if (message.type !== 'copyResult' || message.requestId !== pending.current) return;
-      pending.current = undefined;
+  useEffect(
+    () => () => {
       clearTimeout(timer.current);
-      setCopied(message.ok);
-      setError(message.ok ? '' : `Could not copy ${kind}. Try again.`);
-      if (message.ok) timer.current = setTimeout(() => setCopied(false), 1500);
-    };
-    window.addEventListener('message', listener);
-    return () => {
-      window.removeEventListener('message', listener);
-      clearTimeout(timer.current);
-      pending.current = undefined;
-    };
-  }, [kind]);
+      pending.current?.();
+    },
+    [],
+  );
   const label = kind === 'code' ? 'Copy code' : `Copy full ${kind}`;
   const iconSize = kind === 'code' ? 12 : 16;
   return (
@@ -47,12 +37,17 @@ export function CopyButton({
         data-keyboard={keyboard.current}
         onClick={(event) => {
           keyboard.current = event.detail === 0;
-          const requestId = crypto.randomUUID();
-          pending.current = requestId;
+          pending.current?.();
           clearTimeout(timer.current);
           setCopied(false);
           setError('');
-          send({ type: 'copy', text, requestId });
+          pending.current = requestCopy(text, (message) => {
+            pending.current = undefined;
+            clearTimeout(timer.current);
+            setCopied(message.ok);
+            setError(message.ok ? '' : `Could not copy ${kind}. Try again.`);
+            if (message.ok) timer.current = setTimeout(() => setCopied(false), 1500);
+          });
         }}
       >
         <span className="copy-glyph" aria-hidden="true">

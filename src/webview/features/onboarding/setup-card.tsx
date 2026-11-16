@@ -20,30 +20,25 @@ const STARTERS: { title: string; icon: IconName }[] = [
 ];
 
 /**
- * The empty workspace, shaped by what is left to do: install an agent, sign in, or just start.
- * Steps that are already done are not shown at all.
+ * The empty workspace while something is left to do: install an agent or sign in.
+ * Steps that are already done are not shown at all; once ready, see HomeHeading and HomeExtras.
  */
 export function Onboarding({
   stage,
   rows,
-  project,
-  onPrompt,
 }: {
-  stage: Exclude<OnboardingStage, 'hidden'>;
+  stage: Exclude<OnboardingStage, 'hidden' | 'ready'>;
   rows: SetupRow[];
-  project?: string;
-  onPrompt: (text: string) => void;
 }) {
   return (
     <section
-      aria-label={stage === 'ready' ? 'Get started' : 'Set up Claudex'}
+      aria-label="Set up Claudex"
       data-stage={stage}
       key={stage}
       className="onboarding onboarding-enter mx-auto mb-3 max-w-[560px] pt-6 max-[900px]:pt-3"
     >
       {stage === 'install' ? <InstallStep rows={rows} /> : null}
       {stage === 'signIn' ? <SignInStep rows={rows} /> : null}
-      {stage === 'ready' ? <ReadyHome rows={rows} project={project} onPrompt={onPrompt} /> : null}
     </section>
   );
 }
@@ -194,23 +189,37 @@ function SignInStep({ rows }: { rows: SetupRow[] }) {
   );
 }
 
-/** Ready to work: a greeting, a few ideas, and a quiet line about your accounts. */
-function ReadyHome({
-  rows,
-  project,
-  onPrompt,
-}: {
-  rows: SetupRow[];
-  project?: string;
-  onPrompt: (text: string) => void;
-}) {
+/** The new-chat greeting that sits above the message box. */
+export function HomeHeading({ project }: { project?: string }) {
   return (
-    <div className="flex flex-col items-center text-center">
+    <div className="home-heading flex flex-col items-center text-center">
       <Mascot activity="attentive" size={36} />
       <h2 className="m-0 mt-3 text-[15px] font-semibold">
         What should we build{project ? ` in ${project}` : ''}?
       </h2>
-      <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+    </div>
+  );
+}
+
+/** Starter ideas, shortcuts, and your accounts, shown below the message box. */
+export function HomeExtras({
+  rows,
+  onPrompt,
+  className = '',
+  pending = false,
+}: {
+  rows: SetupRow[];
+  onPrompt: (text: string) => void;
+  className?: string;
+  /** A new thread is starting: the ideas stay visible but quiet until it opens. */
+  pending?: boolean;
+}) {
+  return (
+    <div
+      aria-disabled={pending || undefined}
+      className={`home-extras flex flex-col items-center text-center transition-opacity duration-200 ${pending ? 'pointer-events-none opacity-40' : ''} ${className}`}
+    >
+      <div className="flex flex-wrap justify-center gap-1.5">
         {STARTER_PROMPTS.map((prompt, index) => {
           const starter = STARTERS[index] ?? { title: prompt, icon: 'thread' };
           return (

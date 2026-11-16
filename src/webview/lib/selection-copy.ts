@@ -1,4 +1,4 @@
-import { type HostMessage, send } from '../app/bridge';
+import { requestCopy } from '../app/bridge';
 
 function isEditable(target: EventTarget | null): boolean {
   return (
@@ -9,7 +9,7 @@ function isEditable(target: EventTarget | null): boolean {
 
 /** Route explicit copy gestures through the host clipboard, as message copy buttons do. */
 export function installSelectionCopy(reportError: (text: string) => void): () => void {
-  let pending: string | undefined;
+  let cancelPending: (() => void) | undefined;
   function copySelection(event: KeyboardEvent | ClipboardEvent): void {
     if (event.defaultPrevented || isEditable(event.target)) return;
     const selection = window.getSelection();
@@ -24,8 +24,11 @@ export function installSelectionCopy(reportError: (text: string) => void): () =>
     event.preventDefault();
     event.stopPropagation();
     if (event instanceof ClipboardEvent) event.clipboardData?.setData('text/plain', text);
-    pending = crypto.randomUUID();
-    send({ type: 'copy', text, requestId: pending });
+    cancelPending?.();
+    cancelPending = requestCopy(text, (message) => {
+      cancelPending = undefined;
+      if (!message.ok) reportError('Could not copy selected text. Try again.');
+    });
   }
   function onKeyDown(event: KeyboardEvent): void {
     if (
@@ -39,18 +42,11 @@ export function installSelectionCopy(reportError: (text: string) => void): () =>
       event.stopPropagation();
     }
   }
-  function onResult(event: MessageEvent<HostMessage>): void {
-    const message = event.data;
-    if (message.type !== 'copyResult' || message.requestId !== pending) return;
-    pending = undefined;
-    if (!message.ok) reportError('Could not copy selected text. Try again.');
-  }
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('copy', copySelection);
-  window.addEventListener('message', onResult);
   return () => {
     document.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('copy', copySelection);
-    window.removeEventListener('message', onResult);
+    cancelPending?.();
   };
 }

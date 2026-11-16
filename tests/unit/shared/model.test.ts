@@ -293,3 +293,44 @@ test('model choices are validated as data', () => {
   assert.equal(actionSchema.safeParse(ok).success, true);
   assert.equal(actionSchema.safeParse({ ...ok, model: 3 }).success, false);
 });
+
+test('restore marks only the final user turn interrupted across long mixed histories', () => {
+  for (const status of ['running', 'waiting', 'completed'] as const) {
+    const target = session();
+    target.status = status;
+    for (let index = 0; index < 5000; index++) {
+      target.messages.push(
+        { id: `u-${index}`, role: 'user', text: 'Question', outcome: 'completed' },
+        { id: `a-${index}`, role: 'assistant', text: 'Answer' },
+      );
+    }
+    target.messages.push({
+      id: 'tool',
+      role: 'tool',
+      text: '',
+      tool: {
+        name: 'read',
+        kind: 'read',
+        title: 'Read',
+        status: 'running',
+      },
+    });
+    const [restored] = restoreSessions({ version: 1, sessions: [target] });
+    const interrupted = restored.messages.filter((message) => message.outcome === 'interrupted');
+    assert.deepEqual(
+      interrupted.map((message) => message.id),
+      status === 'completed' ? [] : ['u-4999'],
+    );
+    assert.equal(
+      restored.messages.find((message) => message.id === 'tool')?.tool?.status,
+      'interrupted',
+    );
+  }
+  const empty = session();
+  empty.status = 'running';
+  empty.messages = [{ id: 'notice', role: 'notice', text: 'Restoring' }];
+  assert.equal(
+    restoreSessions({ version: 1, sessions: [empty] })[0].messages[0].outcome,
+    undefined,
+  );
+});

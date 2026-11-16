@@ -41,6 +41,20 @@ export async function checkTerminalDrafts(ctx: UiCheckContext): Promise<void> {
   const [sentMessage] = await sentOf('send');
   assert.deepEqual([sentMessage.id, sentMessage.text], ['claude-two', 'Draft for Claude']);
 
+  await page.evaluate(
+    (submission) =>
+      window.postMessage(
+        {
+          type: 'sent',
+          id: submission.id,
+          text: submission.text,
+          submissionId: submission.submissionId,
+        },
+        '*',
+      ),
+    sentMessage,
+  );
+
   await update('worker');
   await page.getByText('manages this worker from its lead thread').waitFor();
   assert.equal(await box.count(), 0);

@@ -3,6 +3,14 @@ import test from 'node:test';
 import { Sessions } from '../../../../src/application/sessions/session-manager';
 import type { Message } from '../../../../src/shared/model';
 
+function deferred() {
+  let resolve = () => {};
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 const long = (count: number): Message[] =>
   Array.from({ length: count }, (_, index) => ({
     id: `m${index}`,
@@ -10,20 +18,50 @@ const long = (count: number): Message[] =>
     text: 'word '.repeat(200),
   }));
 
-test('sending reaches the provider without waiting on anything else', async () => {
-  let reached = 0;
-  const manager = new Sessions('/nonexistent', () => ({
-    send: async () => {
-      reached = performance.now();
-    },
-    interrupt: async () => {},
-    dispose() {},
-  }));
-  const session = manager.create('codex', '/x', '/x', 'T');
-  session.messages.push(...long(5000));
-  const start = performance.now();
-  await manager.send(session.id, 'hi');
-  const overhead = reached - start;
-  await manager.dispose().catch(() => {});
-  assert.ok(overhead < 50, `took ${overhead.toFixed(1)} ms`);
-});
+test(
+  'provider dispatch does not await an outstanding persistence flush',
+  { timeout: 5000 },
+  async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const background = deferred();
+    const dispatched = deferred();
+    let backgroundSettled = false;
+    let flushes = 0;
+    const manager = new Sessions(
+      '/nonexistent',
+      () => ({
+        send: async () => {
+          assert.equal(
+            backgroundSettled,
+            false,
+            'provider dispatch precedes persistence completion',
+          );
+          dispatched.resolve();
+        },
+        interrupt: async () => {},
+        dispose() {},
+      }),
+      1,
+    );
+    manager.flush = async () => {
+      flushes++;
+      await background.promise;
+    };
+    t.after(async () => {
+      background.resolve();
+      await manager.dispose();
+    });
+    const session = manager.create('codex', '/nonexistent', '/nonexistent', 'T');
+    session.messages.push(...long(5000));
+    t.mock.timers.tick(1);
+    assert.equal(flushes, 1, 'scheduled background persistence is already pending');
+    const sending = manager.send(session.id, 'hi');
+    await Promise.race([
+      dispatched.promise,
+      sending.then(() => assert.fail('send settled without dispatching')),
+    ]);
+    backgroundSettled = true;
+    background.resolve();
+    await sending;
+  },
+);

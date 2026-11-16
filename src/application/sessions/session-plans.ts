@@ -57,10 +57,14 @@ export class SessionPlans {
   /** The plan as you left it: the file if there is one, because you may have edited it. */
   async currentPlanText(session: Session): Promise<string> {
     if (!session.plan) throw new Error('This thread has no plan.');
-    if (!session.plan.file || !this.deps.planFiles) return session.plan.text;
-    const text = await this.deps.planFiles
-      .read(session.plan.file)
-      .catch(() => session.plan?.text ?? '');
+    if (!session.plan.file) return session.plan.text;
+    if (!this.deps.planFiles)
+      throw new Error('The plan file cannot be read. Reopen it and try again.');
+    const text = await this.deps.planFiles.read(session.plan.file).catch((error) => {
+      throw new Error('The plan file could not be read. Restore it and try again.', {
+        cause: error,
+      });
+    });
     if (!text.trim()) throw new Error('The plan file is empty.');
     return text;
   }

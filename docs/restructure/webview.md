@@ -2,6 +2,46 @@
 
 # Webview restructure
 
+## Current styling and message ownership
+
+The stylesheet entry point is `src/webview/app/index.css`. It imports theme tokens and native
+defaults from `app/styles`, generated Markdown from `lib/markdown.css`, and scoped CSS owned by
+the mascot, onboarding, composer, Changes, conversation, and copy controls. Preflight remains
+omitted. `dist/webview.css` separately supplies the font faces. Tailwind scanning uses
+`source(none)` plus `@source "../"`, covering the browser source tree only.
+
+- Put React layout utilities in the component that owns the markup. Use the existing `cn()`
+  helper for conditional overrides and CVA only for stable repeated variants. Changes toolbar,
+  filters, labels, note rows, and turn endings now own their ordinary layout in JSX.
+- Reuse `components/ui` controls when their behavior fits. The Changes primary action uses
+  `Button`; specialized file selection, editable content, and native controls retain their
+  existing behavior. The native fallback still supports those remaining controls; narrowing
+  it further requires migrating and checking their consumers, rather than removing defaults.
+- Map colors and shared dimensions through semantic theme roles. Preserve editor/sidebar,
+  Cursor/editor appearance, light/dark, and both high-contrast themes. File selection, filter,
+  icon, and status roles retain their original editor mappings and fallbacks.
+- Keep generated content and complex DOM states in small scoped CSS files. Preserve behavioral
+  hooks such as `.composer-input`, dynamic mascot selectors, focus, hover-capable pointers,
+  contenteditable references, syntax colors, and reduced motion. Avoid a second class helper,
+  typography dependency, interpolated Tailwind utilities, and broad safelists.
+- **Cascade compatibility:** this migration deliberately retains unlayered imports and
+  declarations. The proposed layered migration failed the injected-host-padding browser check.
+  [VS Code 1.96's injected stylesheet](https://raw.githubusercontent.com/microsoft/vscode/1.96.0/src/vs/workbench/contrib/webview/browser/pre/index.html)
+  is unlayered and styles body, links, code, focus, and more; normal layered declarations cannot
+  override it, irrespective of specificity. A newer installed host uses `vscode-default`, but
+  the supported minimum remains 1.96. Keep the original specificity/order contract until a
+  compatible host-boundary strategy or a deliberate minimum-version change is validated. Do
+  not use specificity escalation or `!important` to paper over this. Extraction alone is not
+  proof that changing layers is safe.
+
+Submission acknowledgements now identify a captured draft revision and attachment set. Only
+acknowledged content is cleared; later edits/additions survive, including transfer from a new
+chat draft to its real thread. Validated operation identities route failures to their owning
+submission or Changes request. General errors remain visible without clearing unrelated guards.
+The bridge routes copy results through one listener while copies are pending, with per-request
+unsubscription. The historical unchanged-behavior notes below describe the earlier restructure,
+not these later fixes.
+
 ## Changes and design principles
 
 Split the three large webview components by responsibility without changing their rendered

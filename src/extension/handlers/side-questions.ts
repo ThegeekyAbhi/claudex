@@ -30,7 +30,7 @@ const MAX_RUNNING = 3;
  * thread, so a side question can't change what the agent is doing or what it remembers.
  */
 export class SideQuestionsHandlers {
-  private running = new Map<string, AbortController>();
+  private running = new Set<{ requestId: string; surface: Surface; controller: AbortController }>();
   constructor(
     private context: SideQuestionsContext,
     private ask: Record<Provider, (question: SideQuestion) => Promise<void>> = {
@@ -45,12 +45,21 @@ export class SideQuestionsHandlers {
       sideQuestion: async (action, surface) => {
         void this.answer(action, surface);
       },
-      stopSideQuestion: async (action) => {
-        this.running.get(action.requestId)?.abort();
+      stopSideQuestion: async (action, surface) => {
+        for (const active of this.running)
+          if (active.requestId === action.requestId && active.surface === surface)
+            active.controller.abort();
       },
     };
   }
   private async answer(action: SideQuestionAction, surface: Surface): Promise<void> {
+    // Request IDs belong to the asking surface; replaying an active request is idempotent.
+    if (
+      [...this.running].some(
+        (active) => active.requestId === action.requestId && active.surface === surface,
+      )
+    )
+      return;
     const post = (message: SideAnswerUpdate) =>
       void surface.webview.postMessage({
         type: 'sideAnswer',
@@ -58,10 +67,11 @@ export class SideQuestionsHandlers {
         ...message,
       });
     const controller = new AbortController();
+    const active = { requestId: action.requestId, surface, controller };
     try {
       if (this.running.size >= MAX_RUNNING)
         throw new Error('Wait for a side question to finish before asking another.');
-      this.running.set(action.requestId, controller);
+      this.running.add(active);
       const session = this.context.sessions.get(action.id);
       this.context.requireAgent(agentKind(session));
       await this.ask[session.provider]({
@@ -79,11 +89,10 @@ export class SideQuestionsHandlers {
       this.context.output.appendLine(`Side question failed: ${text}`);
       post({ done: true, ...(controller.signal.aborted ? {} : { error: text }) });
     } finally {
-      if (this.running.get(action.requestId) === controller) this.running.delete(action.requestId);
+      this.running.delete(active);
     }
   }
   dispose(): void {
-    for (const controller of this.running.values()) controller.abort();
-    this.running.clear();
+    for (const active of this.running) active.controller.abort();
   }
 }

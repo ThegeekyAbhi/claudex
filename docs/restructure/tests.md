@@ -138,3 +138,36 @@ The node_modules symlink was ignored.
 - `node scripts/build-host-test.mjs`: **exit 0**, emits `dist/host-tests.cjs`.
   Bundling verifies the moved entry point; it does not establish GUI activation.
 - `git diff -- src pnpm-lock.yaml`: empty. Package manifest diff changes only `test`.
+
+## Declutter verification changes (2026-11-16)
+
+The former 50 ms dispatch assertion is replaced by a deterministic ordering test:
+a persistence flush stays pending while the provider receives the new turn. A
+5-second test deadline detects a deadlock; it is not a performance threshold. An
+isolated counterexample that waited for that deferred flush before sending exited
+nonzero with a test timeout. The unchanged production dispatch ordering passes.
+
+Run the separate, fake-provider benchmark with
+`node --import tsx scripts/benchmark-dispatch.ts`. It collects 25 long-history
+samples and reports minimum, median, p95, maximum, Node version, and platform; it
+performs no provider requests or persistence writes. Initial local baseline on
+Node v24.15.0/macOS: 5,000 messages, median 0.087 ms, p95 2.938 ms, minimum
+0.058 ms, maximum 3.796 ms. This is a local distribution, not a CI requirement or
+cross-machine target.
+
+`scripts/ui-check/resources.ts` now owns preview readiness, browser/page setup,
+and independent cleanup. Fake-resource tests cover readiness timeout, browser
+launch, page creation, output setup, section execution, browser-close failure,
+and preview termination escalation. Readiness has a 15-second deadline and only
+accepts the server's listening announcement. Shutdown sends SIGTERM, escalates to
+SIGKILL after 2 seconds, and reports failure if the child still has not exited
+after another 2 seconds. The existing shared-page section order is retained.
+
+`.github/workflows/check.yml` installs frozen dependencies with pnpm 10.33.2 and
+Node 24.15.0, runs `pnpm check`, provisions Playwright Chromium, runs fixture-only
+`pnpm test:ui`, and builds/verifies the VSIX with `pnpm package`. Test screenshots
+and build/package reports are uploaded even on failure. No live smoke, provider
+credentials, publishing, or deployment is configured. The Ubuntu 24.04 job is
+explicitly a compatibility verification: local results here are from macOS;
+GitHub Actions execution and a clean Linux checkout have not been validated in
+this environment. No branch protection settings have been changed or verified.

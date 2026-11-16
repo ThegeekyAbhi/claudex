@@ -1,0 +1,5 @@
+/* High contrast: your messages keep a clear edge instead of relying on a tint. */
+body.vscode-high-contrast .user-message .bubble,
+body.vscode-high-contrast-light .user-message .bubble {
+  border: 1px solid var(--border-strong);
+}

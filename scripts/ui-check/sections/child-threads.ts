@@ -41,6 +41,19 @@ export async function checkChildThreads(ctx: UiCheckContext): Promise<void> {
     [delegated.id, delegated.agent, delegated.text],
     ['codex-one', 'codex', 'Write the migration'],
   );
+  await page.evaluate(
+    (submission) =>
+      window.postMessage(
+        {
+          type: 'sent',
+          id: submission.draftKey,
+          text: submission.text,
+          submissionId: submission.submissionId,
+        },
+        '*',
+      ),
+    delegated,
+  );
   await box.fill('');
 
   // Model changes on a started thread update it; another agent opens a new thread with the draft.

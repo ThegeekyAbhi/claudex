@@ -1,5 +1,6 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import { runBin } from './bin.mjs';
+import { reportPackage } from './package-report.mjs';
 
 const { name, version } = JSON.parse(await readFile('package.json', 'utf8'));
 await mkdir('releases', { recursive: true });
@@ -17,3 +18,4 @@ runBin(
   ],
   { stdio: 'inherit' },
 );
+await reportPackage(`releases/${name}-${version}.vsix`);

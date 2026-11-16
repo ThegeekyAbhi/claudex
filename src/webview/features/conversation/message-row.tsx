@@ -167,10 +167,13 @@ export const MessageRow = memo(function MessageRow({
     return (
       <article
         aria-label="Progress update"
-        className="assistant note-row in-[.subagent-transcript]:text-[12px]"
+        className="assistant note-row flex items-start gap-2 my-1.5 pl-0.5 in-[.subagent-transcript]:text-[12px]"
       >
-        <span className="note-dot" aria-hidden="true" />
-        <div className="markdown note">
+        <span
+          className="note-dot flex-none size-[5px] mt-[7px] rounded-full bg-[color-mix(in_srgb,var(--muted)_65%,transparent)]"
+          aria-hidden="true"
+        />
+        <div className="markdown note flex-1 min-w-0">
           <MarkdownText text={text} streaming={streaming} />
         </div>
       </article>

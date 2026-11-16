@@ -1,4 +1,5 @@
 import { type Action, actionSchema } from '../shared/model';
+import { type ActionFailure, actionFailure } from '../shared/protocol/failures';
 import type { HandlersFor, WorkspaceHandlers } from './action-groups';
 import type { Surface } from './surfaces';
 
@@ -38,8 +39,26 @@ async function dispatchProfile(
   return true;
 }
 
-export function routeAction(raw: unknown, surface: Surface, routes: ActionRoutes): Promise<void> {
-  return dispatchAction(actionSchema.parse(raw), surface, routes);
+export class RoutedActionError extends Error {
+  constructor(
+    error: unknown,
+    readonly operation: ActionFailure | undefined,
+  ) {
+    super(error instanceof Error ? error.message : String(error), { cause: error });
+  }
+}
+
+export async function routeAction(
+  raw: unknown,
+  surface: Surface,
+  routes: ActionRoutes,
+): Promise<void> {
+  const action = actionSchema.parse(raw);
+  try {
+    await dispatchAction(action, surface, routes);
+  } catch (error) {
+    throw new RoutedActionError(error, actionFailure(action));
+  }
 }
 
 async function dispatchAction(

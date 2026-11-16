@@ -60,6 +60,19 @@ export async function checkOnboarding(ctx: UiCheckContext): Promise<void> {
     .locator('.starter-prompt')
     .evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().top)));
   assert.equal(new Set(tops).size, 1, 'starter prompts share one row');
+  // Greeting first, then the message box, then the ideas below it.
+  const topOf = (selector: string) =>
+    home
+      .locator(selector)
+      .first()
+      .evaluate((node) => node.getBoundingClientRect().top);
+  const [headingTop, composerTop, startersTop] = [
+    await topOf('.home-heading'),
+    await topOf('.composer-area'),
+    await topOf('.starter-prompt'),
+  ];
+  assert.ok(headingTop < composerTop, 'the greeting sits above the message box');
+  assert.ok(composerTop < startersTop, 'the ideas sit below the message box');
   await page.mouse.move(0, 0);
   await page.screenshot({ path: 'test-results/screenshots/onboarding.png' });
 

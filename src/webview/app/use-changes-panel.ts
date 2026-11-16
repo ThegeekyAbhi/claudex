@@ -25,6 +25,7 @@ export function useChangesPanel(session: Session | undefined) {
     // Only the newest request for the current thread may replace the list.
     if (id !== sessionId || (result.requestId && result.requestId !== pending.current)) return;
     setChanges((current) => ({ ...current, [id]: result }));
+    pending.current = '';
     setChangesLoading(false);
   }
   return {
@@ -34,6 +35,11 @@ export function useChangesPanel(session: Session | undefined) {
     loading: changesLoading,
     refresh: requestChanges,
     received,
-    failed: () => setChangesLoading(false),
+    failed: (id: string, requestId: string) => {
+      if (id !== sessionId || requestId !== pending.current) return false;
+      pending.current = '';
+      setChangesLoading(false);
+      return true;
+    },
   };
 }

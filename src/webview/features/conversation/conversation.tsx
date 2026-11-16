@@ -46,7 +46,10 @@ function TurnEnding({
         ? 'Failed before finishing'
         : 'Failed before answering';
   return (
-    <output className="turn-ending" data-outcome={outcome}>
+    <output
+      className="turn-ending flex items-center gap-1.5 mt-1.5 mb-3.5 text-[11.5px] text-muted-foreground data-[outcome=failed]:text-error before:content-[''] before:size-[7px] before:rounded-[2px] before:border before:border-current"
+      data-outcome={outcome}
+    >
       {text}
     </output>
   );

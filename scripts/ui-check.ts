@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
 import type { Session } from '../src/shared/model';
 import { collectBrowserErrors, createContext, preparePage } from './ui-check/context';
+import { stopPreview, waitForPreview, withUIResources } from './ui-check/resources';
 import { checkAppearance } from './ui-check/sections/appearance';
 import { checkAttachments } from './ui-check/sections/attachments';
 import { checkChanges } from './ui-check/sections/changes';
@@ -38,73 +39,75 @@ import { checkWorktree } from './ui-check/sections/worktree';
 
 export type { Session };
 
-const preview = spawn(process.execPath, ['scripts/preview.mjs'], {
-  stdio: ['ignore', 'pipe', 'inherit'],
-});
-await new Promise<void>((resolve, reject) => {
-  preview.stdout.once('data', () => resolve());
-  preview.once('error', reject);
-  preview.once('exit', (code) => reject(new Error(`Preview exited: ${code}`)));
-});
 const cached = path.join(
   homedir(),
   'Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
 );
-const browser = await chromium.launch({
-  headless: true,
-  executablePath: existsSync(cached) ? cached : undefined,
+let browserErrors: ReturnType<typeof collectBrowserErrors> | undefined;
+await withUIResources({
+  startPreview: () =>
+    spawn(process.execPath, ['scripts/preview.mjs'], {
+      stdio: ['ignore', 'pipe', 'inherit'],
+    }),
+  waitForPreview,
+  stopPreview,
+  launchBrowser: () =>
+    chromium.launch({
+      headless: true,
+      executablePath: existsSync(cached) ? cached : undefined,
+    }),
+  createPage: (browser) =>
+    browser.newPage({
+      viewport: { width: 1440, height: 960 },
+      reducedMotion: 'reduce',
+    }),
+  prepareOutput: async () => {
+    await mkdir('test-results/screenshots', { recursive: true });
+    await rm('test-results/screenshots/failure.png', { force: true });
+  },
+  run: async (page) => {
+    browserErrors = collectBrowserErrors(page);
+    await preparePage(page);
+    const ctx = createContext(page, browserErrors);
+    // These sections intentionally share one page and must run in this order.
+    const sections = [
+      checkModels,
+      checkWorktree,
+      checkThinking,
+      checkConversation,
+      checkQuestions,
+      checkUsage,
+      checkChildThreads,
+      checkTerminalDrafts,
+      checkChanges,
+      checkNewChatModes,
+      checkSkills,
+      checkPlan,
+      checkMarkdown,
+      checkReading,
+      checkMessageActions,
+      checkImages,
+      checkContextMenu,
+      checkAttachments,
+      checkMascot,
+      checkLayout,
+      checkAppearance,
+      checkModeGuides,
+      checkThreadFilters,
+      checkTabs,
+      checkVisuals,
+      checkContinueAgent,
+      checkProfiles,
+      checkOverview,
+      checkOnboarding,
+    ];
+    for (const section of sections) await section(ctx);
+    console.log(
+      'UI checks passed: no-prompt start, model and effort menus, appearance, mode colours, guide toggles, sandboxed visuals, thread filters, thread tabs and signals, modes, plan card, built plans and the plan chip, message actions, side questions, Markdown and highlighting, readable replies and folded work, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, continuing in another agent, agent profiles, changes panel, first-run setup, side bar widths, resizable panes, and 4 viewport sizes.',
+    );
+  },
+  reportFailure: async (page) => {
+    console.error('Browser errors:', browserErrors?.errors ?? []);
+    await page.screenshot({ path: 'test-results/screenshots/failure.png' });
+  },
 });
-const page = await browser.newPage({
-  viewport: { width: 1440, height: 960 },
-  reducedMotion: 'reduce',
-});
-const browserErrors = collectBrowserErrors(page);
-const { errors } = browserErrors;
-await mkdir('test-results/screenshots', { recursive: true });
-try {
-  await preparePage(page);
-  const ctx = createContext(page, browserErrors);
-  // These sections intentionally share one page and must run in this order.
-  const sections = [
-    checkModels,
-    checkWorktree,
-    checkThinking,
-    checkConversation,
-    checkQuestions,
-    checkUsage,
-    checkChildThreads,
-    checkTerminalDrafts,
-    checkChanges,
-    checkNewChatModes,
-    checkSkills,
-    checkPlan,
-    checkMarkdown,
-    checkReading,
-    checkMessageActions,
-    checkImages,
-    checkContextMenu,
-    checkAttachments,
-    checkMascot,
-    checkLayout,
-    checkAppearance,
-    checkModeGuides,
-    checkThreadFilters,
-    checkTabs,
-    checkVisuals,
-    checkContinueAgent,
-    checkProfiles,
-    checkOverview,
-    checkOnboarding,
-  ];
-  for (const section of sections) await section(ctx);
-  console.log(
-    'UI checks passed: no-prompt start, model and effort menus, appearance, mode colours, guide toggles, sandboxed visuals, thread filters, thread tabs and signals, modes, plan card, built plans and the plan chip, message actions, side questions, Markdown and highlighting, readable replies and folded work, images, the @ and # menu, attachments, worktree opt-in, thinking, diffs, questions, usage, child threads, approvals, drafts, continuing in another agent, agent profiles, changes panel, first-run setup, side bar widths, resizable panes, and 4 viewport sizes.',
-  );
-} catch (error) {
-  await page.screenshot({ path: 'test-results/screenshots/failure.png' });
-  console.error('Browser errors:', errors);
-  throw error;
-} finally {
-  await browser.close();
-  preview.kill();
-}

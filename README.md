@@ -42,17 +42,17 @@ Claude's Ask mode can still run shell commands allowed by your Claude settings. 
 
 Type your request and press **Enter**. Use **Shift+Enter** for a new line. Type **@** to add files, folders, threads, or other context; use the paperclip to attach images. Type **/** to choose a skill.
 
-![Choose Ask, Plan, or Auto from the mode menu. Sample conversation.](media/guide/modes.gif)
+![Choose Ask, Plan, or Auto from the mode menu. Sample conversation.](media/guide/modes.png)
 
 ### Use multiple Claude and Codex accounts
 
 Keep personal and work accounts in separate profiles. Open the **model selector → Manage account → Add account**, choose Claude Code or Codex, name the account, and keep **Create a separate account** selected. Then use **Open sign-in terminal** to complete the CLI’s own sign-in.
 
-![Adding Claude Work and Codex Work profiles with separate account folders. Sample accounts; sign-in happens separately.](media/guide/accounts-add.gif)
+![Adding Claude Work and Codex Work profiles with separate account folders. Sample accounts; sign-in happens separately.](media/guide/accounts-add.png)
 
 After signing in, choose the account in the model selector, then choose its model. Your unsent draft stays in place.
 
-![Switching between sample Claude and Codex account profiles and selecting a model without sending the draft.](media/guide/accounts-switch.gif)
+![Switching between sample Claude and Codex account profiles and selecting a model without sending the draft.](media/guide/accounts-switch.png)
 
 [Still images and account instructions](docs/usage.md#multiple-accounts)
 
@@ -60,13 +60,13 @@ After signing in, choose the account in the model selector, then choose its mode
 
 Select **Plan** and describe the task. Review the plan inline, use **Open plan** to read it in VS Code, or **Edit plan** to edit its Markdown. Reply in chat to request changes or add notes in the composer. Click **Implement in Auto** when ready; it reads your latest edits and switches the thread to Auto.
 
-![Review a Markdown plan and choose how to implement it. Sample conversation.](media/guide/planning.gif)
+![Review a Markdown plan and choose how to implement it. Sample conversation.](media/guide/planning.png)
 
 ### 3. Review requests and changes
 
 When a request appears, read the command or action, then choose **Allow once** or **Decline**. Open **Changes** in the header to see uncommitted files in the thread's checkout. Click a file to open VS Code's diff editor.
 
-![Browse changed files and request the native VS Code Changes editor. Sample conversation.](media/guide/changes.gif)
+![Browse changed files and request the native VS Code Changes editor. Sample conversation.](media/guide/changes.png)
 
 Use the tabs or **Chats** to return to a thread. Closing a tab keeps the conversation and any running work. To continue with another agent, choose it from the model menu, inspect the **Context from …** chip, and press Enter to send.
 
@@ -74,53 +74,53 @@ Use the tabs or **Chats** to return to a thread. Closing a tab keeps the convers
 
 **Choose a model and reasoning effort** — [Instructions and static image](docs/visual-guide.md#models)
 
-![Search models and select reasoning effort. Sample UI demonstration.](media/guide/models.gif)
+![Search models and select reasoning effort. Sample UI demonstration.](media/guide/models.png)
 
 These short clips use sample conversations. Native editor actions stop at the webview boundary; no provider work runs during capture.
 
 **Read rich answers in Ask mode** — [Instructions and static image](docs/visual-guide.md#ask-markdown)
 
-![Read rich answers in Ask mode. Sample UI demonstration.](media/guide/ask-markdown.gif)
+![Read rich answers in Ask mode. Sample UI demonstration.](media/guide/ask-markdown.png)
 
 **Understand diagrams and visual explanations** — [Instructions and static image](docs/visual-guide.md#visual-explanations)
 
-![Understand diagrams and visual explanations. Sample UI demonstration.](media/guide/visual-explanations.gif)
+![Understand diagrams and visual explanations. Sample UI demonstration.](media/guide/visual-explanations.png)
 
 **Answer agent questions** — [Instructions and static image](docs/visual-guide.md#questions)
 
-![Answer agent questions. Sample UI demonstration.](media/guide/questions.gif)
+![Answer agent questions. Sample UI demonstration.](media/guide/questions.png)
 
 **Review approval requests** — [Instructions and static image](docs/visual-guide.md#approvals)
 
-![Review approval requests. Sample UI demonstration.](media/guide/approvals.gif)
+![Review approval requests. Sample UI demonstration.](media/guide/approvals.png)
 
 **Keep multiple chats and find past work** — [Instructions and static image](docs/visual-guide.md#chats-history)
 
-![Keep multiple chats and find past work. Sample UI demonstration.](media/guide/chats-history.gif)
+![Keep multiple chats and find past work. Sample UI demonstration.](media/guide/chats-history.png)
 
 **Attach relevant context** — [Instructions and static image](docs/visual-guide.md#context)
 
-![Attach relevant context. Sample UI demonstration.](media/guide/context.gif)
+![Attach relevant context. Sample UI demonstration.](media/guide/context.png)
 
 **Select and browse skills** — [Instructions and static image](docs/visual-guide.md#skills)
 
-![Select and browse skills. Sample UI demonstration.](media/guide/skills.gif)
+![Select and browse skills. Sample UI demonstration.](media/guide/skills.png)
 
 **Inspect a subagent and use its result** — [Instructions and static image](docs/visual-guide.md#subagents)
 
-![Inspect a subagent and use its result. Sample UI demonstration.](media/guide/subagents.gif)
+![Inspect a subagent and use its result. Sample UI demonstration.](media/guide/subagents.png)
 
 **Continue with another agent** — [Instructions and static image](docs/visual-guide.md#handoff)
 
-![Continue with another agent. Sample UI demonstration.](media/guide/handoff.gif)
+![Continue with another agent. Sample UI demonstration.](media/guide/handoff.png)
 
 **Choose an isolated worktree** — [Instructions and static image](docs/visual-guide.md#worktrees)
 
-![Choose an isolated worktree. Sample UI demonstration.](media/guide/worktrees.gif)
+![Choose an isolated worktree. Sample UI demonstration.](media/guide/worktrees.png)
 
 **Inspect reported usage and thread details** — [Instructions and static image](docs/visual-guide.md#usage)
 
-![Inspect reported usage and thread details. Sample UI demonstration.](media/guide/usage.gif)
+![Inspect reported usage and thread details. Sample UI demonstration.](media/guide/usage.png)
 
 [Full user guide](docs/usage.md) — worktrees, skills, attachments, agent handoffs, terminal access, settings, and limitations.
 

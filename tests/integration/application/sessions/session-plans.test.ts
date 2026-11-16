@@ -195,3 +195,60 @@ test('a build whose turn starts and then fails keeps your approval', async () =>
   assert.equal(session.plan?.status, 'approved');
   assert.equal(canBuildPlan(session), false);
 });
+
+function fileFixture(readFile: () => Promise<string>) {
+  const { session } = fixture();
+  let sends = 0;
+  let approvals = 0;
+  let declined = 0;
+  const plans: SessionPlans = new SessionPlans({
+    planFiles: { save: async () => '/plan.md', read: readFile },
+    assertAvailable() {},
+    get: () => session,
+    changed() {},
+    keepPlanning: () => {
+      declined++;
+    },
+    approve: () => {
+      approvals++;
+    },
+    currentPlanText: (target) => plans.currentPlanText(target),
+    send: async () => {
+      sends++;
+    },
+  });
+  return { session, plans, counts: () => ({ sends, approvals, declined }) };
+}
+
+test('registered missing or unreadable plan files cannot implement or hand off stored text', async () => {
+  for (const code of ['ENOENT', 'EACCES']) {
+    for (const waiting of [false, true]) {
+      const run = fileFixture(async () => {
+        throw Object.assign(new Error(code), { code });
+      });
+      if (run.session.plan) run.session.plan.file = '/plan.md';
+      if (waiting) {
+        run.session.status = 'waiting';
+        run.session.approval = { id: 'plan', kind: 'plan', title: 'Build?', detail: '' };
+      }
+      const before = structuredClone(run.session);
+      await assert.rejects(run.plans.currentPlanText(run.session), /could not be read/);
+      await assert.rejects(run.plans.buildPlan(run.session.id), /could not be read/);
+      await assert.rejects(run.plans.handOffPlan(run.session.id), /could not be read/);
+      assert.deepEqual(run.session, before);
+      assert.deepEqual(run.counts(), { sends: 0, approvals: 0, declined: 0 });
+    }
+  }
+});
+
+test('plan reads use edited files, reject empty files, and retain plans without files', async () => {
+  const edited = fileFixture(async () => '# Edited plan');
+  assert.equal(await edited.plans.currentPlanText(edited.session), '# Finished plan');
+  if (edited.session.plan) edited.session.plan.file = '/plan.md';
+  assert.equal(await edited.plans.currentPlanText(edited.session), '# Edited plan');
+  assert.match(await edited.plans.handOffPlan(edited.session.id), /# Edited plan/);
+  const empty = fileFixture(async () => '  ');
+  if (empty.session.plan) empty.session.plan.file = '/plan.md';
+  await assert.rejects(empty.plans.buildPlan(empty.session.id), /empty/);
+  assert.deepEqual(empty.counts(), { sends: 0, approvals: 0, declined: 0 });
+});

@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
 import {
+  type Action,
   type AgentKind,
   type Attachment,
+  actionSchema,
   agentKind,
   continuationLinks,
   type Message,
@@ -29,6 +31,21 @@ export function useTurns(
   const [editing, setEditing] = useState<{ sessionId: string; messageId: string } | null>(null);
   /** Starting a thread can take seconds, and snapshots keep arriving during it. */
   const starting = useRef(false);
+  const pending = useRef<{ submissionId: string; key: string } | undefined>(undefined);
+  function submitAction(
+    action: Extract<Action, { type: 'start' | 'send' | 'rewind' | 'delegate' }>,
+  ) {
+    const validated = actionSchema.safeParse(action);
+    if (!validated.success) {
+      reportError(validated.error.issues[0]?.message ?? 'The message could not be submitted.');
+      return false;
+    }
+    const submissionId = drafts.submitted(draftKey);
+    pending.current = { submissionId, key: draftKey };
+    setSubmitted(true);
+    send({ ...action, text: action.text.trim(), submissionId });
+    return true;
+  }
   const { session, draftKey } = tabs.current;
   const draft = drafts.texts[draftKey] ?? '';
   const attached = drafts.attachments[draftKey] ?? [];
@@ -87,8 +104,9 @@ export function useTurns(
         drafts.setTexts((current) => ({ ...current, [session.id]: '' }));
         return;
       }
+      if (pending.current) return;
       if (mention) {
-        send({
+        submitAction({
           type: 'delegate',
           id: session.id,
           agent: mention.agent,
@@ -104,9 +122,8 @@ export function useTurns(
         return;
       }
       if (running || submitted) return;
-      setSubmitted(true);
       if (editing?.sessionId === session.id) {
-        send({
+        submitAction({
           type: 'rewind',
           id: session.id,
           messageId: editing.messageId,
@@ -116,17 +133,13 @@ export function useTurns(
         // Kept until the host takes it, so a refused edit can be fixed and sent again.
         return;
       }
-      send({ type: 'send', id: session.id, text: draft, ...attachedField });
+      submitAction({ type: 'send', id: session.id, text: draft, ...attachedField });
       return;
     }
     if (submitted) return;
-    starting.current = true;
-    tabs.starting(draftKey);
-    setSubmitted(true);
-    composeChoice.setChoice((current) => ({ ...current, worktree: false, parentId: undefined }));
     // The chip is what links a new thread to the one it continues: remove it and nothing is linked.
     const continuing = attached.find((item) => item.kind === 'thread' && item.history);
-    send({
+    const accepted = submitAction({
       type: 'start',
       agent: composeChoice.choice.agent,
       text: mention?.prompt ?? draft,
@@ -141,6 +154,11 @@ export function useTurns(
       ...(composeChoice.choice.parentId ? { parentId: composeChoice.choice.parentId } : {}),
       ...(continuing?.kind === 'thread' ? { continuedFrom: continuing.id } : {}),
     });
+    if (accepted) {
+      starting.current = true;
+      tabs.starting(draftKey);
+      composeChoice.setChoice((current) => ({ ...current, worktree: false, parentId: undefined }));
+    }
   }
 
   /** Puts your message back in the box; the banner above it says what sending will replace. */
@@ -181,21 +199,33 @@ export function useTurns(
     ]);
   }
   function receivedSnapshot() {
-    if (!starting.current) setSubmitted(false);
+    if (!starting.current && !pending.current) setSubmitted(false);
   }
-  function sent() {
-    setEditing(null);
+  function sent(id: string, submissionId?: string) {
+    if (
+      !pending.current ||
+      pending.current.key !== id ||
+      (submissionId && pending.current.submissionId !== submissionId)
+    )
+      return;
+    pending.current = undefined;
+    setEditing((current) => (current?.sessionId === id ? null : current));
     starting.current = false;
     setSubmitted(false);
   }
-  function failed() {
+  function failed(submissionId: string, key: string) {
+    drafts.failed(submissionId);
+    if (pending.current?.submissionId !== submissionId || pending.current.key !== key) return false;
+    pending.current = undefined;
     starting.current = false;
     tabs.starting(undefined);
     setSubmitted(false);
+    return true;
   }
   return {
     running,
     submitted,
+    pendingHere: submitted && pending.current?.key === draftKey,
     submit,
     continueIn,
     snapshot: receivedSnapshot,

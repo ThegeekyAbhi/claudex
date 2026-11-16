@@ -36,6 +36,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('openChat'), id: z.string().optional() }),
   z.object({
     type: z.literal('start'),
+    submissionId: z.string().min(1).max(100).optional(),
     agent: agentEnum,
     text: z.string().trim().min(1).max(200_000),
     draftKey: z.string().max(200),
@@ -63,6 +64,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('send'),
+    submissionId: z.string().min(1).max(100).optional(),
     id: z.string(),
     text: z.string().trim().min(1).max(200_000),
     attachments,
@@ -84,6 +86,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   /** Replaces one of your messages and everything after it with new text. */
   z.object({
     type: z.literal('rewind'),
+    submissionId: z.string().min(1).max(100).optional(),
     id: z.string().max(200),
     messageId: z.string().max(400),
     text: z.string().trim().min(1).max(200_000),
@@ -91,6 +94,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('delegate'),
+    submissionId: z.string().min(1).max(100).optional(),
     id: z.string(),
     agent: agentEnum,
     text: z.string().trim().min(1).max(200_000),

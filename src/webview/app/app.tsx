@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   agentKind,
@@ -20,7 +20,7 @@ import { Composer } from '../features/composer/composer';
 import { TerminalStrip } from '../features/composer/terminal-strip';
 import { Conversation } from '../features/conversation/conversation';
 import { ImageBase } from '../features/images/image-view';
-import { Onboarding } from '../features/onboarding/setup-card';
+import { HomeExtras, HomeHeading, Onboarding } from '../features/onboarding/setup-card';
 import { BuildContext, PlanOptions } from '../features/plan/plan-options';
 import { QuestionCard } from '../features/questions/question-card';
 import { SidePopover } from '../features/side-question/side-popover';
@@ -73,7 +73,7 @@ export function App() {
       !session.inTerminal &&
       !session.transition &&
       !turns.running &&
-      !turns.submitted,
+      !turns.pendingHere,
   );
   const messageActions =
     session && !session.observed
@@ -110,9 +110,62 @@ export function App() {
     dismissed: Boolean(snapshot.onboardingDismissed),
     rows: setup,
   });
+  const composer = (
+    <Composer
+      preferences={snapshot.preferences}
+      catalog={catalog}
+      skills={snapshot.skills ?? emptySkills}
+      onManageSkills={(query) =>
+        tabs.skills.open(session ? agentKind(session) : compose.choice.agent, query)
+      }
+      session={session}
+      sessions={snapshot.sessions}
+      project={snapshot.project}
+      choice={compose.choice}
+      onMode={compose.rememberMode}
+      dismissedNudges={compose.dismissedNudges}
+      onDismissNudge={(key) => compose.setDismissedNudges((current) => [...current, key])}
+      draft={draft}
+      attachments={attached}
+      draftKey={draftKey}
+      top={!session}
+      contextResults={host.contextResults}
+      onAttachments={(next) =>
+        drafts.setAttachments((current) => ({ ...current, [draftKey]: next }))
+      }
+      onError={ui.setError}
+      submissionPending={turns.submitted}
+      busy={Boolean(
+        session?.transition ||
+          (turns.running && session?.approval?.kind !== 'plan') ||
+          (session && turns.pendingHere),
+      )}
+      trusted={snapshot.trusted}
+      focusKey={draftKey}
+      onDraft={(text) => drafts.setTexts((current) => ({ ...current, [draftKey]: text }))}
+      onChoice={(next, carry) => {
+        if (carry && session?.messages.length && !session.observed) turns.continueIn(session, next);
+        else if (carry) {
+          tabs.compose(next, draft);
+          drafts.setTexts((current) => ({ ...current, [draftKey]: '' }));
+        } else compose.setChoice(next);
+      }}
+      onSubmit={turns.submit}
+    />
+  );
+  /** A new chat once setup is done: greeting, message box, then ideas, all centered. */
+  const home = !session && (stage === 'ready' || stage === 'hidden');
+  // The thread you just started from the home screen eases in instead of jumping into place.
+  const wasHome = useRef(false);
+  const enteredFromHome = useRef<string | undefined>(undefined);
+  if (session && wasHome.current) enteredFromHome.current = session.id;
+  wasHome.current = home;
+  const chatEnter = Boolean(session && enteredFromHome.current === session.id);
   const workspaceClass = `workspace h-dvh overflow-hidden border-l border-strong [[data-surface=view]_&]:border-l-0 ${changes.panel ? `panel-${changes.panel}` : 'hide-documents'} ${tabs.history.open ? 'show-history' : ''}`;
   const mainPane = (
-    <main className="main min-w-0 min-h-0 flex flex-col relative">
+    <main
+      className={`main min-w-0 min-h-0 flex flex-col relative ${chatEnter ? 'chat-enter' : ''}`}
+    >
       <AppHeader
         host={host}
         tabs={tabs}
@@ -294,65 +347,50 @@ export function App() {
                   </button>
                 </div>
               ) : null}
-              <Composer
-                preferences={snapshot.preferences}
-                catalog={catalog}
-                skills={snapshot.skills ?? emptySkills}
-                onManageSkills={(query) =>
-                  tabs.skills.open(session ? agentKind(session) : compose.choice.agent, query)
-                }
-                session={session}
-                sessions={snapshot.sessions}
-                project={snapshot.project}
-                choice={compose.choice}
-                onMode={compose.rememberMode}
-                dismissedNudges={compose.dismissedNudges}
-                onDismissNudge={(key) => compose.setDismissedNudges((current) => [...current, key])}
-                draft={draft}
-                attachments={attached}
-                draftKey={draftKey}
-                top={!session}
-                contextResults={host.contextResults}
-                onAttachments={(next) =>
-                  drafts.setAttachments((current) => ({ ...current, [draftKey]: next }))
-                }
-                onError={ui.setError}
-                busy={Boolean(
-                  session?.transition ||
-                    (turns.running && session?.approval?.kind !== 'plan') ||
-                    (session && turns.submitted),
-                )}
-                trusted={snapshot.trusted}
-                focusKey={draftKey}
-                onDraft={(text) => drafts.setTexts((current) => ({ ...current, [draftKey]: text }))}
-                onChoice={(next, carry) => {
-                  if (carry && session?.messages.length && !session.observed)
-                    turns.continueIn(session, next);
-                  else if (carry) {
-                    tabs.compose(next, draft);
-                    drafts.setTexts((current) => ({ ...current, [draftKey]: '' }));
-                  } else compose.setChoice(next);
-                }}
-                onSubmit={turns.submit}
-              />
+              {home ? null : composer}
             </>
           )}
-          {!session ? (
+          {home ? (
+            <section
+              aria-label={stage === 'ready' ? 'Get started' : 'New chat'}
+              className="new-chat-home flex-1 min-h-0 overflow-y-auto flex flex-col"
+            >
+              <div className="onboarding-enter my-auto flex w-full flex-col items-center gap-5 py-6 max-[900px]:gap-4 max-[900px]:py-4">
+                {conversation.linkedTo ? (
+                  <p className="m-0 px-6 text-[12px] text-muted-foreground max-[900px]:px-3">
+                    Linked to <strong>{conversation.linkedTo.title}</strong>
+                  </p>
+                ) : null}
+                <HomeHeading project={snapshot.project} />
+                <div className="w-full">{composer}</div>
+                {stage === 'ready' ? (
+                  <HomeExtras
+                    rows={setup}
+                    pending={turns.submitted}
+                    className="px-6 max-[900px]:px-3"
+                    onPrompt={(text) =>
+                      drafts.setTexts((current) => ({ ...current, [draftKey]: text }))
+                    }
+                  />
+                ) : null}
+                <div className="w-full px-6 max-[900px]:px-3">
+                  <RecentThreads
+                    sessions={snapshot.sessions}
+                    onSelect={tabs.select}
+                    onViewAll={revealThreads}
+                  />
+                </div>
+              </div>
+            </section>
+          ) : !session ? (
             <div className="flex-1 min-h-0 overflow-y-auto pt-2 px-6 pb-4 max-[900px]:pt-1 max-[900px]:px-3 max-[900px]:pb-3">
               {conversation.linkedTo ? (
                 <p className="max-w-[780px] mx-auto mb-2 text-[12px] text-muted-foreground">
                   Linked to <strong>{conversation.linkedTo.title}</strong>
                 </p>
               ) : null}
-              {stage !== 'hidden' ? (
-                <Onboarding
-                  stage={stage}
-                  rows={setup}
-                  project={snapshot.project}
-                  onPrompt={(text) =>
-                    drafts.setTexts((current) => ({ ...current, [draftKey]: text }))
-                  }
-                />
+              {stage === 'install' || stage === 'signIn' ? (
+                <Onboarding stage={stage} rows={setup} />
               ) : null}
               <RecentThreads
                 sessions={snapshot.sessions}

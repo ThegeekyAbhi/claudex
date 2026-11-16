@@ -3,6 +3,7 @@ import { parsePatch } from '../../../shared/domain/diff';
 import type { ChangesResult, FileDiff, Session } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
+import { Button } from '../../components/ui/button';
 import { ColouredTokens } from '../../lib/coloured-lines';
 import { languageOfPath, type Token, useHighlight } from '../../lib/use-highlight';
 
@@ -251,22 +252,23 @@ export function ChangesView({
     { additions: 0, deletions: 0 },
   );
   return (
-    <div className="change-review min-w-0">
-      <div className="change-review-toolbar">
-        <span className="change-review-count">
+    <div className="change-review flex flex-col min-h-0 min-w-0 text-[12px]">
+      <div className="change-review-toolbar flex items-center gap-2 pt-2 pr-2 pb-1.5 pl-3">
+        <span className="change-review-count font-semibold">
           {loading && !result ? 'Reading changes…' : `${files.length} files`}
         </span>
         <DiffStat {...totals} />
-        <span className="change-review-actions">
-          <button
+        <span className="change-review-actions flex items-center gap-0.5 ml-auto">
+          <Button
             type="button"
-            className="change-review-primary"
+            size="sm"
+            className="change-review-primary h-auto rounded-[2px] border border-transparent px-2.5 py-[3px] bg-review-action text-review-action-foreground text-[12px] leading-[18px] font-normal hover:bg-review-action-hover focus-visible:ring-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-file-focus focus-visible:outline-offset-[-1px] disabled:opacity-[0.45]"
             title="Open every changed file in VS Code's multi-file diff editor"
             disabled={!all.length}
             onClick={() => send({ type: 'reviewChanges', id: sessionId })}
           >
             Review all
-          </button>
+          </Button>
           <button
             type="button"
             className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground"
@@ -279,11 +281,11 @@ export function ChangesView({
           </button>
         </span>
       </div>
-      <p className="change-review-caption">
+      <p className="change-review-caption m-0 px-3 pb-1.5 text-[11px] text-file-description">
         {result?.baseline ? `${result.baseline.slice(0, 7)} (HEAD)` : 'Empty repository'} ↔ working
         tree
       </p>
-      <div className="change-review-filters">
+      <div className="change-review-filters flex items-center gap-2 pr-2 pb-1.5 pl-3">
         <input
           aria-label="Search changed files"
           placeholder="Filter files…"
@@ -292,7 +294,7 @@ export function ChangesView({
           className="change-review-search"
         />
         <label
-          className="change-review-scope"
+          className="change-review-scope flex items-center gap-[5px] shrink-0 text-[11px] text-file-description"
           title="Files recorded during this thread, including provider reports. Coverage may be incomplete."
         >
           <input
@@ -305,21 +307,26 @@ export function ChangesView({
         </label>
       </div>
       {threadOnly && session && !evidence.size ? (
-        <p className="change-review-note">No recorded file evidence in this thread.</p>
+        <p className="change-review-note m-0 px-3 pb-1.5 text-[11px] text-file-description">
+          No recorded file evidence in this thread.
+        </p>
       ) : null}
       {result?.error ? (
-        <p className="change-review-note" role="alert">
+        <p
+          className="change-review-note m-0 px-3 pb-1.5 text-[11px] text-file-description"
+          role="alert"
+        >
           {result.error}
         </p>
       ) : null}
       {!loading && result && !result.error && !files.length ? (
-        <p className="change-review-note">
+        <p className="change-review-note m-0 px-3 pb-1.5 text-[11px] text-file-description">
           {query || threadOnly
             ? 'No matching changed files.'
             : 'No uncommitted changes in this checkout.'}
         </p>
       ) : null}
-      <div className="change-review-list">
+      <div className="change-review-list px-1 pb-2">
         {files.slice(0, limit).map((file) => {
           const directory = file.path.includes('/')
             ? file.path.slice(0, file.path.lastIndexOf('/'))
@@ -339,12 +346,18 @@ export function ChangesView({
               }}
             >
               <FileBadge path={file.path} />
-              <span className="change-review-name">{file.path.split('/').at(-1)}</span>
-              <span className="change-review-directory">{directory}</span>
+              <span className="change-review-name shrink min-w-0 truncate">
+                {file.path.split('/').at(-1)}
+              </span>
+              <span className="change-review-directory flex-1 min-w-0 truncate text-file-description text-[11px]">
+                {directory}
+              </span>
               {file.binary ? (
-                <span className="change-review-muted">Binary</span>
+                <span className="change-review-muted text-[11px] text-file-description">
+                  Binary
+                </span>
               ) : file.truncated ? (
-                <span className="change-review-muted">Large</span>
+                <span className="change-review-muted text-[11px] text-file-description">Large</span>
               ) : (
                 <DiffStat additions={file.additions} deletions={file.deletions} />
               )}
@@ -361,7 +374,7 @@ export function ChangesView({
         {files.length > limit ? (
           <button
             type="button"
-            className="change-review-file change-review-muted"
+            className="change-review-file text-[11px] text-file-description"
             onClick={() => setLimit(limit + 200)}
           >
             Show {Math.min(200, files.length - limit)} more

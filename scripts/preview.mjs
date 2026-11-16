@@ -22,7 +22,7 @@ createServer(async (request, response) => {
     response.end(vscodeDefaults);
     return;
   }
-  if (/^\/fixture-images\/sample(?:-\d+)?\.png$/.test(route)) {
+  if (/^\/fixture-images\/(?:sample(?:-\d+)?|00000000-0000-4000-8000-\d{12})\.png$/.test(route)) {
     response.setHeader('Content-Type', 'image/png');
     response.end(Buffer.from(fixtureImage, 'base64'));
     return;
@@ -58,7 +58,9 @@ createServer(async (request, response) => {
             ? 'text/css'
             : 'text/javascript',
     );
-    response.end(await readFile(path.join('dist', route.slice(1))));
+    // GIFs are source fixtures for frame checks; runtime uses only the PNG strips.
+    const root = mascot && route.endsWith('.gif') ? 'media' : 'dist';
+    response.end(await readFile(path.join(root, route.slice(1))));
   } catch {
     response.writeHead(404);
     response.end('Run pnpm build first.');

@@ -24,6 +24,8 @@ export interface ComposerProps {
   attachments: Attachment[];
   draftKey: string;
   busy: boolean;
+  /** A submitted message is still waiting for host acceptance. Editing stays available. */
+  submissionPending?: boolean;
   trusted: boolean;
   focusKey: string;
   /** At the top of a new thread, so menus open downward. */

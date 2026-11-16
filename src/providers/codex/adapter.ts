@@ -34,6 +34,7 @@ import type { ImageStore } from '../shared/image-store';
 import { resolveInside } from '../shared/paths';
 import { describeSkillRead, displayCommand } from '../tool-format';
 import { codexLimits } from '../usage';
+import { initializeCodex } from './handshake';
 
 function fileDiffs(changes: any[] | undefined): FileDiff[] {
   return (changes ?? []).map((change) => {
@@ -146,11 +147,7 @@ export class CodexAgent implements Agent {
     );
     const rpc = this.rpc;
     this.ready = (async () => {
-      await rpc.request('initialize', {
-        clientInfo: { name: 'agent_workspace', title: 'Agent Workspace', version: '0.6.0' },
-        capabilities: { experimentalApi: true },
-      });
-      rpc.write({ method: 'initialized' });
+      await initializeCodex(rpc, { experimentalApi: true });
       const fork = this.session.nativeId ? undefined : this.session.forkFrom;
       const result = this.session.nativeId
         ? await rpc.request('thread/resume', { threadId: this.session.nativeId })

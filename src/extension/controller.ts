@@ -36,7 +36,7 @@ import { launcherFor } from './launcher';
 import { NativeHistory } from './native-history';
 import { restoredThreadId } from './panel-state';
 import { PlanStore } from './plans';
-import { type ActionRoutes, routeAction } from './router';
+import { type ActionRoutes, RoutedActionError, routeAction } from './router';
 import {
   CHAT_VIEW,
   FALLBACK_VIEW,
@@ -503,7 +503,11 @@ export class WorkspaceController {
       await routeAction(raw, surface, this.routes);
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
-      await surface.webview.postMessage({ type: 'error', text });
+      await surface.webview.postMessage({
+        type: 'error',
+        text,
+        operation: error instanceof RoutedActionError ? error.operation : undefined,
+      });
       this.output.appendLine(text);
     }
   }

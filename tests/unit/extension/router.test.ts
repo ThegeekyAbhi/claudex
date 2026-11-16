@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { routeAction } from '../../../src/extension/router';
+import { RoutedActionError, routeAction } from '../../../src/extension/router';
 import type { Surface } from '../../../src/extension/surfaces';
 import { actionSchema } from '../../../src/shared/model';
 import { testRoutes as routes } from '../../fixtures/host-route-fixture';
@@ -119,5 +119,53 @@ test('host router stops before dispatch when workspace trust fails', async () =>
       }),
     ),
     /untrusted/,
+  );
+});
+
+test('routed failures derive operation identity from the validated action', async () => {
+  await assert.rejects(
+    routeAction(
+      {
+        type: 'send',
+        id: 'thread',
+        text: 'message',
+        submissionId: 'send-1',
+        operation: { kind: 'changes', requestId: 'forged' },
+      },
+      surface,
+      routes({
+        workspace: {
+          send: () => {
+            throw new Error('Cannot send');
+          },
+        },
+      }),
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof RoutedActionError);
+      assert.equal(error.message, 'Cannot send');
+      assert.deepEqual(error.operation, {
+        kind: 'submission',
+        submissionId: 'send-1',
+        draftKey: 'thread',
+      });
+      return true;
+    },
+  );
+  await assert.rejects(
+    routeAction(
+      { type: 'changes', id: 'thread', requestId: 'changes-1' },
+      surface,
+      routes({
+        requireTrust: () => {
+          throw new Error('Trust required');
+        },
+      }),
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof RoutedActionError);
+      assert.deepEqual(error.operation, { kind: 'changes', id: 'thread', requestId: 'changes-1' });
+      return true;
+    },
   );
 });

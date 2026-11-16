@@ -13,6 +13,7 @@ function targets() {
     (name: string) =>
     (...args: unknown[]) => {
       calls.push([name, ...args]);
+      return true;
     };
   const handlers: HostMessageTargets = {
     snapshot: {
@@ -74,13 +75,16 @@ test('empty image bases are ignored and absent selection is still delivered', ()
 test('sent acknowledgement clears the draft before releasing submission state', () => {
   const { calls, handlers } = targets();
   receiveHostMessage({ type: 'sent', id: 'local-id', text: '@claude review' }, handlers);
-  assert.deepEqual(calls, [['draft.sent', 'local-id', '@claude review'], ['turn.sent']]);
+  assert.deepEqual(calls, [
+    ['draft.sent', 'local-id', '@claude review', undefined, undefined],
+    ['turn.sent', 'local-id', undefined],
+  ]);
 });
 
-test('errors update visible error, submission lifecycle, then changes loading', () => {
+test('general errors remain visible without releasing unrelated pending operations', () => {
   const { calls, handlers } = targets();
   receiveHostMessage({ type: 'error', text: 'Interrupted' }, handlers);
-  assert.deepEqual(calls, [['error', 'Interrupted'], ['turn.failed'], ['changes.failed']]);
+  assert.deepEqual(calls, [['error', 'Interrupted']]);
 });
 
 test('drafts, attachments, context and changes reach only their owning concern', () => {
@@ -104,4 +108,69 @@ test('drafts, attachments, context and changes reach only their owning concern',
     ['context', context],
     ['changes.received', 'local-id', result],
   ]);
+});
+
+test('validated operation failures reach only their owner with request identity', () => {
+  const { calls, handlers } = targets();
+  receiveHostMessage(
+    {
+      type: 'error',
+      text: 'Send failed',
+      operation: {
+        kind: 'submission',
+        submissionId: 'send-2',
+        draftKey: 'thread',
+      },
+    },
+    handlers,
+  );
+  receiveHostMessage(
+    {
+      type: 'error',
+      text: 'Changes failed',
+      operation: {
+        kind: 'changes',
+        requestId: 'change-2',
+        id: 'thread',
+      },
+    },
+    handlers,
+  );
+  assert.deepEqual(calls, [
+    ['turn.failed', 'send-2', 'thread'],
+    ['error', 'Send failed'],
+    ['changes.failed', 'thread', 'change-2'],
+    ['error', 'Changes failed'],
+  ]);
+});
+
+test('superseded operation failures neither show errors nor release another owner', () => {
+  const { calls, handlers } = targets();
+  handlers.turns.failed = () => false;
+  handlers.changes.failed = () => false;
+  receiveHostMessage(
+    {
+      type: 'error',
+      text: 'Old send',
+      operation: {
+        kind: 'submission',
+        submissionId: 'old',
+        draftKey: 'thread',
+      },
+    },
+    handlers,
+  );
+  receiveHostMessage(
+    {
+      type: 'error',
+      text: 'Old changes',
+      operation: {
+        kind: 'changes',
+        requestId: 'old',
+        id: 'thread',
+      },
+    },
+    handlers,
+  );
+  assert.deepEqual(calls, []);
 });

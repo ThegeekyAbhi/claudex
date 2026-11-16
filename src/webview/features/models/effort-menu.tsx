@@ -124,6 +124,17 @@ function EffortSlider({
     event.preventDefault();
   };
 
+  // Heat follows the thumb, so a drag warms or cools the fill as it goes.
+  const heatAt = (ratio: number) => {
+    const at = ratio * last;
+    const below = Math.floor(at);
+    const above = Math.min(last, below + 1);
+    const low = effortHeat(stops[below], below, last);
+    return low + (effortHeat(stops[above], above, last) - low) * (at - below);
+  };
+  const heat = heatAt(shown);
+  const tint = heatColor(heat);
+
   const position = `calc(${PAD + THUMB / 2}px + (100% - ${(PAD + THUMB / 2) * 2}px) * ${shown})`;
   const still = drag !== null || reducedMotion();
   const easing = 'cubic-bezier(0.34, 1.4, 0.64, 1)';
@@ -151,10 +162,13 @@ function EffortSlider({
         {/* The filled part, a soft wash up to the thumb. */}
         <div
           aria-hidden="true"
-          className="absolute inset-y-0 left-0 rounded-full bg-[linear-gradient(90deg,#2f5fd0,#4a86f2)] shadow-[inset_0_1px_0_rgb(255_255_255/0.12)]"
+          className="absolute inset-y-0 left-0 rounded-full bg-[linear-gradient(90deg,transparent,rgb(255_255_255/0.16))]"
           style={{
             width: `calc(${position} + ${THUMB / 2 + PAD}px)`,
-            transition: `width ${duration} ${easing}`,
+            backgroundColor: tint,
+            // A faint glow that only appears as effort climbs.
+            boxShadow: `inset 0 1px 0 rgb(255 255 255 / 0.12), 0 0 16px -2px color-mix(in oklch, ${tint} ${Math.round(heat * 60)}%, transparent)`,
+            transition: `width ${duration} ${easing}, background-color ${still ? '0ms' : '240ms'} ease, box-shadow ${still ? '0ms' : '240ms'} ease`,
           }}
         />
         {stops.map((stop, at) => (
@@ -183,11 +197,61 @@ function EffortSlider({
         key={text}
         aria-hidden="true"
         className="min-w-[72px] pl-2.5 pr-3.5 text-[12px] font-medium text-foreground animate-effort-label motion-reduce:animate-none"
+        style={{
+          // The read-out picks up a hint of the fill once effort runs warm.
+          color: `color-mix(in oklch, ${tint} ${Math.round(Math.max(0, heat - 0.3) * 50)}%, var(--foreground))`,
+          transition: still ? undefined : 'color 240ms ease',
+        }}
       >
         {text}
       </span>
     </div>
   );
+}
+
+/**
+ * How "hot" a level reads, 0 (cool blue) to 1 (red). Known names map to fixed points
+ * so a model with fewer levels doesn't paint its "high" red; unknown names fall back
+ * to their position on the track.
+ */
+function effortHeat(stop: string | undefined, at: number, last: number): number {
+  if (stop === undefined) return 0;
+  const known: Record<string, number> = {
+    none: 0,
+    minimal: 0,
+    low: 0,
+    medium: 0.15,
+    high: 0.5,
+    xhigh: 0.75,
+    max: 1,
+    ultra: 1,
+  };
+  return known[stop.toLowerCase()] ?? (last ? at / last : 0);
+}
+
+/** Blue → amber → orange → red, interpolated in OKLCH so the steps feel even. */
+const HEAT_STOPS: [heat: number, l: number, c: number, h: number][] = [
+  [0, 0.56, 0.17, 262],
+  [0.15, 0.56, 0.17, 262],
+  [0.5, 0.68, 0.15, 62],
+  [0.75, 0.64, 0.17, 45],
+  [1, 0.58, 0.2, 27],
+];
+function heatColor(heat: number): string {
+  const value = clamp(heat, 0, 1);
+  let index = 1;
+  while (index < HEAT_STOPS.length - 1 && HEAT_STOPS[index][0] < value) index += 1;
+  const [h0, l0, c0, hue0] = HEAT_STOPS[index - 1];
+  const [h1, l1, c1, hue1] = HEAT_STOPS[index];
+  const t = h1 === h0 ? 0 : (value - h0) / (h1 - h0);
+  // Take the shorter way round the hue wheel (blue → violet → amber, not through green).
+  let delta = hue1 - hue0;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  const hue = (((hue0 + delta * t) % 360) + 360) % 360;
+  const l = l0 + (l1 - l0) * t;
+  const c = c0 + (c1 - c0) * t;
+  return `oklch(${l.toFixed(3)} ${c.toFixed(3)} ${hue.toFixed(1)})`;
 }
 
 function reducedMotion() {

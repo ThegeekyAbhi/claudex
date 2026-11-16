@@ -1,0 +1,48 @@
+/* Eight fixed mascot frames; only the strip's transform changes during playback. */
+.mascot {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.mascot::before {
+  content: "";
+  display: block;
+  width: 800%;
+  height: 100%;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  animation: mascot-frames 1.2s steps(8, end) infinite;
+}
+.mascot-working::before {
+  background-image: url("./mascot/working.png");
+}
+.mascot-thinking::before {
+  background-image: url("./mascot/thinking.png");
+}
+.mascot-planning::before {
+  background-image: url("./mascot/planning.png");
+}
+.mascot-coding::before {
+  background-image: url("./mascot/coding.png");
+}
+.mascot-reading::before {
+  background-image: url("./mascot/reading.png");
+}
+.mascot-attentive::before {
+  width: 100%;
+  background-image: url("./mascot/attentive.png");
+  animation: none;
+}
+@keyframes mascot-frames {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot::before {
+    animation: none;
+  }
+}

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -90,17 +90,22 @@ test('an unedited plan does not get pasted back', async () => {
   assert.equal(sent.at(-1), 'Implement the plan.');
 });
 
-test('a deleted plan file falls back to the plan in the thread, an emptied one refuses', async () => {
+test('empty and deleted plan files refuse implementation without changing the thread', async () => {
   const { sent, manager, session, emit } = await setup();
   emit({ type: 'plan', text: '# Plan\n\nOriginal.', final: true });
   emit({ type: 'status', status: 'completed' });
   await until(() => session.plan?.file);
   await writeFile(session.plan?.file ?? '', '  \n');
+  const before = structuredClone(session);
+  const sentBefore = [...sent];
   await assert.rejects(manager.buildPlan(session.id), /plan file is empty/);
-  assert.equal(session.plan?.status, 'ready', 'a refused build changes nothing');
-  if (session.plan) session.plan.file = `${session.plan.file}.gone`;
-  await manager.buildPlan(session.id);
-  assert.equal(sent.at(-1), 'Implement the plan.');
+  assert.deepEqual(session, before);
+  await rm(session.plan?.file ?? '');
+  await assert.rejects(manager.buildPlan(session.id), /plan file could not be read/);
+  await assert.rejects(manager.handOffPlan(session.id), /plan file could not be read/);
+  assert.deepEqual(session, before);
+  assert.deepEqual(sent, sentBefore);
+  manager.dispose();
 });
 
 test('checked boxes in a plan do not mark anything complete', async () => {

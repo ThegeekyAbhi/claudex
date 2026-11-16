@@ -146,6 +146,13 @@ const OUR_DELEGATIONS = ['delegate', RUN_AGENT_TOOL];
 export function restoreSessions(value: unknown): Session[] {
   return savedState.parse(value).sessions.map(({ claudeCommand, ...session }) => {
     const unfinished = ['running', 'waiting'].includes(session.status);
+    let lastUserIndex = -1;
+    if (unfinished)
+      for (let index = session.messages.length - 1; index >= 0; index--)
+        if (session.messages[index].role === 'user') {
+          lastUserIndex = index;
+          break;
+        }
     const profileId =
       session.profileId ??
       (session.provider === 'claude' && claudeCommand === 'claud2'
@@ -163,14 +170,9 @@ export function restoreSessions(value: unknown): Session[] {
         ? { plan: { ...session.plan, status: 'incomplete' as const } }
         : {}),
       // Nothing that never reported an outcome may keep claiming to run after a restart.
-      messages: session.messages.flatMap((message, index, all) => {
+      messages: session.messages.flatMap((message, index) => {
         // The turn that was running when the window closed was stopped, not finished.
-        if (
-          unfinished &&
-          message.role === 'user' &&
-          !all.slice(index + 1).some((later) => later.role === 'user')
-        )
-          return [{ ...message, outcome: 'interrupted' as const }];
+        if (index === lastUserIndex) return [{ ...message, outcome: 'interrupted' as const }];
         if (message.tool?.status === 'running') {
           const interrupted = {
             ...message,

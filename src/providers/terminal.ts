@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { effectiveEffort } from '../shared/domain/thinking';
 import type { Session } from '../shared/model';
+import { initializeCodex } from './codex/handshake';
 import { JsonRpc } from './process';
 import { spawnProvider, stopProcessTree } from './spawn';
 
@@ -216,11 +217,7 @@ async function codexRpc<T>(
     { name: 'Codex' },
   );
   try {
-    await rpc.request('initialize', {
-      clientInfo: { name: 'agent_workspace', title: 'Agent Workspace', version: '0.6.0' },
-      capabilities: { experimentalApi: true },
-    });
-    rpc.write({ method: 'initialized' });
+    await initializeCodex(rpc, { experimentalApi: true });
     return await use(rpc);
   } finally {
     rpc.dispose();

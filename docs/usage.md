@@ -46,11 +46,11 @@ Use separate profiles for personal and work Claude Code or Codex accounts:
 
 Adding a profile does not complete sign-in. **Signed in** and **Signed out** come from the CLI's own status command (`claude auth status`, `codex login status`); Claudex only reads its answer, never the credentials. **CLI installed** means the CLI runs but could not say whether it is signed in. Each separate account folder has its own sign-in and settings. Some skill roots, including Codex’s `~/.agents/skills`, can be shared across profiles.
 
-![Add Claude and Codex profiles. Demonstration uses sample accounts.](../media/guide/accounts-add.gif)
+![Add Claude and Codex profiles. Demonstration uses sample accounts.](../media/guide/accounts-add.png)
 
 [Still image: added accounts and sign-in action](../media/guide/accounts-add.png)
 
-![Switch account profiles and choose a model. Demonstration uses sample accounts.](../media/guide/accounts-switch.gif)
+![Switch account profiles and choose a model. Demonstration uses sample accounts.](../media/guide/accounts-switch.png)
 
 [Still image: selected account with an unsent draft](../media/guide/accounts-switch.png)
 

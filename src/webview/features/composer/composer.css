@@ -1,0 +1,70 @@
+.composer-input {
+  width: 100%;
+  padding: 10px 12px 4px;
+  min-height: 52px;
+  max-height: 40vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  line-height: 1.55;
+  outline: none;
+}
+.composer-area.top .composer-input {
+  min-height: 96px;
+}
+.composer-input[data-value=""]::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+  position: absolute;
+}
+.inline-reference {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--raised));
+  color: var(--foreground);
+  font-size: inherit;
+  line-height: 1.4;
+  vertical-align: baseline;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.reference-label {
+  min-width: 0;
+  line-height: inherit;
+}
+.reference-icon-slot,
+.reference-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  line-height: 0;
+  color: var(--muted);
+}
+.reference-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.composer-images {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vscode-scrollbarSlider-background, #79797966) transparent;
+}
+.composer-images:hover {
+  scrollbar-color: var(--vscode-scrollbarSlider-hoverBackground, #646464b3) transparent;
+}
+@media (forced-colors: active) {
+  .composer-images {
+    scrollbar-color: auto;
+  }
+}

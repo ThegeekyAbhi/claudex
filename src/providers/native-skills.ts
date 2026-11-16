@@ -1,6 +1,7 @@
 import type { Skill, SkillSource } from '../shared/model';
+import { withClaudeCatalog } from './claude/catalog-probe';
+import { initializeCodex } from './codex/handshake';
 import { JsonRpc } from './process';
-import { mergeEnv } from './spawn';
 
 export interface SkillList {
   skills: Skill[];
@@ -8,15 +9,12 @@ export interface SkillList {
 }
 const WAIT_MS = 15_000;
 function within<T>(work: Promise<T>, name: string): Promise<T> {
-  return Promise.race([
-    work,
-    new Promise<T>((_, reject) => {
-      setTimeout(
-        () => reject(new Error(`${name} didn’t list its skills in time.`)),
-        WAIT_MS,
-      ).unref?.();
-    }),
-  ]);
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${name} didn’t list its skills in time.`)), WAIT_MS);
+    timer.unref?.();
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
 }
 /** Claude's own commands are marked builtin. Everything else is yours or a plugin's. */
 export function parseClaudeCommands(commands: unknown): SkillList {
@@ -72,41 +70,20 @@ export async function listClaudeSkills(
   env?: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<SkillList> {
-  signal?.throwIfAborted();
-  const { query } = await import('@anthropic-ai/claude-agent-sdk');
-  signal?.throwIfAborted();
-  let release = () => {};
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const idle: AsyncIterable<never> = {
-    [Symbol.asyncIterator]: () => ({
-      next: () => held.then(() => ({ done: true as const, value: undefined })),
-    }),
-  };
-  const active = query({
-    prompt: idle,
-    options: {
+  return withClaudeCatalog(
+    {
+      executable,
       cwd,
-      pathToClaudeCodeExecutable: executable,
+      env,
+      signal,
       settingSources: ['user', 'project', 'local'],
-      ...(env ? { env: mergeEnv(env) } : {}),
+      timeoutMs: WAIT_MS,
+      timeoutMessage: 'Claude didn’t list its skills in time.',
     },
-  });
-  const abort = () => {
-    release();
-    active.close();
-  };
-  signal?.addEventListener('abort', abort, { once: true });
-  try {
-    signal?.throwIfAborted();
-    return parseClaudeCommands(await within(active.supportedCommands(), 'Claude'));
-  } finally {
-    signal?.removeEventListener('abort', abort);
-    release();
-    active.close();
-  }
+    async (active) => parseClaudeCommands(await active.supportedCommands()),
+  );
 }
+
 async function withCodex<T>(
   executable: string,
   cwd: string,
@@ -128,11 +105,7 @@ async function withCodex<T>(
   signal?.addEventListener('abort', abort, { once: true });
   try {
     signal?.throwIfAborted();
-    await rpc.request('initialize', {
-      clientInfo: { name: 'agent_workspace', title: 'Agent Workspace', version: '0.6.0' },
-      capabilities: { experimentalApi: false },
-    });
-    rpc.write({ method: 'initialized' });
+    await initializeCodex(rpc, { experimentalApi: false });
     return await work(rpc);
   } finally {
     signal?.removeEventListener('abort', abort);

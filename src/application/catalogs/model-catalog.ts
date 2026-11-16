@@ -1,14 +1,8 @@
+import { withClaudeCatalog } from '../../providers/claude/catalog-probe';
+import { initializeCodex } from '../../providers/codex/handshake';
 import { JsonRpc } from '../../providers/process';
-import { mergeEnv } from '../../providers/spawn';
 import type { ModelOption } from '../../shared/model';
 
-function within<T>(promise: Promise<T>, label: string, ms = 20_000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} did not answer in time.`)), ms);
-    timer.unref?.();
-    promise.then(resolve, reject).finally(() => clearTimeout(timer));
-  });
-}
 /** Asks the installed Codex for its models. No thread or turn is started. */
 export async function listCodexModels(
   executable: string,
@@ -25,11 +19,7 @@ export async function listCodexModels(
     { name: 'Codex' },
   );
   try {
-    await rpc.request('initialize', {
-      clientInfo: { name: 'agent_workspace', title: 'Agent Workspace', version: '0.6.0' },
-      capabilities: { experimentalApi: true },
-    });
-    rpc.write({ method: 'initialized' });
+    await initializeCodex(rpc, { experimentalApi: true });
     const models: ModelOption[] = [];
     let cursor: string | null = null;
     do {
@@ -61,39 +51,27 @@ export async function listClaudeModels(
   cwd: string,
   env?: Record<string, string>,
 ): Promise<ModelOption[]> {
-  const { query } = await import('@anthropic-ai/claude-agent-sdk');
-  let release = () => {};
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const idle: AsyncIterable<never> = {
-    [Symbol.asyncIterator]: () => ({
-      next: () => held.then(() => ({ done: true as const, value: undefined })),
-    }),
-  };
-  const active = query({
-    prompt: idle,
-    options: {
+  return withClaudeCatalog(
+    {
+      executable,
       cwd,
-      pathToClaudeCodeExecutable: executable,
+      env,
       settingSources: [],
-      ...(env ? { env: mergeEnv(env) } : {}),
+      timeoutMs: 20_000,
+      timeoutMessage: 'Claude did not answer in time.',
     },
-  });
-  try {
-    const models = await within(active.supportedModels(), 'Claude');
-    return models
-      .filter((model) => model.value !== 'default')
-      .map((model) => ({
-        id: model.value,
-        resolvedModel: model.resolvedModel,
-        label: model.displayName,
-        description: model.description,
-        efforts: model.supportedEffortLevels ?? [],
-        adaptiveThinking: Boolean(model.supportsAdaptiveThinking),
-      }));
-  } finally {
-    release();
-    active.close();
-  }
+    async (active) => {
+      const models = await active.supportedModels();
+      return models
+        .filter((model) => model.value !== 'default')
+        .map((model) => ({
+          id: model.value,
+          resolvedModel: model.resolvedModel,
+          label: model.displayName,
+          description: model.description,
+          efforts: model.supportedEffortLevels ?? [],
+          adaptiveThinking: Boolean(model.supportsAdaptiveThinking),
+        }));
+    },
+  );
 }

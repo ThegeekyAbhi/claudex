@@ -9,8 +9,6 @@ biome.json
 tsconfig.json
 pnpm-lock.yaml
 docs/screenshots/**
-dist/host-tests.cjs
-dist/smoke.cjs
 dist/**/*.map
 *.vsix
 releases/**
@@ -20,3 +18,31 @@ test-results/**
 media/claudex-icon-master.png
 docs/marketplace.md
 docs/agent-work/**
+
+# Build metadata, automation, and working plans are development inputs.
+.build-reports/**
+.github/**
+.agents/**
+.codex/**
+plans/**
+**/*-plan.md
+**/*-research.md
+AGENTS.md
+CLAUDE.md
+components.json
+
+# Offline guides use stills; sprite strips are copied once into dist/mascot.
+media/guide/*.gif
+media/mascot/**
+!media/mascot/icon.png
+
+# Architecture and development notes are not installed user documentation.
+docs/restructure/**
+docs/guide-capture.md
+docs/integration.md
+docs/verification.md
+
+# Superseded stills have no installed README, guide, walkthrough, or runtime consumers.
+media/guide/start.png
+media/guide/plan.png
+media/guide/review.png

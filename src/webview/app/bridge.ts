@@ -12,6 +12,7 @@ import type {
   TailMark,
   Thinking,
 } from '../../shared/model';
+import type { ActionFailure } from '../../shared/protocol/failures';
 import type { SeenAt } from '../features/threads/tab-state';
 import type { ThreadViewState } from '../features/threads/thread-filter';
 
@@ -96,8 +97,8 @@ export type HostMessage =
       imageBase?: string;
       tail?: TailMark;
     }
-  | { type: 'sent'; id: string; text: string }
-  | { type: 'error'; text: string }
+  | { type: 'sent'; id: string; text: string; submissionId?: string; threadId?: string }
+  | { type: 'error'; text: string; operation?: ActionFailure }
   | { type: 'draft'; id: string; text: string }
   | { type: 'changes'; id: string; result: ChangesResult }
   | { type: 'attached'; draftKey: string; attachment: Attachment }
@@ -118,3 +119,28 @@ export const emptySnapshot: Snapshot = {
   catalog: emptyCatalog,
   preferences: DEFAULT_PREFERENCES,
 };
+
+export type CopyResult = Extract<HostMessage, { type: 'copyResult' }>;
+const pendingCopies = new Map<string, (result: CopyResult) => void>();
+
+function receiveCopyResult(event: MessageEvent<HostMessage>): void {
+  const message = event.data;
+  if (message?.type !== 'copyResult') return;
+  const receive = pendingCopies.get(message.requestId);
+  if (!receive) return;
+  pendingCopies.delete(message.requestId);
+  if (!pendingCopies.size) window.removeEventListener('message', receiveCopyResult);
+  receive(message);
+}
+
+/** One host subscription for pending copies, independent of the number of rendered buttons. */
+export function requestCopy(text: string, receive: (result: CopyResult) => void): () => void {
+  const requestId = crypto.randomUUID();
+  if (!pendingCopies.size) window.addEventListener('message', receiveCopyResult);
+  pendingCopies.set(requestId, receive);
+  send({ type: 'copy', text, requestId });
+  return () => {
+    pendingCopies.delete(requestId);
+    if (!pendingCopies.size) window.removeEventListener('message', receiveCopyResult);
+  };
+}

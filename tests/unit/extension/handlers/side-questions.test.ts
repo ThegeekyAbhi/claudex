@@ -43,12 +43,12 @@ function fixture(options: { launcherFails?: boolean; agentMissing?: boolean } = 
     },
     { claude: ask, codex: ask },
   );
-  const ask1 = (requestId: string) =>
+  const ask1 = (requestId: string, owner = surface) =>
     handlers
       .handlers()
       .sideQuestion(
         { type: 'sideQuestion', id: session.id, requestId, text: 'q' },
-        surface as unknown as Surface,
+        owner as unknown as Surface,
       );
   const settle = async () => {
     for (let index = 0; index < 5; index++) await new Promise((resolve) => setImmediate(resolve));
@@ -56,7 +56,7 @@ function fixture(options: { launcherFails?: boolean; agentMissing?: boolean } = 
   const finish = () => {
     for (const resolve of pending.splice(0)) resolve();
   };
-  return { posted, ask: ask1, settle, finish, asked, handlers };
+  return { posted, surface, ask: ask1, settle, finish, asked, handlers, pending };
 }
 
 const terminal = (posted: any[], requestId: string) =>
@@ -117,8 +117,52 @@ test('a stopped side question ends without an error', async () => {
   await run.settle();
   await run.handlers
     .handlers()
-    .stopSideQuestion({ type: 'stopSideQuestion', requestId: 'a' }, {} as Surface);
+    .stopSideQuestion(
+      { type: 'stopSideQuestion', requestId: 'a' },
+      run.surface as unknown as Surface,
+    );
   run.finish();
   await run.settle();
   assert.deepEqual(terminal(run.posted, 'a'), [{ type: 'sideAnswer', requestId: 'a', done: true }]);
+});
+
+test('duplicate active IDs start one operation and preserve cancellation for every accepted request', async () => {
+  const run = fixture();
+  for (let index = 0; index < 5; index++) await run.ask('a');
+  await run.ask('b');
+  await run.ask('c');
+  await run.ask('d');
+  assert.equal(run.asked.length, 3);
+  assert.equal(terminal(run.posted, 'a').length, 0);
+  assert.equal(terminal(run.posted, 'd').length, 1);
+  run.handlers.dispose();
+  assert.ok(run.asked.every((question) => question.signal.aborted));
+  run.finish();
+  await run.settle();
+  assert.equal(terminal(run.posted, 'a').length, 1);
+});
+
+test('request identity and stop ownership are scoped to the asking surface', async () => {
+  const run = fixture();
+  const otherPosted: any[] = [];
+  const other = { webview: { postMessage: async (message: unknown) => otherPosted.push(message) } };
+  await run.ask('a');
+  await run.ask('a', other);
+  await run.handlers
+    .handlers()
+    .stopSideQuestion({ type: 'stopSideQuestion', requestId: 'a' }, other as unknown as Surface);
+  assert.equal(run.asked.length, 2);
+  assert.equal(run.asked[0].signal.aborted, false);
+  assert.equal(run.asked[1].signal.aborted, true);
+  // The second completion cannot release the first surface's active ID.
+  run.pending.pop()?.();
+  await run.settle();
+  await run.ask('a');
+  assert.equal(run.asked.length, 2);
+  run.handlers.dispose();
+  assert.equal(run.asked[0].signal.aborted, true);
+  run.finish();
+  await run.settle();
+  assert.equal(terminal(run.posted, 'a').length, 1);
+  assert.equal(terminal(otherPosted, 'a').length, 1);
 });
