@@ -76,7 +76,8 @@ export function applyEvent(session: Session, event: AgentEvent): void {
       }
   } else if (event.type === 'activeModel') session.activeModel = event.model;
   else if (event.type === 'reportedMode') session.reportedMode = event.mode;
-  else if (event.type === 'runtime') session.runtime = { ...session.runtime, ...event.runtime };
+  else if (event.type === 'runtime')
+    session.runtime = { ...session.runtime, ...event.runtime, observedAt: Date.now() };
   else if (event.type === 'nativeSettings') session.nativeSettings ??= event.settings;
   else if (event.type === 'usage') {
     const limits = new Map((session.usage?.limits ?? []).map((item) => [item.id, item]));

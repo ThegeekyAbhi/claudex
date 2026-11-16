@@ -126,7 +126,7 @@ Type **@** in the composer to browse files, folders, past threads, terminals, br
 
 ## Select and browse skills
 
-Type **/** to search skills available to the current account, then choose one to add a removable chip. A selected chip is a request to use a skill; only a reported tool call establishes actual use. Choose **Manage skills…** to browse instructions. Installation remains with your CLI.
+Type **/** to search skills available to the current account, then choose one to add a removable chip. A selected chip is a request to use a skill; only a reported tool call establishes actual use. A search also lists matching skills from your other accounts; picking one sends its instructions with your message as context, not as a native skill. Choose **Manage skills…** to open the Skills page, where you can search every account, see what's missing from one, and **Make global** a personal skill so every Claude and Codex account shares one copy.
 
 ![Select and browse skills. Sample UI demonstration.](../media/guide/skills.gif)
 

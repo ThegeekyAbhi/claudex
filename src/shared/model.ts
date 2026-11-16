@@ -2,6 +2,7 @@
 
 export * from './domain/agents';
 export * from './domain/capabilities';
+export * from './domain/configuration';
 export * from './domain/delegation';
 export * from './domain/modes';
 export * from './domain/nudges';

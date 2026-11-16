@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AgentKind, AgentMode, Provider, Status } from './agents';
 import type { Preferences } from './preferences';
-import type { AgentProfile } from './profiles';
+import { type AgentProfile, PROFILE_ID, profileLabel } from './profiles';
 import type { SkillCatalogs, SkillRequest } from './skills';
 import type { Thinking } from './thinking';
 
@@ -72,6 +72,11 @@ export const attachmentSchema = z.discriminatedUnion('kind', [
     kind: z.literal('skill'),
     name: z.string().min(1).max(200),
     path: z.string().max(4096).optional(),
+    /**
+     * Set when the skill belongs to another account. Its instructions go with the message as
+     * context; it is never requested as a native skill of the account sending it.
+     */
+    from: z.string().regex(PROFILE_ID).optional(),
   }),
 ]);
 export type Attachment = z.infer<typeof attachmentSchema>;
@@ -110,8 +115,11 @@ export function attachmentLabel(attachment: Attachment): string {
     case 'diff':
       return 'Branch diff';
     case 'terminal':
-    case 'skill':
       return attachment.name;
+    case 'skill':
+      return attachment.from
+        ? `${attachment.name} · from ${profileLabel(attachment.from)}`
+        : attachment.name;
   }
 }
 export interface ImageInput {
@@ -276,6 +284,8 @@ export interface Session {
   updatedAt: number;
 }
 export interface RuntimeInfo {
+  observedAt?: number;
+  skillNames?: string[];
   mcpServers?: { name: string; status?: string }[];
   instructionFiles?: string[];
 }

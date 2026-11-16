@@ -37,7 +37,7 @@ export function useAppState() {
   const threads = useThreadView(
     saved,
     host.snapshot.sessions,
-    tabs.accounts.active ? undefined : tabs.current.session,
+    tabs.page ? undefined : tabs.current.session,
   );
   const side = useSideQuestions();
   const turns = useTurns(host.snapshot, tabs, drafts, compose, ui.setError, side.ask);

@@ -21,12 +21,8 @@ export function AppHeader({
   threads,
   changes,
   turns,
-  ui,
   threadsPane,
-}: Pick<
-  ReturnType<typeof useAppState>,
-  'host' | 'tabs' | 'threads' | 'changes' | 'turns' | 'ui'
-> & {
+}: Pick<ReturnType<typeof useAppState>, 'host' | 'tabs' | 'threads' | 'changes' | 'turns'> & {
   /** In the wide layout, the thread list is a resizable pane that can be folded away. */
   threadsPane?: ReturnType<typeof useAppState>['layout']['threads'];
 }) {
@@ -64,7 +60,7 @@ export function AppHeader({
         >
           <Icon name="history" />
         </button>
-        {session && !session.observed && !tabs.accounts.active ? (
+        {session && !session.observed && !tabs.page ? (
           <Hint
             label={
               session.inTerminal
@@ -88,7 +84,7 @@ export function AppHeader({
             </span>
           </Hint>
         ) : null}
-        {session?.plan && !tabs.accounts.active ? (
+        {session?.plan && !tabs.page ? (
           <Popover>
             <Hint label="This thread's plan">
               <PopoverTrigger asChild>
@@ -144,7 +140,7 @@ export function AppHeader({
         ) : null}
         <OverflowMenu
           items={[
-            ...(session && !session.observed && !tabs.accounts.active
+            ...(session && !session.observed && !tabs.page
               ? [
                   ...(snapshot.preferences.crossAgentContext !== 'off'
                     ? runnableProfiles()
@@ -181,7 +177,7 @@ export function AppHeader({
               key: 'skills',
               label: 'Skills',
               icon: <Icon name="wrench" size={14} />,
-              onSelect: () => ui.skills.setOpen(true),
+              onSelect: () => tabs.skills.open(),
             },
             {
               key: 'appearance',

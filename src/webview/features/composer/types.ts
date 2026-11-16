@@ -13,7 +13,8 @@ import type { ContextResults } from '../attachments/context-menu';
 export interface ComposerProps {
   catalog: Catalog;
   skills: SkillCatalogs;
-  onManageSkills: () => void;
+  /** Opens the Skills page, carrying what was typed after `/`. */
+  onManageSkills: (query?: string) => void;
   session?: Session;
   sessions: Session[];
   project: string;

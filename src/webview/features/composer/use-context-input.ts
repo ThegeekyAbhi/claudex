@@ -5,6 +5,7 @@ import {
   attachmentToken,
   MAX_ATTACHMENTS,
   numberImages,
+  runnableProfiles,
   withMention,
 } from '../../../shared/model';
 import { send } from '../../app/bridge';
@@ -31,10 +32,11 @@ export function useContextInput({
   onAttachments,
   onError,
   agent,
+  skillCwd,
 }: Pick<
   ComposerProps,
   'draft' | 'attachments' | 'draftKey' | 'focusKey' | 'onDraft' | 'onAttachments' | 'onError'
-> & { agent: AgentKind }) {
+> & { agent: AgentKind; skillCwd?: string }) {
   const textarea = useRef<ComposerEditorHandle>(null);
   const [trigger, setTrigger] = useState<Trigger>();
   /** Escape hides the menu until the text changes. */
@@ -64,9 +66,14 @@ export function useContextInput({
     return () => clearTimeout(timer);
   }, [query, menuOpen, skillTrigger]);
   // Refreshed behind the menu, which shows what's already known straight away.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a changed project invalidates this menu's catalog
   useEffect(() => {
-    if (skillTrigger && menuOpen) send({ type: 'refreshSkills', agent });
-  }, [skillTrigger, menuOpen, agent]);
+    if (!skillTrigger || !menuOpen) return;
+    // Every account, so other accounts' skills can be offered too. A file scan starts no CLI.
+    send({ type: 'refreshSkills', agent });
+    for (const profile of runnableProfiles())
+      if (profile.id !== agent) send({ type: 'refreshSkills', agent: profile.id });
+  }, [skillTrigger, menuOpen, agent, skillCwd]);
   // In the same commit as the text, so a key pressed right after a pick cannot land before it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: this follows the draft changing
   useLayoutEffect(() => {
@@ -224,6 +231,11 @@ export function useContextInput({
     menuOpen,
     readTrigger,
     removeToken,
+    /** Puts a command such as `/btw` where the `/` was typed. */
+    insertCommand: (name: string) => {
+      if (trigger) insertTokens([`/${name}`], trigger.start, trigger.end);
+      setTrigger(undefined);
+    },
     attach,
     removeAttachment,
     pickAgent,

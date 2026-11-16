@@ -646,6 +646,8 @@ export class ClaudeAgent {
     });
   }
   private system(message: Extract<SDKMessage, { type: 'system' }>): void {
+    if (message.subtype === 'commands_changed')
+      this.emit({ type: 'runtime', runtime: { skillNames: undefined } });
     if (message.subtype === 'status' && message.permissionMode)
       this.emit({ type: 'reportedMode', mode: message.permissionMode });
     if (message.subtype === 'init') {
@@ -655,6 +657,13 @@ export class ClaudeAgent {
       this.emit({
         type: 'runtime',
         runtime: {
+          ...(Array.isArray(message.skills)
+            ? {
+                skillNames: message.skills
+                  .filter((name) => typeof name === 'string')
+                  .slice(0, 2000),
+              }
+            : {}),
           mcpServers: (message.mcp_servers ?? [])
             .filter((server) => server.name !== 'agent-workspace')
             .map((server) => ({ name: server.name, status: server.status })),

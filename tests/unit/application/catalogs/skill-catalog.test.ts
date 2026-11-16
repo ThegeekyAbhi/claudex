@@ -23,7 +23,13 @@ test('Claude: its own commands are left out, and no source is invented', () => {
     null,
   ]);
   assert.deepEqual(skills, [
-    { name: 'deploy', description: 'Deploys', argumentHint: '<env>', enabled: true },
+    {
+      name: 'deploy',
+      description: 'Deploys',
+      argumentHint: '<env>',
+      enabled: true,
+      evidence: 'native',
+    },
   ]);
   assert.deepEqual(problems, []);
   assert.deepEqual(parseClaudeCommands(undefined).skills, []);

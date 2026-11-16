@@ -171,3 +171,26 @@ test('mixed workspace and pasted images have matching references and filenames',
     [1, 2],
   );
 });
+test('a borrowed skill goes as context, never as a native skill request', async () => {
+  const { root, options } = await setup();
+  const file = path.join(root, 'lent', 'review', 'SKILL.md');
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, '---\nname: review\ndescription: d\n---\nCheck every branch.');
+  const input = await resolveAttachments(
+    [{ kind: 'skill', name: 'review', path: file, from: 'codex' }],
+    options,
+  );
+  assert.equal(input.skills, undefined, 'not requested natively');
+  assert.match(input.context ?? '', /borrowed from Codex/);
+  assert.match(input.context ?? '', /Check every branch\./);
+  assert.match(input.context ?? '', /not invoked as a native skill/);
+  assert.deepEqual(input.attachments, [
+    { kind: 'skill', name: 'review', path: file, from: 'codex' },
+  ]);
+  const own = await resolveAttachments([{ kind: 'skill', name: 'review', path: file }], options);
+  assert.deepEqual(own.skills, [{ name: 'review', path: file }]);
+  await assert.rejects(
+    resolveAttachments([{ kind: 'skill', name: 'x', path: '/etc/passwd', from: 'codex' }], options),
+    /no instructions file/,
+  );
+});

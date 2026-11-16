@@ -17,8 +17,9 @@ export function sessionsForView(sessions: Session[], selectedId?: string): Sessi
     if (session.id === selectedId) return session;
     if (session.parentId === selectedId)
       return { ...session, messages: session.messages.slice(-40) };
-    const { plan: _plan, ...summary } = session;
-    return { ...summary, messages: [] };
+    // Other threads keep only that they have a plan, so it can be listed without its text.
+    const { plan, ...summary } = session;
+    return { ...summary, ...(plan ? { plan: { ...plan, text: '' } } : {}), messages: [] };
   });
 }
 export interface SnapshotUpdate

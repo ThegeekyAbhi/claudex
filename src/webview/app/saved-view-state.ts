@@ -9,7 +9,10 @@ export interface SavedViewSources {
   drafts: Pick<ReturnType<typeof useDrafts>, 'texts' | 'attachments'>;
   compose: Pick<ReturnType<typeof useComposeChoice>, 'choice' | 'dismissedNudges'> &
     Partial<Pick<ReturnType<typeof useComposeChoice>, 'buildApprovals'>>;
-  tabs: Omit<ReturnType<typeof useTabs>['saved'], 'accountsActive'> & { accountsActive?: boolean };
+  tabs: Omit<ReturnType<typeof useTabs>['saved'], 'accountsActive' | 'skillsActive'> & {
+    accountsActive?: boolean;
+    skillsActive?: boolean;
+  };
   threads: Pick<ReturnType<typeof useThreadView>, 'scroll' | 'threadView' | 'seen'>;
   layout?: Pick<ReturnType<typeof useWorkspaceLayout>, 'layouts'> & {
     threads?: { folded: boolean };
@@ -26,6 +29,7 @@ export function savedViewState({
   return {
     selectedId: tabs.selectedId,
     ...(tabs.accountsActive ? { accountsActive: true } : {}),
+    ...(tabs.skillsActive ? { skillsActive: true } : {}),
     drafts: drafts.texts,
     attachments: drafts.attachments,
     scroll: threads.scroll.current,

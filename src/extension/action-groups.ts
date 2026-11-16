@@ -18,7 +18,10 @@ export const actionGroups = {
     'setThinking',
     'refreshModels',
     'refreshSkills',
+    'inspectConfiguration',
+    'verifySkills',
     'openSkill',
+    'makeSkillsGlobal',
     'setSkillEnabled',
   ],
   threads: [

@@ -46,7 +46,7 @@ export interface ThreadsHandlersContext {
   terminalCapture: Pick<TerminalCapture, 'text'>;
   selected(): Session | undefined;
   requireAgent(id: AgentKind): AgentProfile;
-  checkSkills(agent: AgentKind, attachments?: Attachment[]): Promise<Attachment[]>;
+  checkSkills(agent: AgentKind, attachments?: Attachment[], cwd?: string): Promise<Attachment[]>;
   modelOption(agent: AgentKind, model?: string | null): ModelOption | undefined;
   setThinking(session: Session, thinking: Thinking): void;
   select(id?: string, surface?: Surface): Promise<void>;
@@ -115,19 +115,19 @@ export class ThreadsHandlers {
     if (continued?.observed)
       throw new Error('A worker can only be continued from its lead thread.');
     const workspace = continued?.workspace ?? (await this.chooseWorkspace(parent));
-    // Checked first, so a bad attachment keeps your draft and creates no thread.
-    const input = await this.input(
-      await this.context.checkSkills(action.delegate ?? action.agent, action.attachments),
-      workspace,
-      // A new worktree is a separate checkout, so the source may keep working.
-      action.worktree ? { cwd: '' } : undefined,
-    );
     const cwd = action.worktree
       ? await vscode.window.withProgress(
           { location: vscode.ProgressLocation.Notification, title: 'Creating agent worktree' },
           () => createWorktree(workspace),
         )
       : (continued?.cwd ?? parent?.cwd ?? workspace);
+    // Validate against the actual checkout, including a newly requested worktree.
+    const input = await this.input(
+      await this.context.checkSkills(action.delegate ?? action.agent, action.attachments, cwd),
+      workspace,
+      // A new worktree is a separate checkout, so the source may keep working.
+      action.worktree ? { cwd: '' } : undefined,
+    );
     const target = agentTarget(action.agent);
     const session = this.context.sessions.create(
       target.provider,
@@ -184,7 +184,7 @@ export class ThreadsHandlers {
       );
     this.context.requireAgent(action.agent);
     const input = await this.input(
-      await this.context.checkSkills(action.agent, action.attachments),
+      await this.context.checkSkills(action.agent, action.attachments, parent.cwd),
       parent.workspace,
     );
     const messageId = randomUUID();
@@ -298,7 +298,7 @@ export class ThreadsHandlers {
         if (target.thinking && target.thinking !== 'default')
           this.context.setThinking(target, target.thinking);
         const input = await this.input(
-          await this.context.checkSkills(agentKind(target), action.attachments),
+          await this.context.checkSkills(agentKind(target), action.attachments, target.cwd),
           target.workspace,
           target,
         );
@@ -322,7 +322,7 @@ export class ThreadsHandlers {
         this.context.requireAgent(agentKind(target));
         await this.context.catchUp(action.id);
         const input = await this.input(
-          await this.context.checkSkills(agentKind(target), action.attachments),
+          await this.context.checkSkills(agentKind(target), action.attachments, target.cwd),
           target.workspace,
           target,
         );

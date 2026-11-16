@@ -102,7 +102,7 @@ export class WorkspaceController {
     this.sessions = new Sessions(
       storage.fsPath,
       createAgentFactory(launcherFor, this.images, (session) =>
-        skillsFor(this.catalogHandlers.skills, agentKind(session)).skills.filter(
+        skillsFor(this.catalogHandlers.skillsAt(session.cwd), agentKind(session)).skills.filter(
           (skill) => skill.enabled,
         ),
       ),
@@ -117,6 +117,7 @@ export class WorkspaceController {
       sessions: this.sessions,
       output: this.output,
       scheduleUpdate: this.scheduleUpdate.bind(this),
+      cwd: this.skillCwd.bind(this),
       surfaces: this.surfaces,
     });
     this.profilesHandlers = new ProfilesHandlers({
@@ -283,6 +284,8 @@ export class WorkspaceController {
       ),
       vscode.commands.registerCommand('agentWorkspace.refresh', () => this.publish()),
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.publish()),
+      vscode.window.onDidChangeActiveTextEditor(() => this.scheduleUpdate()),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => this.scheduleUpdate()),
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (!event.affectsConfiguration('agentWorkspace')) return;
         const agentSettings = [
@@ -402,7 +405,7 @@ export class WorkspaceController {
     for (const surface of this.surfaces) {
       const selectedId = surface.selectedId;
       const session = this.sessions.sessions.find((item) => item.id === selectedId);
-      const root = session?.cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const root = this.skillCwd(surface);
       let documents = root ? this.cachedDocuments.get(root) : [];
       try {
         if (root && vscode.workspace.isTrusted && !documents) {
@@ -439,7 +442,7 @@ export class WorkspaceController {
           : { catalog: this.catalogHandlers.catalog }),
         ...(streaming && last.skills === this.catalogHandlers.skillsVersion
           ? {}
-          : { skills: this.catalogHandlers.skills }),
+          : { skills: this.catalogHandlers.skillsAt(root) }),
         ...(streaming && last.catalog === this.catalogHandlers.catalogVersion
           ? {}
           : { agents: this.catalogHandlers.agents }),
@@ -523,6 +526,17 @@ export class WorkspaceController {
     }
   }
 
+  private skillCwd(surface?: Surface): string | undefined {
+    const selected = surface ? surface.selectedId : this.selectedId;
+    const session = this.sessions.sessions.find((item) => item.id === selected);
+    if (session) return session.cwd;
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.length) return undefined;
+    const editor = vscode.window.activeTextEditor?.document.uri;
+    const active = editor && vscode.workspace.getWorkspaceFolder(editor);
+    return active?.uri.fsPath ?? (folders.length === 1 ? folders[0].uri.fsPath : undefined);
+  }
+
   private surfaceHandlers(): HandlersFor<'unrestricted'> {
     return {
       ready: async (_action, surface) => {
@@ -599,6 +613,7 @@ export class WorkspaceController {
   }
 
   async dispose(): Promise<void> {
+    this.catalogHandlers.skillLoads.clear();
     if (this.updateTimer) clearTimeout(this.updateTimer);
     for (const watcher of this.documentWatchers.values()) watcher.dispose();
     this.history.dispose();

@@ -25,7 +25,7 @@ import { SetupCard } from '../features/onboarding/setup-card';
 import { BuildContext, PlanOptions } from '../features/plan/plan-options';
 import { QuestionCard } from '../features/questions/question-card';
 import { SidePopover } from '../features/side-question/side-popover';
-import { SkillsPanel } from '../features/skills/skills-panel';
+import { SkillsPage } from '../features/skills/skills-page';
 import { ThreadSidebar } from '../features/threads/thread-list';
 import { AppHeader } from './app-header';
 import { api, emptyCatalog, send } from './bridge';
@@ -115,7 +115,6 @@ export function App() {
         threads={threads}
         changes={changes}
         turns={turns}
-        ui={ui}
         threadsPane={layout.wide ? layout.threads : undefined}
       />
       {tabs.accounts.present ? (
@@ -134,7 +133,21 @@ export function App() {
           />
         </div>
       ) : null}
-      {!tabs.accounts.active ? (
+      {tabs.skills.present ? (
+        <div
+          className="min-h-0 flex-1 flex flex-col"
+          style={{ display: tabs.skills.active ? undefined : 'none' }}
+        >
+          <SkillsPage
+            catalogs={snapshot.skills ?? emptySkills}
+            currentAgent={session ? agentKind(session) : compose.choice.agent}
+            intent={tabs.skills.intent}
+            active={tabs.skills.active}
+            session={session}
+          />
+        </div>
+      ) : null}
+      {!tabs.page ? (
         <>
           {parent ? (
             <div className="shrink-0 flex items-center gap-1 px-3 py-1 border-b border-subtle text-[11.5px] text-muted-foreground">
@@ -281,7 +294,9 @@ export function App() {
                 preferences={snapshot.preferences}
                 catalog={catalog}
                 skills={snapshot.skills ?? emptySkills}
-                onManageSkills={() => ui.skills.setOpen(true)}
+                onManageSkills={(query) =>
+                  tabs.skills.open(session ? agentKind(session) : compose.choice.agent, query)
+                }
                 session={session}
                 sessions={snapshot.sessions}
                 project={snapshot.project}
@@ -394,13 +409,6 @@ export function App() {
               sideKind={changes.panel}
               threads={threadsPane}
             />
-            {ui.skills.open ? (
-              <SkillsPanel
-                catalogs={snapshot.skills ?? emptySkills}
-                initialAgent={session ? agentKind(session) : compose.choice.agent}
-                onClose={() => ui.skills.setOpen(false)}
-              />
-            ) : null}
           </TooltipProvider>
         </ImageBase.Provider>
       </BuildContext.Provider>

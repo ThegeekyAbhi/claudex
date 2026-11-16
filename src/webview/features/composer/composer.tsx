@@ -5,7 +5,6 @@ import {
   nextMode,
   profileLabel,
   profileProvider,
-  skillsFor,
 } from '../../../shared/model';
 import { send } from '../../app/bridge';
 import { Icon } from '../../components/icons';
@@ -79,6 +78,7 @@ export function Composer(props: ComposerProps): ReactElement {
     menuOpen,
     readTrigger,
     removeToken,
+    insertCommand,
     attach,
     removeAttachment,
     pickAgent,
@@ -141,19 +141,22 @@ export function Composer(props: ComposerProps): ReactElement {
         {menuOpen && anchor && trigger?.mark === '/' ? (
           <SkillMenu
             agent={agent}
-            catalog={skillsFor(skills, agent)}
+            catalogs={skills}
             query={trigger.query}
             anchor={anchor}
-            onPick={(skill) =>
+            onPick={(skill, from) =>
               attach({
                 kind: 'skill',
                 name: skill.name,
                 ...(skill.path ? { path: skill.path } : {}),
+                ...(from ? { from } : {}),
               })
             }
+            {...(session && !session.observed ? { onCommand: insertCommand } : {})}
             onManage={() => {
+              const query = trigger.query;
               removeToken();
-              onManageSkills();
+              onManageSkills(query || undefined);
             }}
             onClose={() => setDismissed(trigger.start)}
             keyHandler={menuKeys}

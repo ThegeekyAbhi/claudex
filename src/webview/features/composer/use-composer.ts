@@ -61,8 +61,10 @@ export function useComposer({
       ? attachments.filter(
           (item) =>
             item.kind === 'skill' &&
+            // Borrowed instructions are sent as context, so this account needn't have them.
+            !item.from &&
             !skillsFor(skills, agent).skills.some(
-              (skill) => skill.enabled && sameSkill(skill, item),
+              (skill) => skill.enabled !== false && sameSkill(skill, item),
             ),
         )
       : [];
@@ -78,6 +80,7 @@ export function useComposer({
     onAttachments,
     onError,
     agent,
+    skillCwd: skillsFor(skills, agent).cwd,
   });
   const focusInput = () => input.textarea.current?.focus();
   // A new chat's composer is at the top of the page, so its menus have room below.

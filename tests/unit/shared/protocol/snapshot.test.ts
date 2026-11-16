@@ -115,3 +115,14 @@ test('two selected conversations merge independent streaming tails', () => {
   assert.equal(viewA.sessions.find((item) => item.id === 'first')?.messages.length, 30);
   assert.equal(viewB.sessions.find((item) => item.id === 'second')?.messages.length, 20);
 });
+
+test('other threads keep that they have a plan, without its text', () => {
+  const other = {
+    ...thread(long(3)),
+    id: 'other',
+    plan: { text: 'secret plan', status: 'ready' as const, updatedAt: 1, file: '/p.md' },
+  };
+  const [, summary] = sessionsForView([thread(long(3)), other], 't');
+  assert.equal(summary.plan?.text, '');
+  assert.equal(summary.plan?.file, '/p.md');
+});

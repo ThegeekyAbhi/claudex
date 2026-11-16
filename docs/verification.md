@@ -101,3 +101,15 @@ normal suite. Node v24.15.0 expands the quoted recursive test glob.
 See [the test restructure notes](restructure/tests.md) for the complete module map,
 assertion counts, retained mixed-module coverage, and Git staging details. No live
 provider smoke tests or UI browser suite ran for this restructure.
+
+## Passive skill discovery (2026-11-15)
+
+The first capability-management slice uses filesystem metadata for automatic skill inventory. Native startup is separate and requires an explicit verification action or a turn with selected skills. Tests cover inert hook/script fixtures, project isolation, shared Codex roots, duplicate identities, bounded files, cancellation, stale results, late refresh suppression, cross-surface host lookup, and rejection of toggles on disk findings. Browser checks cover unknown availability, forced rescan, and explicit native verification alongside existing skill selection.
+
+`pnpm check` and `pnpm test:ui` validate this slice without live provider calls. Native discovery, invocation, non-default provider homes, and Windows/remote behavior still require authorized integration testing; filesystem findings do not establish effective configuration or availability in an existing session.
+
+## Read-only configuration inspector (2026-11-15)
+
+Automated provider fixtures cover credential-value omission, multiline/escaped secrets, quoted-key impersonation, duplicate/malformed config, source precedence, policy constraints, custom homes, root-to-cwd discovery, linked-file refusal, external refresh and cancellation. Host fixtures prove that arbitrary incoming paths are ignored and displaced/cancelled results are discarded without native calls. Browser fixtures cover configuration sources and overrides, references, refresh failure with stale results, late cross-profile replies, and safe selected-session baseline rendering. Existing native session tests cover initialization skill metadata and invalidation after command changes.
+
+The inspector does not start a harness, call MCP tools, alter native settings or read authentication files. Full native effectiveness, cloud/MDM policy, selected profile layering and platform-specific behavior still require separately authorized validation. The full-config native API remains unused because it has no established secret-free projection.

@@ -113,14 +113,23 @@ Text typed while a plan waits goes back as the denial message, so Claude revises
 
 ## Skills
 
-`src/application/catalogs/skill-catalog.ts` reads what each CLI reports. No turn runs and no quota is used.
+Passive skill discovery reads bounded Markdown metadata through `src/providers/skill-files.ts`. Opening Skills or the `/` menu does not start a provider, load native settings or run skill scripts. It scans known user/project roots (including Codex's shared `~/.agents/skills`, legacy native-home roots and Claude commands), deduplicates real file paths, and reports unsupported metadata and duplicate names. Bundled, plugin and managed capabilities are not a complete filesystem inventory; use explicit native verification for those.
 
-- **Claude:** `query.supportedCommands()` on an idle session with `settingSources: user, project, local`, leaving out `builtin` entries. It reports no source or path, so none is shown.
-- **Codex:** `skills/list`, with malformed entries reported as problems. `skills/config/write` turns one on or off.
+Disk findings say **Found on disk · availability unverified**. Their enablement is unknown, so they cannot be toggled as though native configuration had confirmed them. **Verify with agent…** asks before starting the selected native harness: startup can run hooks and connect MCP servers even without a model turn. Native results describe that discovery process, not an existing conversation. Codex toggles are available only for a fresh native catalog and still use `skills/config/write`.
 
-Catalogs load in the background, at most every 30 seconds per agent, and are refreshed behind the `/` menu, so opening it never waits on a CLI. A skill coming back from the webview is checked against the catalog before it's sent.
+Catalogs cache for 30 seconds by execution host, profile, executable/version, runtime-home settings and cwd. **Rescan files** forces a new filesystem scan. Forced refresh cancels prior discovery; late results cannot replace newer observations. Failures retain stale results with an error. Each surface sees the selected thread's checkout; new-chat inventory uses the active editor's workspace, or the sole workspace folder. Ambiguous multi-root contexts ask the user to open a project file or select a thread.
 
-Invocation is native: Claude gets `/name` for the first skill and the rest named in the text, and Codex gets `{ type: 'skill', name, path }` inputs. A chip is a request. "Used skill" appears only for a real Claude `Skill` tool call. Codex's protocol reports no such event, so nothing claims one ran.
+On Send, selected skills are verified natively against the actual checkout before the turn. Claude sends a native `/name` command (the rest are named in text); Codex sends structured skill inputs with native paths. A chip remains a request. Only a real Claude `Skill` call proves invocation; Codex catalog/input acknowledgment does not. Selecting a skill from another checkout can fail validation, including when creating a new worktree; the UI must not claim it migrated that deployment.
+
+### Configuration inspector
+
+The Skills panel's **Configuration** view runs a read-only file projection on the selected extension execution host, profile home and project. `src/providers/configuration/inspect.ts` resolves candidate sources; `projection.ts` validates JSON structure and conservatively projects supported TOML declarations. Only allowlisted settings, standalone skill controls, policy-presence markers and credential-reference names enter the response. Unknown values, commands, endpoints and credential values are not decoded/exported. File bytes necessarily pass through memory; this is not a claim that mixed configuration files contain no secrets. No authentication file or whole-config native API is read.
+
+The inspector shows source paths/scopes/read status, local winners and overridden declarations, managed declarations and unresolved policy. It never claims that a file-derived winner is the effective native value. Unsupported/unavailable local files suppress winner estimates; TOML is labeled partial because the full native syntax/semantics are not validated. Codex skill selectors remain ordered declarations rather than an inferred cross-layer toggle. Claude `skillOverrides` states are read-only and apply to standalone skills; plugin controls remain native.
+
+Cloud/MDM policy, managed fragments, selected Codex profile files, native trust, nested Claude project behavior, launch flags and user/local MCP installation scopes are explicitly unresolved. Config files are bounded at 256 KiB, projections are bounded, and linked/escaping/nonregular files are rejected. Refresh reads current bytes; results are transient and are not persisted. Correlated replies and cancellation prevent old results from populating a different profile/project. Failures retain previously displayed results as stale.
+
+Selected-session observations are separate: requested/reported modes, Codex's captured baseline policy/sandbox, and last reported MCP/skill inventory. Claude's initialization skill names are captured from the existing session events and invalidated on `commands_changed`; inspection performs no extra native query. The baseline is not a claim about the current turn's effective permissions, and a reported skill list is not proof of invocation.
 
 ## Attachments and images
 
@@ -139,7 +148,7 @@ A window whose reset time has passed is hidden, since it no longer describes the
 
 ## Staying out of the way
 
-The extension doesn't sit between you and the CLI. Nothing is awaited between Send and the provider call except attachment reads you asked for. While a thread streams, an update carries that thread's tail, and catalogs or documents only when they changed. Shiki loads as its own chunk the first time code appears, and falls back to plain code if that fails. `tests/unit/shared/protocol/snapshot.test.ts` and `tests/integration/application/sessions/turn-lifecycle.test.ts` guard these.
+The extension doesn't sit between you and the CLI. Attachment reads and native validation of selected skills can precede the provider turn. While a thread streams, an update carries that thread's tail, and catalogs or documents only when they changed. Shiki loads as its own chunk the first time code appears, and falls back to plain code if that fails. `tests/unit/shared/protocol/snapshot.test.ts` and `tests/integration/application/sessions/turn-lifecycle.test.ts` guard these.
 
 ## Source layout
 
@@ -163,3 +172,7 @@ The webview's CSP allows no inline styles. `pnpm test:ui` serves the build under
 Design rules came from [Linear's redesign](https://linear.app/now/how-we-redesigned-the-linear-ui) (neutral surfaces, limited accent, Inter), [Emil Kowalski](https://emilkowal.ski/ui/good-vs-great-animations) (trigger-origin menus, ease-out), [Rauno Freiberg](https://rauno.me/craft/interaction-design) (little motion on high-frequency actions), [Vercel's guidelines](https://vercel.com/design/guidelines) (tabular numbers, concentric radii, specific transitions), and [AI UX Playground](https://ai-design-patterns.pages.dev/blog/claude-vs-chatgpt-composer) (older models behind a submenu). Light and high-contrast VS Code themes get their own tokens.
 
 [VS Code webview API](https://code.visualstudio.com/api/extension-guides/webview) provides the rendering and message boundary.
+
+## Capability management design
+
+See [Native capability management research and plan](capability-management.md) for the provider comparison, current implementation audit, safe shared-skill deployment design, MCP diagnostics, and phased plugin/hook backlog. It is a proposal; it does not describe shipped management features.

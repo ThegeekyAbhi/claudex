@@ -5,9 +5,9 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import * as vscode from 'vscode';
 import type { Sessions } from '../../application/sessions/session-manager';
+import { personalSkillsRoot } from '../../providers/skill-copy';
 import {
   type Action,
-  type AgentKind,
   type AgentProfile,
   type AgentSetup,
   agentKind,
@@ -26,7 +26,7 @@ export interface ProfilesHandlersContext {
   loadCatalog(force?: boolean): Promise<void>;
   agents: AgentSetup;
   sessions: Pick<Sessions, 'sessions'>;
-  skillLoads: Map<AgentKind, { at: number; done: Promise<void> }>;
+  skillLoads: { clear(): void };
 }
 
 export class ProfilesHandlers {
@@ -372,7 +372,9 @@ export class ProfilesHandlers {
         const profile = this.requireProfile(action.id);
         const home = profileHome(profile);
         if (!existsSync(home)) throw new Error(`${home} doesn’t exist.`);
-        const skills = path.join(home, 'skills');
+        // Codex's personal skills are shared by every Codex profile, outside its home.
+        const skills =
+          profile.provider === 'codex' ? personalSkillsRoot('codex') : path.join(home, 'skills');
         if (action.folder === 'skills' && !existsSync(skills))
           void vscode.window.showInformationMessage(
             `${profile.label} has no skills folder yet. Skills you add go in ${skills}.`,

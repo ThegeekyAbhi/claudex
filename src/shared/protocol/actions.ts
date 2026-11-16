@@ -165,12 +165,26 @@ export const actionSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('viewPlan'), id: z.string() }),
   z.object({ type: z.literal('editPlan'), id: z.string() }),
-  z.object({ type: z.literal('refreshSkills'), agent: agentEnum }),
+  z.object({
+    type: z.literal('inspectConfiguration'),
+    agent: agentEnum,
+    requestId: z.string().min(1).max(100),
+  }),
+  z.object({ type: z.literal('verifySkills'), agent: agentEnum }),
+  z.object({ type: z.literal('refreshSkills'), agent: agentEnum, force: z.boolean().optional() }),
   z.object({
     type: z.literal('openSkill'),
     agent: agentEnum,
     name: optionName,
     path: z.string().max(4096),
+  }),
+  z.object({
+    type: z.literal('makeSkillsGlobal'),
+    /** Each skill with the account it is read from. */
+    skills: z
+      .array(z.object({ agent: agentEnum, name: optionName, path: z.string().max(4096) }))
+      .min(1)
+      .max(500),
   }),
   z.object({
     type: z.literal('setSkillEnabled'),

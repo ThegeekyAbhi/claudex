@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { git } from '../infrastructure/git';
 import { type ImageStore, MAX_ATTACHED_IMAGE } from '../providers/shared/image-store';
@@ -8,6 +9,7 @@ import {
   IMAGE_EXTENSION,
   type ImageInput,
   numberImages,
+  profileLabel,
   type Session,
   type SessionInput,
   type SkillRequest,
@@ -16,6 +18,8 @@ import {
 const MAX_DIFF = 60_000;
 const MAX_THREAD = 8_000;
 const MAX_TERMINAL = 20_000;
+/** The same limit skill discovery reads frontmatter under. */
+const MAX_BORROWED_SKILL = 64 * 1024;
 
 /** Scores a subsequence match, favouring file names, word starts, and short paths. */
 export function fuzzyScore(query: string, target: string): number | undefined {
@@ -174,6 +178,17 @@ export async function resolveAttachments(
         throw new Error(`The terminal "${attachment.name}" has no output to attach.`);
       lines.push(
         `From the terminal "${attachment.name}":\n\`\`\`\n${capped(output, MAX_TERMINAL, 'output')}\n\`\`\``,
+      );
+      shown.push(attachment);
+    } else if (attachment.kind === 'skill' && attachment.from) {
+      // Checked against the lending account's files before this point; never a native request.
+      if (!attachment.path || !/\.md$/i.test(attachment.path))
+        throw new Error(`The skill “${attachment.name}” has no instructions file to borrow.`);
+      const text = await readFile(attachment.path, 'utf8').catch(() => {
+        throw new Error(`Couldn’t read the skill “${attachment.name}”.`);
+      });
+      lines.push(
+        `Skill instructions borrowed from ${profileLabel(attachment.from)}: "${attachment.name}". It isn't installed in this account, so it was not invoked as a native skill. Read and follow these instructions for this message. Relative paths in it are relative to ${path.dirname(attachment.path)}. Argument substitution and embedded shell commands in it were not run.\n<skill_file path=${JSON.stringify(attachment.path)}>\n${capped(text, MAX_BORROWED_SKILL, 'skill file')}\n</skill_file>`,
       );
       shown.push(attachment);
     } else if (attachment.kind === 'skill') {

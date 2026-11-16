@@ -38,9 +38,31 @@ export function SignalMark({ signal }: { signal: ThreadSignal }) {
 }
 export type TabItem =
   | { kind: 'accounts'; key: string }
+  | { kind: 'skills'; key: string }
   | { kind: 'thread'; key: string; session: Session }
   /** A chat that hasn't started. `text` is what you've typed so far. */
   | { kind: 'draft'; key: string; text: string };
+/** Accounts and Skills open as pages, with a fixed title and icon. */
+const PAGES = {
+  accounts: { title: 'Accounts', icon: 'agent' },
+  skills: { title: 'Skills', icon: 'skill' },
+} as const;
+type PageTab = Extract<TabItem, { kind: keyof typeof PAGES }>;
+function isPage(item: TabItem): item is PageTab {
+  return item.kind === 'accounts' || item.kind === 'skills';
+}
+function tabTitle(item: TabItem): string {
+  if (item.kind === 'thread') return threadTitle(item.session.title);
+  if (item.kind === 'draft') return threadTitle(item.text.split('\n')[0] ?? '', 'New chat');
+  return PAGES[item.kind].title;
+}
+function closeHint(item: TabItem): string {
+  if (item.kind === 'draft') return 'Close and discard this unsent chat';
+  if (item.kind !== 'thread') return `Close ${PAGES[item.kind].title}`;
+  return item.session.status === 'running' || item.session.status === 'waiting'
+    ? 'Close tab. The agent keeps going, and the thread stays in Chats.'
+    : 'Close tab. The thread stays in Chats.';
+}
 /** The active tab shares the page's colour and has no line under it, so it joins what it opens. */
 const TAB =
   'group flex items-center shrink-0 min-w-[84px] max-w-[190px] h-full border-r border-subtle text-muted-foreground hover:text-foreground';
@@ -86,17 +108,10 @@ export function ThreadTabs({
         const active = item.key === activeKey;
         const session = item.kind === 'thread' ? item.session : undefined;
         const signal = session ? signalOf(session) : undefined;
-        const title = session
-          ? threadTitle(session.title)
-          : item.kind === 'accounts'
-            ? 'Accounts'
-            : threadTitle(
-                item.kind === 'draft' ? (item.text.split('\n')[0] ?? '') : '',
-                'New chat',
-              );
+        const title = tabTitle(item);
         // Your only, empty new chat has nothing to close.
         const closable =
-          item.kind === 'accounts' ||
+          isPage(item) ||
           session ||
           items.length > 1 ||
           (item.kind === 'draft' && item.text.trim());
@@ -124,7 +139,7 @@ export function ThreadTabs({
                 {session ? (
                   <AgentMark agent={agentKind(session)} size={12} />
                 ) : (
-                  <Icon name={item.kind === 'accounts' ? 'agent' : 'thread'} size={12} />
+                  <Icon name={isPage(item) ? PAGES[item.kind].icon : 'thread'} size={12} />
                 )}
               </span>
               <span className={`min-w-0 truncate ${active && session ? 'session-name' : ''}`}>
@@ -136,15 +151,7 @@ export function ThreadTabs({
               <button
                 type="button"
                 aria-label={`Close ${title}`}
-                title={
-                  item.kind === 'accounts'
-                    ? 'Close Accounts'
-                    : !session
-                      ? 'Close and discard this unsent chat'
-                      : session.status === 'running' || session.status === 'waiting'
-                        ? 'Close tab. The agent keeps going, and the thread stays in Chats.'
-                        : 'Close tab. The thread stays in Chats.'
-                }
+                title={closeHint(item)}
                 className={`${CLOSE} ${active ? '' : 'opacity-0 group-hover:opacity-100'}`}
                 onClick={() => onClose(item)}
               >

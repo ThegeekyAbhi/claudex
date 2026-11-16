@@ -21,6 +21,7 @@ export function useSavedViewState(state: ViewState) {
   useEffect(persist, [
     state.selectedId,
     state.accountsActive,
+    state.skillsActive,
     state.drafts,
     state.attachments,
     state.compose,

@@ -3,8 +3,7 @@ import { installSelectionCopy } from '../lib/selection-copy';
 
 export function useWorkspaceUI() {
   const [error, setError] = useState('');
-  const [skillsOpen, setSkillsOpen] = useState(false);
-  return { error, setError, skills: { open: skillsOpen, setOpen: setSkillsOpen } };
+  return { error, setError };
 }
 
 export function useWorkspaceEffects(

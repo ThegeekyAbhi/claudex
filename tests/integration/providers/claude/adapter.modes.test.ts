@@ -226,7 +226,7 @@ test('an honored mode and a limit that has reset say nothing', () => {
   assert.equal(chooseNudge(session, 'claude', 'auto', []), undefined);
 });
 
-test('Claude reports its MCP servers, leaving out our own', async () => {
+test('Claude reports skills and MCP servers, and invalidates skills after command changes', async () => {
   const session = fakeSession({ status: 'running' });
   const events: AgentEvent[] = [];
   const agent = new ClaudeAgent(session, 'claude', (event) => events.push(event), {
@@ -234,11 +234,13 @@ test('Claude reports its MCP servers, leaving out our own', async () => {
       const stream = (async function* () {
         yield {
           ...initOf('default'),
+          skills: ['review'],
           mcp_servers: [
             { name: 'agent-workspace', status: 'connected' },
             { name: 'figma', status: 'failed' },
           ],
         };
+        yield { type: 'system', subtype: 'commands_changed', commands: [] };
         yield { type: 'result', subtype: 'success', session_id: 'native', is_error: false };
       })();
       return Object.assign(stream, { close() {} });
@@ -248,8 +250,10 @@ test('Claude reports its MCP servers, leaving out our own', async () => {
   const runtime = events.find((event) => event.type === 'runtime');
   assert.deepEqual(runtime, {
     type: 'runtime',
-    runtime: { mcpServers: [{ name: 'figma', status: 'failed' }] },
+    runtime: { skillNames: ['review'], mcpServers: [{ name: 'figma', status: 'failed' }] },
   });
+  const latest = events.filter((event) => event.type === 'runtime').at(-1);
+  assert.equal(latest?.type === 'runtime' && latest.runtime.skillNames, undefined);
 });
 
 test('a thread saved in the old Agent mode survives with its ID and no mode', () => {

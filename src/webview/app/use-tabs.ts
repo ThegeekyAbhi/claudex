@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Attachment, Session } from '../../shared/model';
+import type { AgentKind, Attachment, Session } from '../../shared/model';
 import {
   ACCOUNTS_TAB,
   DRAFT_TAB,
   isDraftTab,
   reconcileTabs,
+  SKILLS_TAB,
   tabAfterClosing,
 } from '../features/threads/tab-state';
 import type { TabItem } from '../features/threads/thread-tabs';
 import { type ComposeChoice, send, type ViewState } from './bridge';
 import type { useComposeChoice } from './use-compose-choice';
 import type { useDrafts } from './use-drafts';
+
+const PAGE_TABS = { accounts: ACCOUNTS_TAB, skills: SKILLS_TAB } as const;
 
 export function useTabs(
   saved: ViewState | undefined,
@@ -19,7 +22,17 @@ export function useTabs(
   composeChoice: ReturnType<typeof useComposeChoice>,
   reportError: (text: string) => void,
 ) {
-  const [accountsActive, setAccountsActive] = useState(Boolean(saved?.accountsActive));
+  /** A full-page tab showing instead of a thread or draft. */
+  const [page, setPage] = useState<'accounts' | 'skills' | undefined>(
+    saved?.accountsActive ? 'accounts' : saved?.skillsActive ? 'skills' : undefined,
+  );
+  const accountsActive = page === 'accounts';
+  const skillsActive = page === 'skills';
+  const [skillsIntent, setSkillsIntent] = useState<{
+    agent?: AgentKind;
+    query?: string;
+    key: number;
+  }>({ key: 0 });
   const [accountsIntent, setAccountsIntent] = useState<{
     profile?: string;
     create?: boolean;
@@ -40,7 +53,7 @@ export function useTabs(
     : undefined;
   const draftKey = session?.id ?? activeDraft;
   function select(item: Session) {
-    setAccountsActive(false);
+    setPage(undefined);
     closing.current.delete(item.id);
     setHistoryOpen(false);
     setSelectedId(item.id);
@@ -48,7 +61,7 @@ export function useTabs(
     send({ type: 'select', id: item.id });
   }
   const known = new Set(sessions.map((item) => item.id));
-  const activeKey = accountsActive ? ACCOUNTS_TAB : (session?.id ?? activeDraft);
+  const activeKey = page ? PAGE_TABS[page] : (session?.id ?? activeDraft);
   const openKeys = reconcileTabs(
     tabs,
     activeKey,
@@ -57,6 +70,7 @@ export function useTabs(
   );
   const tabItems = openKeys.flatMap((key): TabItem[] => {
     if (key === ACCOUNTS_TAB) return [{ kind: 'accounts', key }];
+    if (key === SKILLS_TAB) return [{ kind: 'skills', key }];
     if (isDraftTab(key)) return [{ kind: 'draft', key, text: drafts.texts[key] ?? '' }];
     const item = sessions.find((other) => other.id === key);
     return item ? [{ kind: 'thread', key, session: item }] : [];
@@ -70,11 +84,12 @@ export function useTabs(
   }, [openList, loaded, session]);
   function activate(item: TabItem) {
     if (item.kind === 'accounts') openAccounts();
+    else if (item.kind === 'skills') openSkills();
     else if (item.kind === 'thread') select(item.session);
     else openDraft(item.key);
   }
   function openDraft(key: string) {
-    setAccountsActive(false);
+    setPage(undefined);
     setHistoryOpen(false);
     reportError('');
     setSelectedId(undefined);
@@ -82,11 +97,19 @@ export function useTabs(
     send({ type: 'compose' });
   }
   function openAccounts(profile?: string, create?: boolean) {
-    setAccountsActive(true);
+    setPage('accounts');
     setHistoryOpen(false);
     setTabs((current) => (current.includes(ACCOUNTS_TAB) ? current : [...openKeys, ACCOUNTS_TAB]));
     if (profile || create)
       setAccountsIntent((current) => ({ profile, create, key: current.key + 1 }));
+  }
+  /** Opens Skills, optionally on one account and with a search already typed. */
+  function openSkills(agent?: AgentKind, query?: string) {
+    setPage('skills');
+    setHistoryOpen(false);
+    setTabs((current) => (current.includes(SKILLS_TAB) ? current : [...openKeys, SKILLS_TAB]));
+    if (agent || query !== undefined)
+      setSkillsIntent((current) => ({ agent, query, key: current.key + 1 }));
   }
   function closeTab(item: TabItem) {
     const rest = openKeys.filter((key) => key !== item.key);
@@ -138,7 +161,15 @@ export function useTabs(
       intent: accountsIntent,
       present: openKeys.includes(ACCOUNTS_TAB),
     },
-    saved: { selectedId, tabs, activeDraft, accountsActive },
+    skills: {
+      active: skillsActive,
+      open: openSkills,
+      intent: skillsIntent,
+      present: openKeys.includes(SKILLS_TAB),
+    },
+    /** Set while Accounts or Skills covers the thread area. */
+    page,
+    saved: { selectedId, tabs, activeDraft, accountsActive, skillsActive },
     snapshot,
     starting,
   };

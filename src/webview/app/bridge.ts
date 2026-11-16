@@ -6,6 +6,7 @@ import type {
   Attachment,
   Catalog,
   ChangesResult,
+  ConfigurationResult,
   Snapshot,
   SnapshotUpdate,
   TailMark,
@@ -27,6 +28,7 @@ export interface ComposeChoice {
 export interface ViewState {
   selectedId?: string;
   accountsActive?: boolean;
+  skillsActive?: boolean;
   drafts: Record<string, string>;
   attachments?: Record<string, Attachment[]>;
   scroll: Record<string, number>;
@@ -76,6 +78,7 @@ export interface ProfileResult {
 }
 export type HostMessage =
   | ProfileResult
+  | ConfigurationResult
   | { type: 'copyResult'; requestId: string; ok: boolean }
   /** A side question's answer as it streams; never part of the thread. */
   | {

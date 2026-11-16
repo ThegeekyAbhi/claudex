@@ -363,7 +363,9 @@ export function AttachmentChip({
     attachment.kind === 'file' || attachment.kind === 'folder'
       ? attachment.path
       : attachment.kind === 'skill'
-        ? `Skill you asked for: ${attachment.name}`
+        ? attachment.from
+          ? `Borrowed from another account: ${attachment.name}. Its instructions go with your message as context; it isn't installed in this account.`
+          : `Skill you asked for: ${attachment.name}`
         : attachment.kind === 'thread' && attachment.history
           ? `This thread's ${attachment.history} history goes with your message, or only what's new since you last switched. Click to see exactly what will be sent.`
           : attachmentLabel(attachment);
