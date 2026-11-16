@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remend from 'remend';
 import type { Attachment } from '../../shared/model';
 import { send } from '../app/bridge';
-import { Icon } from '../components/icons';
+import { CopyButton } from '../components/copy-button';
 import { ReferenceIcon } from '../components/reference-icon';
 import { ColouredLines } from './coloured-lines';
 import { MermaidBlock } from './mermaid-block';
@@ -130,14 +130,7 @@ function components(streaming: boolean, attachments?: Attachment[]): Components 
         <div className="code-block my-[0.9em] border border-subtle rounded-[8px] bg-surface overflow-hidden">
           <div className="flex items-center justify-between pt-0.5 pr-1 pb-0.5 pl-2.5 border-b border-subtle text-[11px] text-faint [&_button]:px-[5px] [&_button]:py-[3px] [&_button]:text-muted-foreground">
             <span>{language || 'text'}</span>
-            <button
-              type="button"
-              aria-label="Copy code"
-              disabled={streaming}
-              onClick={() => send({ type: 'copy', text })}
-            >
-              <Icon name="copy" size={12} />
-            </button>
+            <CopyButton text={text} kind="code" disabled={streaming} />
           </div>
           <pre>
             {streaming ? <code>{text}</code> : <Highlighted code={text} language={language} />}

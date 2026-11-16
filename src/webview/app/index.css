@@ -792,6 +792,11 @@ body.vscode-high-contrast-light .user-message .bubble {
   color: var(--muted);
   transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
+.response-copy.code-copy {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+}
 .response-copy:active {
   transform: scale(0.97);
 }
