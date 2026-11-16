@@ -27,8 +27,22 @@ export interface AgentProfile {
   executableOrigin?: 'setting' | 'path' | 'knownFolder';
   /** Why the profile can't run, in words for the user. */
   problem?: string;
+  /** Whether the CLI says it is signed in. Unset until a ready profile has been asked. */
+  auth?: AgentAuth;
 }
 export type ProfileStatus = 'ready' | 'missingCli' | 'missingFolder';
+/**
+ * What the CLI's own status command reports (`claude auth status`, `codex login status`).
+ * Never a credential: only whether it is signed in, how, and on which plan. `unknown` when the
+ * CLI could not say, which is never treated as signed out.
+ */
+export interface AgentAuth {
+  state: 'signedIn' | 'signedOut' | 'unknown';
+  /** How it signed in, in words: "Claude account", "ChatGPT", "API key". */
+  method?: string;
+  /** The subscription the CLI names, such as "Pro". */
+  plan?: string;
+}
 
 /** Lowercase so a mention is typed the same way every time. */
 export const PROFILE_ID = /^[a-z][a-z0-9-]{0,23}$/;

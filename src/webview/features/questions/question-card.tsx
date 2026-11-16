@@ -5,6 +5,12 @@ import { Icon } from '../../components/icons';
 
 const RECOMMENDED = /\s*\(recommended\)\s*$/i;
 const KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+/** The key that picks a row: digits while they last, then letters, matching onKeyDown. */
+const keyFor = (slot: number) => (slot < 9 ? String(slot + 1) : KEYS[slot]);
+// Badges sit on the title's line, so they line up whether or not an option has a detail.
+// VS Code styles bare kbd elements, so the badge resets its background and shadow.
+const OPTION =
+  'question-option flex items-start justify-start gap-2 w-full py-1 px-1.5 rounded-md text-[12px] leading-[18px] text-left text-foreground enabled:hover:bg-muted enabled:hover:outline-none focus-visible:bg-muted focus-visible:outline-none aria-checked:bg-accent [&>svg]:ml-auto [&>svg]:mt-[2.5px] [&>svg]:shrink-0 [&>svg]:text-muted-foreground [&_kbd]:inline-flex [&_kbd]:items-center [&_kbd]:justify-center [&_kbd]:size-[18px] [&_kbd]:shrink-0 [&_kbd]:p-0 [&_kbd]:bg-transparent [&_kbd]:shadow-none [&_kbd]:border [&_kbd]:border-subtle [&_kbd]:rounded-sm [&_kbd]:text-[10px] [&_kbd]:leading-none [&_kbd]:font-medium [&_kbd]:tabular-nums [&_kbd]:text-muted-foreground aria-checked:[&_kbd]:border-strong aria-checked:[&_kbd]:text-foreground [&.other]:cursor-text [&.other]:items-center [&.other_input]:flex-1 [&.other_input]:min-w-0 [&.other_input]:h-[18px] [&.other_input]:p-0 [&.other_input]:text-[12px] [&.other_input:focus-visible]:outline-none';
 
 interface Answer {
   chosen: string[];
@@ -152,7 +158,7 @@ export function QuestionCard({
     <div className="question-dock pt-2 px-6 pb-0 shrink-0 relative max-[900px]:px-3">
       <section
         ref={card}
-        className="question-card max-w-[780px] mt-0 mx-auto -mb-2.5 pb-2.5 border border-strong rounded-t-lg bg-canvas outline-none max-h-[56vh] flex flex-col [&_header]:flex [&_header]:items-center [&_header]:gap-1.5 [&_header]:min-h-8 [&_header]:py-0.5 [&_header]:pr-1 [&_header]:pl-2.5 [&_header]:text-muted-foreground [&_header]:text-[12px] [&_header]:shrink-0 [&_header_strong]:font-medium [&_header_strong]:text-foreground [&_footer]:flex [&_footer]:justify-end [&_footer]:items-center [&_footer]:gap-1 [&_footer]:pt-1.5 [&_footer]:px-2 [&_footer]:pb-2 [&_footer]:shrink-0 [&_footer_kbd]:ml-1 [&_footer_kbd]:text-[10.5px] [&_footer_kbd]:text-inherit [&_footer_kbd]:opacity-65"
+        className="question-card max-w-[780px] mt-0 mx-auto -mb-2.5 pb-2.5 border border-strong rounded-t-lg bg-canvas outline-none max-h-[56vh] flex flex-col [&_header]:flex [&_header]:items-center [&_header]:gap-1.5 [&_header]:min-h-8 [&_header]:py-0.5 [&_header]:pr-1 [&_header]:pl-2.5 [&_header]:text-muted-foreground [&_header]:text-[12px] [&_header]:shrink-0 [&_header_strong]:font-medium [&_header_strong]:text-foreground [&_footer]:flex [&_footer]:justify-end [&_footer]:items-center [&_footer]:gap-1 [&_footer]:pt-1 [&_footer]:px-2 [&_footer]:pb-2 [&_footer]:shrink-0 [&_footer_button]:inline-flex [&_footer_button]:items-center [&_footer_button]:gap-1.5 [&_footer_button]:h-6 [&_footer_button]:px-2 [&_footer_button]:rounded-md [&_footer_button]:text-[11.5px] [&_footer_kbd]:p-0 [&_footer_kbd]:border-0 [&_footer_kbd]:bg-transparent [&_footer_kbd]:shadow-none [&_footer_kbd]:text-[10.5px] [&_footer_kbd]:text-inherit [&_footer_kbd]:opacity-60"
         aria-label="Agent questions"
         tabIndex={-1}
         onKeyDown={onKeyDown}
@@ -208,7 +214,7 @@ export function QuestionCard({
           <>
             <div className="overflow-y-auto px-1.5 pt-0 pb-0.5 min-h-0">
               <p
-                className="flex gap-1.5 mt-0.5 mx-1 mb-2 text-[12.5px] font-medium leading-[1.45] [&_span]:text-faint [&_span]:font-[450] [&_span]:tabular-nums"
+                className="flex gap-1.5 mt-0.5 mx-1.5 mb-1.5 text-[12.5px] font-medium leading-[1.45] [&_span]:text-faint [&_span]:font-[450] [&_span]:tabular-nums"
                 id={promptId}
               >
                 {questions.length > 1 ? <span>{index + 1}.</span> : null}
@@ -226,11 +232,11 @@ export function QuestionCard({
                       key={option}
                       role={single ? 'radio' : 'checkbox'}
                       aria-checked={chosen}
-                      className="question-option flex items-center justify-start gap-2 w-full min-h-7 py-[3px] pr-1.5 pl-1 rounded-md text-[12px] text-left text-foreground enabled:hover:bg-muted enabled:hover:outline-none focus-visible:bg-muted focus-visible:outline-none aria-checked:bg-accent [&>svg]:ml-auto [&>svg]:text-muted-foreground [&_kbd]:inline-flex [&_kbd]:items-center [&_kbd]:justify-center [&_kbd]:size-[18px] [&_kbd]:shrink-0 [&_kbd]:border [&_kbd]:border-subtle [&_kbd]:rounded-sm [&_kbd]:text-[10px] [&_kbd]:font-medium [&_kbd]:text-muted-foreground aria-checked:[&_kbd]:border-strong aria-checked:[&_kbd]:text-foreground [&.other]:cursor-text [&.other_input]:flex-1 [&.other_input]:min-w-0 [&.other_input]:text-[12px] [&.other_input:focus-visible]:outline-none"
+                      className={OPTION}
                       onClick={() => pick(option)}
                     >
-                      <kbd>{slot < 9 ? slot + 1 : KEYS[slot]}</kbd>
-                      <span className="min-w-0 flex flex-col gap-px wrap-anywhere [&_em]:ml-1.5 [&_em]:not-italic [&_em]:text-[10.5px] [&_em]:text-faint [&_small]:text-[11px] [&_small]:text-muted-foreground">
+                      <kbd>{keyFor(slot)}</kbd>
+                      <span className="min-w-0 flex flex-col wrap-anywhere [&_em]:ml-1.5 [&_em]:not-italic [&_em]:text-[10.5px] [&_em]:text-faint [&_small]:text-[11px] [&_small]:leading-4 [&_small]:text-muted-foreground">
                         <span>
                           {option.replace(RECOMMENDED, '')}
                           {RECOMMENDED.test(option) ? <em>Recommended</em> : null}
@@ -241,8 +247,8 @@ export function QuestionCard({
                     </button>
                   );
                 })}
-                <label className="question-option flex items-center justify-start gap-2 w-full min-h-7 py-[3px] pr-1.5 pl-1 rounded-md text-[12px] text-left text-foreground enabled:hover:bg-muted enabled:hover:outline-none focus-visible:bg-muted focus-visible:outline-none aria-checked:bg-accent [&>svg]:ml-auto [&>svg]:text-muted-foreground [&_kbd]:inline-flex [&_kbd]:items-center [&_kbd]:justify-center [&_kbd]:size-[18px] [&_kbd]:shrink-0 [&_kbd]:border [&_kbd]:border-subtle [&_kbd]:rounded-sm [&_kbd]:text-[10px] [&_kbd]:font-medium [&_kbd]:text-muted-foreground aria-checked:[&_kbd]:border-strong aria-checked:[&_kbd]:text-foreground [&.other]:cursor-text [&.other_input]:flex-1 [&.other_input]:min-w-0 [&.other_input]:text-[12px] [&.other_input:focus-visible]:outline-none other">
-                  {question.options.length ? <kbd>{KEYS[question.options.length]}</kbd> : null}
+                <label className={`${OPTION} other`}>
+                  {question.options.length ? <kbd>{keyFor(question.options.length)}</kbd> : null}
                   <input
                     ref={input}
                     aria-label={`Answer: ${question.prompt}`}
@@ -261,7 +267,7 @@ export function QuestionCard({
             <footer>
               <button
                 type="button"
-                className="min-h-6 px-2 py-0.5 text-[11.5px] text-muted-foreground"
+                className="text-muted-foreground hover:bg-muted hover:text-foreground"
                 title="Skip these questions. The agent is told you declined."
                 onClick={() => respond(false)}
               >
@@ -269,7 +275,7 @@ export function QuestionCard({
               </button>
               <button
                 type="button"
-                className="min-h-6 px-2 py-0.5 rounded-md text-[11.5px] bg-primary text-primary-foreground enabled:hover:bg-accent-hover disabled:bg-accent disabled:text-faint"
+                className="bg-primary text-primary-foreground enabled:hover:bg-accent-hover disabled:bg-muted disabled:text-faint"
                 disabled={!answered(question)}
                 onClick={advance}
               >

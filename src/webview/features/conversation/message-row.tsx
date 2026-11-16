@@ -136,12 +136,15 @@ export const MessageRow = memo(function MessageRow({
   message,
   streaming,
   note,
+  copy,
   guides,
 }: {
   message: Message;
   streaming?: boolean;
   /** A short update between steps, not the turn's answer, so it reads quieter. */
   note?: boolean;
+  /** On the last part of a finished answer: the whole answer, which its actions copy. */
+  copy?: string;
   guides: Guides;
 }) {
   const { role, text } = message;
@@ -160,19 +163,25 @@ export const MessageRow = memo(function MessageRow({
     );
   if (role === 'image' && message.image) return <ImageMessage image={message.image} />;
   if (role === 'user') return <YourMessage message={message} guides={guides} />;
+  if (note)
+    return (
+      <article
+        aria-label="Progress update"
+        className="assistant note-row in-[.subagent-transcript]:text-[12px]"
+      >
+        <span className="note-dot" aria-hidden="true" />
+        <div className="markdown note">
+          <MarkdownText text={text} streaming={streaming} />
+        </div>
+      </article>
+    );
   return (
-    <article
-      className={`assistant ${note ? 'my-2' : 'my-3.5'} in-[.subagent-transcript]:my-2 in-[.subagent-transcript]:text-[12px]`}
-    >
-      <div className={note ? 'markdown note' : 'markdown reply'}>
+    <article className="assistant my-3.5 in-[.subagent-transcript]:my-2 in-[.subagent-transcript]:text-[12px]">
+      <div className="markdown reply">
         <MarkdownText text={text} streaming={streaming} />
       </div>
-      {text && !streaming ? (
-        note ? (
-          <CopyButton text={text} />
-        ) : (
-          <MessageActions message={message} copy={<CopyButton text={text} />} />
-        )
+      {copy && !streaming ? (
+        <MessageActions message={message} copy={<CopyButton text={copy} />} />
       ) : null}
     </article>
   );

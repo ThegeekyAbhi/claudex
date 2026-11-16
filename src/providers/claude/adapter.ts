@@ -103,6 +103,10 @@ export class ClaudeAgent {
   /** Streamed blocks per message, matched to the final frames that repeat them. */
   private blocks = new Map<string, { type: string; id: string; used: boolean }[]>();
   private activeMessage = new Map<string, string>();
+  /** This turn's top-level text since its last tool call: where its final result text can be. */
+  private trailingText: { id: string; text: string }[] = [];
+  /** All of this turn's top-level text, so a result repeating earlier text adds no copy of it. */
+  private turnText = new Set<string>();
   private workers = new Map<string, WorkerState>();
   private toolKinds = new Map<string, ToolInfo['kind']>();
   private declined = new Set<string>();
@@ -275,6 +279,8 @@ export class ClaudeAgent {
       this.closeOpenWorkers();
       this.blocks.clear();
       this.activeMessage.clear();
+      this.trailingText = [];
+      this.turnText.clear();
       finishTurn();
       void this.reportTitle();
     }
@@ -308,7 +314,41 @@ export class ClaudeAgent {
         },
       });
     const status: Status = this.stopped ? 'interrupted' : message.is_error ? 'failed' : 'completed';
+    if (status === 'completed') this.markAnswer(message);
     this.emit({ type: 'status', status });
+  }
+  /**
+   * Claude has no per-message phase, but a normal finish reports its final text. The streamed text
+   * it matches exactly is the turn's answer; a mismatch, or any other ending, labels nothing.
+   */
+  private markAnswer(message: Extract<SDKMessage, { type: 'result' }>): void {
+    if (message.subtype !== 'success' || message.is_error) return;
+    const reason = (message as { terminal_reason?: string }).terminal_reason;
+    if (reason !== undefined && reason !== 'completed') return;
+    const result = typeof message.result === 'string' ? message.result.trim() : '';
+    if (!result) return;
+    const blocks = this.trailingText;
+    for (let count = 1; count <= blocks.length; count++) {
+      const tail = blocks.slice(-count);
+      const texts = tail.map((entry) => entry.text.trim());
+      if (['\n\n', '\n', ''].some((separator) => texts.join(separator) === result)) {
+        for (const entry of tail)
+          this.emit({ type: 'patch', id: entry.id, phase: 'final_answer', phaseFrom: 'result' });
+        return;
+      }
+    }
+    // Text the stream never showed is still the answer; text it already showed isn't repeated.
+    if (blocks.length || this.turnText.has(result)) return;
+    this.emit({
+      type: 'message',
+      message: {
+        id: `${message.uuid}-answer`,
+        role: 'assistant',
+        text: message.result,
+        phase: 'final_answer',
+        phaseFrom: 'result',
+      },
+    });
   }
   private permission(
     name: string,
@@ -532,6 +572,13 @@ export class ClaudeAgent {
       if (block.type === 'text' && block.text) {
         const id = this.claimBlock(message.message.id, 'text');
         this.out(parent, { type: 'message', message: { id, role: 'assistant', text: block.text } });
+        if (!parent) {
+          this.trailingText = [
+            ...this.trailingText.filter((entry) => entry.id !== id),
+            { id, text: block.text },
+          ];
+          this.turnText.add(block.text.trim());
+        }
       } else if (block.type === 'thinking') {
         const id = this.claimBlock(message.message.id, 'thinking');
         if (block.thinking)
@@ -540,6 +587,7 @@ export class ClaudeAgent {
             message: { id, role: 'thinking', text: block.thinking },
           });
       } else if (block.type === 'tool_use') {
+        if (!parent) this.trailingText = [];
         const input = (block.input ?? {}) as Record<string, unknown>;
         const description =
           block.name === RUN_AGENT_FULL_NAME

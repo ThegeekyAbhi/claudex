@@ -127,7 +127,7 @@ function components(streaming: boolean, attachments?: Attachment[]): Components 
       if (language === 'visual' && text.length <= VISUAL_MAX_SOURCE)
         return streaming ? <VisualPlaceholder /> : <VisualBlock source={text} />;
       return (
-        <div className="code-block my-[0.9em] border border-subtle rounded-[8px] bg-surface overflow-hidden">
+        <div className="code-block relative my-[0.9em] border border-subtle rounded-[8px] bg-surface overflow-hidden">
           <div className="flex items-center justify-between pt-0.5 pr-1 pb-0.5 pl-2.5 border-b border-subtle text-[11px] text-faint [&_button]:px-[5px] [&_button]:py-[3px] [&_button]:text-muted-foreground">
             <span>{language || 'text'}</span>
             <CopyButton text={text} kind="code" disabled={streaming} />

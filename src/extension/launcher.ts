@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import * as vscode from 'vscode';
 import type { Launcher } from '../application/sessions/session-manager';
+import { agentAuthStatus } from '../providers/auth-status';
 import { runProvider } from '../providers/spawn';
 import {
   type AgentProfile,
@@ -103,7 +104,10 @@ async function cliVersion(
     return undefined;
   }
 }
-/** Checks a profile can start: its CLI runs and its folder exists. Nothing is installed or made. */
+/**
+ * Checks a profile can start: its CLI runs and its folder exists, and asks whether it is signed
+ * in. Nothing is installed or made.
+ */
 async function check(profile: AgentProfile): Promise<AgentProfile> {
   const command = profile.executable ?? configuredExecutable(profile.provider);
   const search = locateExecutable(command);
@@ -127,10 +131,15 @@ async function check(profile: AgentProfile): Promise<AgentProfile> {
       status: 'missingFolder',
       problem: `The folder ${profile.homeDir} doesn’t exist.`,
     };
-  const version = await cliVersion(located.path, envFor(profile));
+  const env = envFor(profile);
+  // Asked together: the CLI's own status command says whether it is signed in.
+  const [version, auth] = await Promise.all([
+    cliVersion(located.path, env),
+    agentAuthStatus(profile.provider, located.path, env),
+  ]);
   if (!version)
     return { ...profile, ...found, status: 'missingCli', problem: `${located.path} didn’t run.` };
-  return { ...profile, ...found, status: 'ready', version };
+  return { ...profile, ...found, status: 'ready', version, auth };
 }
 /** The agents this machine has. Sets the shared list, so labels and mentions follow it. */
 export async function detectAgents(savedIds: string[]): Promise<AgentSetup> {

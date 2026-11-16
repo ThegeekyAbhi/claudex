@@ -1,10 +1,10 @@
 import type { Provider } from './agents';
-import type { AgentProfile } from './profiles';
+import type { AgentAuth, AgentProfile } from './profiles';
 import type { AgentSetup } from './session';
 
 /**
- * What first-run setup can truthfully say about an agent. Installed is as far as it goes:
- * whether you are signed in lives in the CLI's own credentials, which this extension never reads.
+ * What first-run setup can truthfully say about an agent. Whether it is signed in comes from the
+ * CLI's own status command (`auth`); this extension never reads credentials itself.
  */
 export type SetupState = 'checking' | 'installed' | 'missingCli' | 'missingFolder';
 export interface SetupRow {
@@ -14,6 +14,8 @@ export interface SetupRow {
   state: SetupState;
   version?: string;
   problem?: string;
+  /** Only for installed agents, once the CLI has answered. */
+  auth?: AgentAuth;
 }
 export const INSTALL_HELP: Record<Provider, { name: string; command: string; docs: string }> = {
   claude: {
@@ -59,6 +61,7 @@ function toRow(profile: AgentProfile, label: string): SetupRow {
     state: rowState(profile),
     ...(profile.version ? { version: profile.version } : {}),
     ...(profile.problem ? { problem: profile.problem } : {}),
+    ...(profile.auth && profile.status === 'ready' ? { auth: profile.auth } : {}),
   };
 }
 /** No agent can start: every one has been checked and none is installed. */
@@ -67,15 +70,26 @@ export function noAgentInstalled(rows: SetupRow[]): boolean {
     rows.length > 0 && rows.every((row) => row.state !== 'checking' && row.state !== 'installed')
   );
 }
+/** Installed, and its CLI said it is signed out. Unknown or unchecked never counts. */
+export function needsSignIn(row: SetupRow): boolean {
+  return row.state === 'installed' && row.auth?.state === 'signedOut';
+}
 /**
- * The setup card shows until this workspace has a thread, unless you dismissed it. It always
- * shows while no agent is installed, because nothing else here works until one is.
+ * What the empty workspace shows:
+ * - `install`: nothing can start yet, so this shows even when dismissed or with threads.
+ * - `signIn`: every installed agent says it is signed out. Dismissing skips it.
+ * - `ready`: an agent can start; a short greeting with starter prompts.
+ * - `hidden`: this workspace already has threads.
  */
-export function showSetupCard(input: {
+export type OnboardingStage = 'install' | 'signIn' | 'ready' | 'hidden';
+export function onboardingStage(input: {
   threads: number;
   dismissed: boolean;
   rows: SetupRow[];
-}): boolean {
-  if (noAgentInstalled(input.rows)) return true;
-  return input.threads === 0 && !input.dismissed;
+}): OnboardingStage {
+  if (noAgentInstalled(input.rows)) return 'install';
+  if (input.threads > 0) return 'hidden';
+  const installed = input.rows.filter((row) => row.state === 'installed');
+  if (!input.dismissed && installed.length && installed.every(needsSignIn)) return 'signIn';
+  return 'ready';
 }

@@ -143,7 +143,9 @@ export function PlanCard({
       <div className="relative">
         <div
           ref={body}
-          className={`plan-body markdown reply px-4 pt-2 pb-3 ${expanded ? '' : 'hidden'} ${clamped ? 'max-h-[420px] overflow-hidden' : ''}`}
+          // Positioned, so the clamp also clips absolutely placed descendants (such as a code
+          // block's screen-reader status); otherwise they escape and stretch the transcript.
+          className={`plan-body markdown reply relative px-4 pt-2 pb-3 ${expanded ? '' : 'hidden'} ${clamped ? 'max-h-[420px] overflow-clip' : ''}`}
         >
           <MarkdownText text={text} />
         </div>

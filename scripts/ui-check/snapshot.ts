@@ -24,9 +24,36 @@ export function createSnapshot({ catalog, patch, agents }: ReturnType<typeof cre
         updatedAt: Date.now() - 600_000,
         messages: [
           {
+            id: 'u0',
+            role: 'user',
+            text: 'What does the render plan cover?',
+            outcome: 'completed',
+          },
+          {
+            id: 'a0-1',
+            role: 'assistant',
+            phase: 'partial_answer',
+            phaseFrom: 'provider',
+            text: 'It covers **render contracts** and the plan compiler.',
+          },
+          {
+            id: 'a0-2',
+            role: 'assistant',
+            phase: 'final_answer',
+            phaseFrom: 'provider',
+            text: 'The compiler cache is the riskiest part.',
+          },
+          {
             id: 'u',
             role: 'user',
             text: 'Review the render plan, then ask Claude to double-check the compiler.',
+          },
+          {
+            id: 'n',
+            role: 'assistant',
+            phase: 'commentary',
+            phaseFrom: 'provider',
+            text: 'Checking the compiler cache before changing anything.',
           },
           {
             id: 'th',

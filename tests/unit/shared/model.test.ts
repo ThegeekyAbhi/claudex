@@ -54,6 +54,36 @@ test('restore interrupts unfinished turns and drops obsolete approvals', () => {
   assert.equal(restored.status, 'interrupted');
   assert.equal(restored.approval, undefined);
 });
+test('assistant phases merge by id, and each turn keeps its own outcome', () => {
+  const target = session();
+  applyEvent(target, { type: 'message', message: { id: 'q1', role: 'user', text: 'one' } });
+  applyEvent(target, { type: 'delta', id: 'c', text: 'Checking', phase: 'commentary' });
+  applyEvent(target, { type: 'delta', id: 'c', text: '…' });
+  applyEvent(target, { type: 'message', message: { id: 'a', role: 'assistant', text: 'Done' } });
+  applyEvent(target, { type: 'patch', id: 'a', phase: 'final_answer', phaseFrom: 'result' });
+  applyEvent(target, { type: 'status', status: 'completed' });
+  applyEvent(target, { type: 'message', message: { id: 'q2', role: 'user', text: 'two' } });
+  applyEvent(target, { type: 'status', status: 'interrupted' });
+  const byId = Object.fromEntries(target.messages.map((message) => [message.id, message]));
+  assert.equal(byId.c.text, 'Checking…');
+  assert.equal(byId.c.phase, 'commentary');
+  assert.deepEqual(
+    [byId.a.text, byId.a.phase, byId.a.phaseFrom],
+    ['Done', 'final_answer', 'result'],
+  );
+  assert.equal(byId.q1.outcome, 'completed');
+  assert.equal(byId.q2.outcome, 'interrupted');
+  const [restored] = restoreSessions({ version: 1, sessions: [target] });
+  assert.deepEqual(restored.messages, target.messages, 'phase and outcome survive a reload');
+  // A turn running when the window closed comes back stopped, not finished.
+  const open = session();
+  open.status = 'running';
+  open.messages = [{ id: 'q', role: 'user', text: 'go' }];
+  assert.equal(
+    restoreSessions({ version: 1, sessions: [open] })[0].messages[0].outcome,
+    'interrupted',
+  );
+});
 test('rejects invalid saved formats and untrusted webview payload shapes', () => {
   assert.throws(() => restoreSessions({ version: 2, sessions: [] }));
   assert.equal(actionSchema.safeParse({ type: 'send', id: 'one', text: '   ' }).success, false);

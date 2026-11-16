@@ -34,6 +34,7 @@ async function fixture() {
         terminals.push(options);
         return { show() {} };
       },
+      onDidCloseTerminal: () => ({ dispose() {} }),
     },
   };
   const result = await build({

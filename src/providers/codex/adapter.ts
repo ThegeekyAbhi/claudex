@@ -5,6 +5,7 @@ import { effectiveEffort } from '../../shared/domain/thinking';
 import {
   type Agent,
   type AgentMode,
+  type AssistantPhase,
   CODEX_OWN_SETTINGS,
   type Delegate,
   type DelegateRequest,
@@ -12,6 +13,7 @@ import {
   type EventSink,
   type FileDiff,
   type ImageInput,
+  isAssistantPhase,
   type MessageImage,
   type NativeSettings,
   parseRunAgent,
@@ -109,6 +111,8 @@ export class CodexAgent implements Agent {
   private ownSettingsNoticed = false;
   private stopWaiter?: { id: string; resolve: () => void; reject: (error: Error) => void };
   private reasoningWithSummary = new Set<string>();
+  /** Each agent message's phase, from its start, so its streamed text carries it too. */
+  private messagePhases = new Map<string, AssistantPhase>();
   private pendingFileChanges = new Map<string, FileDiff[]>();
   constructor(
     private session: Session,
@@ -337,8 +341,10 @@ export class CodexAgent implements Agent {
         },
       });
     }
-    if (method === 'item/agentMessage/delta')
-      this.out(worker, { type: 'delta', id: p.itemId, text: p.delta });
+    if (method === 'item/agentMessage/delta') {
+      const phase = this.messagePhases.get(p.itemId);
+      this.out(worker, { type: 'delta', id: p.itemId, text: p.delta, ...(phase ? { phase } : {}) });
+    }
     if (method === 'item/plan/delta') {
       if (worker) this.out(worker, { type: 'delta', id: p.itemId, text: p.delta });
       else this.emit({ type: 'plan', text: p.delta, final: false });
@@ -410,11 +416,24 @@ export class CodexAgent implements Agent {
     } else if (item.type === 'imageView') {
       if (completed) void this.viewedImage(item, worker);
     } else if (item.type === 'agentMessage' || item.type === 'plan') {
-      if (completed)
-        this.out(worker, {
-          type: 'message',
-          message: { id: item.id, role: 'assistant', text: item.text },
-        });
+      // Absent, null and unknown phases stay unknown; the CLI may label a message only when done.
+      const said =
+        item.type === 'agentMessage' && isAssistantPhase(item.phase) ? item.phase : undefined;
+      if (!completed) {
+        if (said) this.messagePhases.set(item.id, said);
+        return;
+      }
+      const phase = said ?? this.messagePhases.get(item.id);
+      this.messagePhases.delete(item.id);
+      this.out(worker, {
+        type: 'message',
+        message: {
+          id: item.id,
+          role: 'assistant',
+          text: item.text,
+          ...(phase ? { phase, phaseFrom: 'provider' as const } : {}),
+        },
+      });
     } else if (item.type === 'reasoning') {
       if (!completed) return;
       const text = [...(item.summary ?? [])].join('\n\n') || [...(item.content ?? [])].join('\n\n');

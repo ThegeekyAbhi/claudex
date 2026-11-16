@@ -487,3 +487,53 @@ test('a Codex profile runs with its own CODEX_HOME, and the default runs untouch
     }
   }
 });
+
+test('Codex agent-message phases reach the transcript; missing or unknown ones stay unknown', () => {
+  const session: Session = {
+    id: 'phases',
+    provider: 'codex',
+    title: 'Phases',
+    cwd: '/project',
+    workspace: '/project',
+    status: 'idle',
+    messages: [],
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const events: AgentEvent[] = [];
+  const agent = new CodexAgent(session, '/nonexistent/codex', (event) => events.push(event));
+  const receive = (method: string, params: object) =>
+    (agent as unknown as { receive(message: object): void }).receive({ method, params });
+  const item = (id: string, phase: unknown, text = id) => ({
+    item: { id, type: 'agentMessage', text, ...(phase === undefined ? {} : { phase }) },
+  });
+  // Phase at start carries to the streamed text and the finished message.
+  receive('item/started', item('c', 'commentary', ''));
+  receive('item/agentMessage/delta', { itemId: 'c', delta: 'Checking' });
+  receive('item/completed', item('c', null, 'Checking'));
+  // A phase given only on completion still applies.
+  receive('item/agentMessage/delta', { itemId: 'f', delta: 'Done' });
+  receive('item/completed', item('f', 'final_answer', 'Done'));
+  receive('item/completed', item('n', null));
+  receive('item/completed', item('u', 'someday_phase'));
+  // Replayed history keeps phase too.
+  agent.replayItem({ id: 'r', type: 'agentMessage', text: 'r', phase: 'partial_answer' });
+  agent.dispose();
+  const deltas = events.flatMap((event) =>
+    event.type === 'delta' ? [[event.id, event.phase]] : [],
+  );
+  assert.deepEqual(deltas, [
+    ['c', 'commentary'],
+    ['f', undefined],
+  ]);
+  const messages = events.flatMap((event) =>
+    event.type === 'message' ? [[event.message.id, event.message.phase]] : [],
+  );
+  assert.deepEqual(messages, [
+    ['c', 'commentary'],
+    ['f', 'final_answer'],
+    ['n', undefined],
+    ['u', undefined],
+    ['r', 'partial_answer'],
+  ]);
+});

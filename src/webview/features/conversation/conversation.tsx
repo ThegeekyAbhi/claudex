@@ -14,7 +14,7 @@ import { SubagentCard } from './subagent-card';
 import { TurnWork } from './turn-work';
 import {
   findChild,
-  noteIndices,
+  messageRoles,
   planPlacement,
   segment,
   segmentKey,
@@ -28,6 +28,29 @@ export { segment } from './view-model';
 
 const guides = { planning: PLANNING_GUIDE, explain: EXPLAIN_GUIDE };
 const range = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => from + i);
+
+/** A turn that stopped short says so, so its last words never read as a finished answer. */
+function TurnEnding({
+  outcome,
+  answered,
+}: {
+  outcome: 'failed' | 'interrupted';
+  answered: boolean;
+}) {
+  const text =
+    outcome === 'interrupted'
+      ? answered
+        ? 'Stopped before finishing'
+        : 'Stopped before answering'
+      : answered
+        ? 'Failed before finishing'
+        : 'Failed before answering';
+  return (
+    <output className="turn-ending" data-outcome={outcome}>
+      {text}
+    </output>
+  );
+}
 
 export function Conversation({
   session,
@@ -86,7 +109,7 @@ export function Conversation({
   );
   const live = running || session.status === 'waiting';
   const grouped = turns(segments, live);
-  const notes = noteIndices(segments);
+  const { notes, copies: answerCopy } = messageRoles(segments, grouped);
   const rowOf = (item: (typeof segments)[number], index: number) => {
     if (item.type === 'activity')
       return (
@@ -123,6 +146,7 @@ export function Conversation({
         key={item.message.id}
         message={item.message}
         note={notes.has(index)}
+        copy={answerCopy.get(index)}
         streaming={running && index === lastIndex}
       />
     );
@@ -181,7 +205,15 @@ export function Conversation({
             ) : null}
             {grouped.map((turn) => {
               const indices = range(turn.start, turn.end);
-              if (!turn.fold) return indices.map(at);
+              const ending =
+                !turn.live && (turn.outcome === 'failed' || turn.outcome === 'interrupted') ? (
+                  <TurnEnding
+                    key={`ending-${segmentKey(segments[turn.start])}`}
+                    outcome={turn.outcome}
+                    answered={turn.answers.length > 0}
+                  />
+                ) : null;
+              if (!turn.fold) return [...indices.map(at), ending];
               const key = segmentKey(segments[turn.start]);
               const work = new Set(turn.work);
               const open = Boolean(opened[key]);

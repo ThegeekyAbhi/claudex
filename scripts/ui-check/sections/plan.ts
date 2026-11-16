@@ -18,6 +18,11 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
     'Run the suite.',
     '## Rollout',
     ...Array.from({ length: 8 }, (_, index) => `${index + 1}. Release step ${index + 1}.`),
+    // Code below the fold: its copy status must stay inside the folded plan.
+    ...Array.from(
+      { length: 6 },
+      (_, index) => `\`\`\`sh\npnpm release --step ${index + 1}\n\`\`\``,
+    ),
   ].join('\n\n');
   snapshot.sessions.push({
     id: 'planned',
@@ -93,10 +98,30 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
     return element.getBoundingClientRect().top > body.getBoundingClientRect().bottom;
   });
   assert.ok(hidden, 'the end of a long plan is folded away');
+  // Nothing folded away may stretch the transcript into blank space below the conversation.
+  // (The last card's own bottom margin, 12px, is allowed.)
+  const trailingGap = () =>
+    page.locator('.conversation-scroll').evaluate((scroll) => {
+      const content = scroll.firstElementChild as HTMLElement;
+      const padding = Number.parseFloat(getComputedStyle(scroll).paddingBottom);
+      const bottom =
+        content.getBoundingClientRect().bottom -
+        scroll.getBoundingClientRect().top +
+        scroll.scrollTop;
+      return scroll.scrollHeight - (bottom + padding);
+    });
+  assert.ok(
+    (await trailingGap()) <= 16,
+    `no blank scroll below a folded plan (${await trailingGap()}px)`,
+  );
   await page.screenshot({ path: 'test-results/screenshots/plan-folded.png' });
   await more.click();
   await plan.getByText('Release step 8.').waitFor();
   await plan.getByRole('button', { name: 'Show less' }).waitFor();
+  await plan.getByRole('button', { name: 'Show less' }).click();
+  await plan.getByRole('button', { name: 'Show plan' }).waitFor();
+  assert.ok((await trailingGap()) <= 16, 'folding again leaves no blank scroll');
+  await plan.getByRole('button', { name: 'Show plan' }).click();
   await plan.getByRole('button', { name: 'Open plan' }).click();
   assert.equal((await sentOf('viewPlan')).at(-1).id, 'planned');
   await plan.getByRole('button', { name: 'Edit plan' }).click();

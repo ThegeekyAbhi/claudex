@@ -103,7 +103,11 @@ export function AccountsPanel({
                   </span>
                   <span className="text-[11px] text-muted-foreground">
                     {item.status === 'ready'
-                      ? 'CLI installed'
+                      ? item.auth?.state === 'signedIn'
+                        ? 'Signed in'
+                        : item.auth?.state === 'signedOut'
+                          ? 'Signed out'
+                          : 'CLI installed'
                       : item.status === 'missingCli'
                         ? 'Install needed'
                         : item.status === 'missingFolder'

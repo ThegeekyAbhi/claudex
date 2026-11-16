@@ -6,11 +6,10 @@ import {
   canBuildPlan,
   continuationLinks,
   emptySkills,
-  noAgentInstalled,
+  onboardingStage,
   profileLabel,
   runnableProfiles,
   setupRows,
-  showSetupCard,
   threadTitle,
 } from '../../shared/model';
 import { Icon } from '../components/icons';
@@ -21,7 +20,7 @@ import { Composer } from '../features/composer/composer';
 import { TerminalStrip } from '../features/composer/terminal-strip';
 import { Conversation } from '../features/conversation/conversation';
 import { ImageBase } from '../features/images/image-view';
-import { SetupCard } from '../features/onboarding/setup-card';
+import { Onboarding } from '../features/onboarding/setup-card';
 import { BuildContext, PlanOptions } from '../features/plan/plan-options';
 import { QuestionCard } from '../features/questions/question-card';
 import { SidePopover } from '../features/side-question/side-popover';
@@ -106,6 +105,11 @@ export function App() {
   const attached = drafts.attachments[draftKey] ?? [];
   const catalog = snapshot.catalog ?? emptyCatalog;
   const setup = setupRows(snapshot.agents);
+  const stage = onboardingStage({
+    threads: snapshot.sessions.length,
+    dismissed: Boolean(snapshot.onboardingDismissed),
+    rows: setup,
+  });
   const workspaceClass = `workspace h-dvh overflow-hidden border-l border-strong [[data-surface=view]_&]:border-l-0 ${changes.panel ? `panel-${changes.panel}` : 'hide-documents'} ${tabs.history.open ? 'show-history' : ''}`;
   const mainPane = (
     <main className="main min-w-0 min-h-0 flex flex-col relative">
@@ -340,14 +344,11 @@ export function App() {
                   Linked to <strong>{conversation.linkedTo.title}</strong>
                 </p>
               ) : null}
-              {showSetupCard({
-                threads: snapshot.sessions.length,
-                dismissed: Boolean(snapshot.onboardingDismissed),
-                rows: setup,
-              }) ? (
-                <SetupCard
+              {stage !== 'hidden' ? (
+                <Onboarding
+                  stage={stage}
                   rows={setup}
-                  dismissible={!noAgentInstalled(setup)}
+                  project={snapshot.project}
                   onPrompt={(text) =>
                     drafts.setTexts((current) => ({ ...current, [draftKey]: text }))
                   }

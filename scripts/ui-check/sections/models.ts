@@ -64,9 +64,15 @@ export async function checkModels(ctx: UiCheckContext): Promise<void> {
   // Effort has its own menu, for the levels the chosen model supports.
   await page.getByRole('button', { name: 'Model: Claude Sonnet 5.5' }).waitFor();
   await page.getByRole('button', { name: /^Effort:/ }).click();
-  assert.equal(await page.getByRole('menuitemradio').count(), 4, 'default plus three levels');
-  await page.getByRole('menuitemradio', { name: 'High' }).click();
+  const effort = page.getByRole('slider', { name: 'Reasoning effort' });
+  assert.equal(await effort.getAttribute('aria-valuemax'), '3', 'default plus three levels');
+  await page.screenshot({ path: 'test-results/screenshots/effort-slider.png' });
+  await effort.press('End');
   await page.getByRole('button', { name: 'Effort: High' }).waitFor();
+  assert.equal(await effort.getAttribute('aria-valuetext'), 'High');
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: 'test-results/screenshots/effort-slider-high.png' });
+  await effort.press('Escape');
   await box.fill('Fix the login bug');
   await box.press('Shift+Enter');
   assert.equal((await sentOf('start')).length, 0, 'Shift+Enter is a new line');

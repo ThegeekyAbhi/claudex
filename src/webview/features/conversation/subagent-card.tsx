@@ -16,11 +16,13 @@ import { ApprovalForm } from './approval-form';
 import { MessageActionsContext } from './message-actions';
 import { type Guides, MessageRow, SentPrompt } from './message-row';
 import { Chevron } from './step-state';
-import { duration, segment } from './view-model';
+import { duration, messageRoles, segment, turns } from './view-model';
 
 function ChildTranscript({ session, guides }: { session: Session; guides: Guides }) {
   const segments = segment(session.messages);
   const activity = mascotActivity(session);
+  const live = session.status === 'running' || session.status === 'waiting';
+  const { notes, copies } = messageRoles(segments, turns(segments, live));
   return (
     <div className="subagent-transcript m-0 pt-1.5 px-3 pb-2 border-t border-subtle">
       {segments.map((item, index) =>
@@ -38,7 +40,12 @@ function ChildTranscript({ session, guides }: { session: Session; guides: Guides
         ) : item.message.role === 'user' ? null : (
           // A worker's replies belong to its lead's turn, so they offer no branching of their own.
           <MessageActionsContext.Provider key={item.message.id} value={null}>
-            <MessageRow message={item.message} guides={guides} />
+            <MessageRow
+              message={item.message}
+              guides={guides}
+              note={notes.has(index)}
+              copy={copies.get(index)}
+            />
           </MessageActionsContext.Provider>
         ),
       )}

@@ -17,6 +17,21 @@ export async function checkConversation(ctx: UiCheckContext): Promise<void> {
   await page.getByRole('button', { name: 'Thought for 4s' }).click();
   await page.getByText('so a renamed clip could reuse').waitFor();
   await page.getByText('Failed: running').waitFor();
+  // A progress update reads as a line of work, with no actions of its own.
+  const note = page
+    .getByRole('article', { name: 'Progress update' })
+    .filter({ hasText: 'Checking the compiler cache' });
+  await note.waitFor();
+  assert.equal(await note.locator('.note-dot').count(), 1);
+  assert.equal(await note.getByRole('button').count(), 0, 'progress has no copy button');
+  // A running turn's text has no answer actions yet; a finished answer has exactly one copy.
+  const copies = await page.evaluate(
+    () =>
+      Array.from(
+        document.querySelectorAll('.conversation-scroll article.assistant .response-copy'),
+      ).filter((button) => !button.closest('.subagent-transcript, .code-copy')).length,
+  );
+  assert.equal(copies, 1, 'one copy for the one finished answer');
   const response = page
     .locator('article.assistant')
     .filter({ has: page.getByRole('button', { name: 'Copy full response' }) })
@@ -25,6 +40,11 @@ export async function checkConversation(ctx: UiCheckContext): Promise<void> {
   await response.getByRole('button', { name: 'Copy full response' }).click();
   const copied = (await sentOf('copy')).at(-1);
   assert.ok(copied.text.length >= responseText.length, 'copy includes the full Markdown source');
+  assert.equal(
+    copied.text,
+    'It covers **render contracts** and the plan compiler.\n\nThe compiler cache is the riskiest part.',
+    'one copy holds every part of the answer, in order',
+  );
   const copyButton = response.locator('.response-copy');
   assert.equal(await copyButton.innerText(), '', 'copy is icon only');
   assert.equal(await copyButton.getAttribute('data-copied'), 'false', 'sending is not success');

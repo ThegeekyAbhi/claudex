@@ -141,6 +141,22 @@ export interface MessageImage {
   prompt?: string;
   failure?: string;
 }
+/**
+ * What an assistant message is for, as the CLI said: a progress update between steps, answer text
+ * that more steps may follow, or the turn's answer. Codex sends this per message; Claude's final
+ * result text can identify its answer.
+ */
+export type AssistantPhase = 'commentary' | 'partial_answer' | 'final_answer';
+export const ASSISTANT_PHASES: readonly AssistantPhase[] = [
+  'commentary',
+  'partial_answer',
+  'final_answer',
+];
+export function isAssistantPhase(value: unknown): value is AssistantPhase {
+  return ASSISTANT_PHASES.includes(value as AssistantPhase);
+}
+/** How a turn ended, as the CLI reported it. */
+export type TurnOutcome = 'completed' | 'failed' | 'interrupted';
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'tool' | 'notice' | 'thinking' | 'image';
@@ -163,6 +179,12 @@ export interface Message {
    * agent, older turns keep their owner, so their ids are never handed to the new one.
    */
   nativeOwner?: { provider: Provider; profileId?: string };
+  /** On an assistant message: its phase, only when the CLI identified it. Never guessed. */
+  phase?: AssistantPhase;
+  /** Where `phase` came from: the CLI's own label, or matching Claude's final result text. */
+  phaseFrom?: 'provider' | 'result';
+  /** On your message: how the turn it started ended. Absent while it runs and in older threads. */
+  outcome?: TurnOutcome;
 }
 export interface Question {
   id: string;
@@ -365,8 +387,15 @@ export interface ChangesResult {
 }
 export type TranscriptEvent =
   | { type: 'message'; message: Message }
-  | { type: 'delta'; id: string; text: string; role?: Message['role'] }
-  | { type: 'patch'; id: string; text?: string; tool?: Partial<ToolInfo> };
+  | { type: 'delta'; id: string; text: string; role?: Message['role']; phase?: AssistantPhase }
+  | {
+      type: 'patch';
+      id: string;
+      text?: string;
+      tool?: Partial<ToolInfo>;
+      phase?: AssistantPhase;
+      phaseFrom?: Message['phaseFrom'];
+    };
 export type AgentEvent =
   | TranscriptEvent
   | { type: 'status'; status: Status }

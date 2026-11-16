@@ -338,6 +338,12 @@ export class ProfilesHandlers {
       ...(launcher.env ? { env: launcher.env } : {}),
     });
     terminal.show();
+    // Signing in finishes in that terminal, so look again once it closes.
+    const closed = vscode.window.onDidCloseTerminal((item) => {
+      if (item !== terminal) return;
+      closed.dispose();
+      void this.context.loadAgents();
+    });
     if (notify && profile.provider === 'claude')
       void vscode.window.showInformationMessage(
         `Claude Code opened for ${profile.label}. Follow its sign-in, or type /login, then close the terminal.`,

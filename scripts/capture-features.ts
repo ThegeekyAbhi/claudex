@@ -67,8 +67,17 @@ const scenes: Record<string, (guide: Guide) => Promise<void>> = {
     await caption('Choose the reasoning effort supported by that model');
     await click(page.getByRole('button', { name: /^Effort:/ }));
     await frame(1800);
-    await click(page.getByRole('menuitemradio', { name: 'High', exact: true }));
+    const effort = page.getByRole('slider', { name: 'Reasoning effort' });
+    for (
+      let step = 0;
+      step < 6 && (await effort.getAttribute('aria-valuetext')) !== 'High';
+      step++
+    ) {
+      await effort.press('ArrowRight');
+      await frame(250);
+    }
     await page.getByRole('button', { name: 'Effort: High' }).waitFor();
+    await effort.press('Escape');
     await ctx.box.fill('Review the cache implementation and edge cases.');
     await caption('Model and effort are selected · Your prompt remains unsent');
     await frame(2400);

@@ -68,13 +68,27 @@ export function AccountDetails({
       ) : null}
       {profile.status === 'ready' ? (
         <div className="space-y-2">
-          <p className="m-0 text-xs text-muted-foreground">
-            {profile.provider === 'claude'
-              ? 'In the Claude Code terminal, follow sign-in or type /login.'
-              : 'Codex will guide you through sign-in in its terminal.'}
-          </p>
+          {profile.auth?.state === 'signedIn' ? (
+            <p className="m-0 flex items-center gap-1.5 text-xs">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
+              {[
+                profile.auth.method ? `Signed in with ${profile.auth.method}` : 'Signed in',
+                profile.auth.plan,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          ) : (
+            <p className="m-0 text-xs text-muted-foreground">
+              {profile.auth?.state === 'signedOut' ? 'Signed out. ' : ''}
+              {profile.provider === 'claude'
+                ? 'In the Claude Code terminal, follow sign-in or type /login.'
+                : 'Codex will guide you through sign-in in its terminal.'}
+            </p>
+          )}
           <Button
             size="sm"
+            variant={profile.auth?.state === 'signedIn' ? 'outline' : 'default'}
             disabled={requests.pending}
             onClick={async () => {
               const result = await requests.request({

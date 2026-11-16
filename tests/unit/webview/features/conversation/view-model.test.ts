@@ -3,11 +3,11 @@ import test from 'node:test';
 import type { FileDiff, Message, Session, ToolInfo } from '../../../../../src/shared/model';
 import {
   activitySummary,
+  answerText,
   diffsOf,
   duration,
   findChild,
   isPlanEdit,
-  noteIndices,
   segment,
   segmentHas,
   segmentKey,
@@ -183,8 +183,18 @@ const delegate = (id: string): Message => ({
 });
 const view = (messages: Message[], live = false) => {
   const segments = segment(messages);
-  return { segments, turns: turns(segments, live), notes: noteIndices(segments) };
+  const all = turns(segments, live);
+  return { segments, turns: all, notes: new Set(all.flatMap((turn) => turn.notes)) };
 };
+const labelled = (id: string, phase: Message['phase']): Message => ({
+  ...say(id, 'assistant'),
+  phase,
+  phaseFrom: 'provider',
+});
+const ended = (id: string, outcome: Message['outcome']): Message => ({
+  ...say(id, 'user'),
+  outcome,
+});
 
 test('folds a finished turn’s notes and steps, keeping your message and the answer', () => {
   const {
@@ -202,7 +212,8 @@ test('folds a finished turn’s notes and steps, keeping your message and the an
   assert.equal(turn.fold, true);
   assert.equal(turn.answer, 5);
   assert.deepEqual(turn.work, [1, 2, 3, 4]);
-  assert.deepEqual([...notes], [3, 1]);
+  assert.deepEqual([...notes], [1, 3]);
+  assert.deepEqual(turn.answers, [5]);
   const rows = workMessages(segments, turn.work);
   assert.deepEqual(
     rows.map((row) => row.id),
@@ -323,4 +334,66 @@ test('edits to Claude Code’s plan file read as the plan, not as a diff', () =>
   assert.equal(isPlanEdit(realEdit.tool), false);
   assert.equal(verb(planEdit.tool as ToolInfo), 'Updated');
   assert.equal(activitySummary([planEdit, realEdit]), 'Wrote the plan, edited 1 file');
+});
+
+test('the CLI’s phase decides: consecutive commentary is work, every answer part is kept', () => {
+  const {
+    segments,
+    turns: [turn],
+  } = view([
+    ended('q', 'completed'),
+    labelled('c1', 'commentary'),
+    labelled('c2', 'commentary'),
+    step('s'),
+    labelled('p', 'partial_answer'),
+    step('s2'),
+    labelled('f', 'final_answer'),
+  ]);
+  assert.deepEqual(turn.notes, [1, 2]);
+  // A partial answer stays an answer even with steps after it.
+  assert.deepEqual(turn.answers, [4, 6]);
+  assert.deepEqual(turn.work, [1, 2, 3, 5]);
+  assert.equal(turn.fold, true);
+  assert.equal(answerText(segments, turn), 'p\n\nf');
+});
+
+test('a stopped or failed turn never promotes its last words to an answer', () => {
+  for (const outcome of ['interrupted', 'failed'] as const) {
+    const {
+      turns: [turn],
+      notes,
+    } = view([
+      ended('q', outcome),
+      say('n', 'assistant'),
+      step('s'),
+      say('Checking…', 'assistant'),
+    ]);
+    assert.deepEqual(turn.answers, []);
+    assert.equal(turn.fold, false);
+    assert.equal(turn.outcome, outcome);
+    assert.deepEqual([...notes], [1, 3]);
+  }
+  // Text the CLI labelled as the answer stays one, without folding the turn as a success.
+  const labelledStop = view([ended('q', 'interrupted'), step('s'), labelled('f', 'final_answer')]);
+  assert.deepEqual(labelledStop.turns[0].answers, [2]);
+  assert.equal(labelledStop.turns[0].fold, false);
+});
+
+test('while running, unlabelled text with no step after it is not yet a note or an answer', () => {
+  const {
+    turns: [turn],
+  } = view([say('q', 'user'), say('n', 'assistant'), step('s'), say('latest', 'assistant')], true);
+  assert.equal(turn.live, true);
+  assert.deepEqual(turn.notes, [1]);
+  assert.deepEqual(turn.answers, []);
+});
+
+test('older threads with no phase or outcome keep the trailing replies as the answer', () => {
+  const {
+    segments,
+    turns: [turn],
+  } = view([say('q', 'user'), step('s'), say('a1', 'assistant'), say('a2', 'assistant')]);
+  assert.deepEqual(turn.answers, [2, 3]);
+  assert.deepEqual(turn.notes, []);
+  assert.equal(answerText(segments, turn), 'a1\n\na2');
 });

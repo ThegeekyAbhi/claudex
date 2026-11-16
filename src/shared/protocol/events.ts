@@ -1,5 +1,5 @@
 import { TERMINAL_STATUSES } from '../domain/agents';
-import type { AgentEvent, Message, Session, TranscriptEvent } from '../domain/session';
+import type { AgentEvent, Message, Session, TranscriptEvent, TurnOutcome } from '../domain/session';
 
 export function applyTranscript(
   session: Session,
@@ -17,19 +17,29 @@ export function applyTranscript(
       index?.set(id, added);
     }
   } else if (event.type === 'delta') {
-    if (existing) existing.text += event.text;
-    else {
+    if (existing) {
+      existing.text += event.text;
+      if (event.phase && !existing.phase) {
+        existing.phase = event.phase;
+        existing.phaseFrom = 'provider';
+      }
+    } else {
       const added: Message = {
         id,
         role: event.role ?? 'assistant',
         text: event.text,
         startedAt: Date.now(),
+        ...(event.phase ? { phase: event.phase, phaseFrom: 'provider' as const } : {}),
       };
       session.messages.push(added);
       index?.set(id, added);
     }
   } else if (existing) {
     if (event.text !== undefined) existing.text = event.text;
+    if (event.phase && existing.role === 'assistant') {
+      existing.phase = event.phase;
+      existing.phaseFrom = event.phaseFrom ?? 'provider';
+    }
     if (event.tool && existing.tool) existing.tool = { ...existing.tool, ...event.tool };
     if (event.tool?.status && event.tool.status !== 'running') existing.endedAt = Date.now();
   }
@@ -45,6 +55,14 @@ export function applyEvent(session: Session, event: AgentEvent): void {
   if (event.type === 'status') {
     session.status = event.status;
     if (event.status !== 'waiting') delete session.approval;
+    // The turn's own record, so a later turn's status never speaks for an earlier one.
+    if (TERMINAL_STATUSES.includes(event.status)) {
+      for (let index = session.messages.length - 1; index >= 0; index--)
+        if (session.messages[index].role === 'user') {
+          session.messages[index].outcome = event.status as TurnOutcome;
+          break;
+        }
+    }
     if (session.plan?.status === 'drafting' && TERMINAL_STATUSES.includes(event.status))
       session.plan.status = 'incomplete';
   } else if (event.type === 'plan') {

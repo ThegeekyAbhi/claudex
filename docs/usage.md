@@ -44,7 +44,7 @@ Use separate profiles for personal and work Claude Code or Codex accounts:
 4. Choose **Add account**, then **Open sign-in terminal**. Complete authentication in the installed CLI’s terminal.
 5. Return to chat, open the model selector, choose the account, and select a model. Selecting it does not send your draft.
 
-Adding a profile does not complete sign-in. **CLI installed** reports executable availability, not authentication status. Each separate account folder has its own sign-in and settings. Some skill roots, including Codex’s `~/.agents/skills`, can be shared across profiles.
+Adding a profile does not complete sign-in. **Signed in** and **Signed out** come from the CLI's own status command (`claude auth status`, `codex login status`); Claudex only reads its answer, never the credentials. **CLI installed** means the CLI runs but could not say whether it is signed in. Each separate account folder has its own sign-in and settings. Some skill roots, including Codex’s `~/.agents/skills`, can be shared across profiles.
 
 ![Add Claude and Codex profiles. Demonstration uses sample accounts.](../media/guide/accounts-add.gif)
 

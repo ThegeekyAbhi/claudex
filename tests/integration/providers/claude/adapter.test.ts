@@ -363,3 +363,62 @@ test('a question keeps option details and multiple choice', async () => {
   });
   agent.dispose();
 });
+const finished = (text: string, extra: object = {}) => ({
+  ...base,
+  type: 'result',
+  subtype: 'success',
+  is_error: false,
+  result: text,
+  ...extra,
+});
+const tool = (id: string) => ({ type: 'tool_use', id, name: 'Bash', input: { command: 'ls' } });
+const answered = (events: AgentEvent[]) =>
+  events.flatMap((event) =>
+    event.type === 'patch' && event.phase ? [[event.id, event.phase, event.phaseFrom]] : [],
+  );
+test('a normal finish labels the streamed text its result matches, and nothing before a step', async () => {
+  const { events } = await run([
+    assistant('m1', [{ type: 'text', text: 'I’ll check the files.' }, tool('t1')]),
+    assistant('m2', [
+      { type: 'text', text: 'First part.' },
+      { type: 'text', text: 'Second part.' },
+    ]),
+    finished('First part.\n\nSecond part.'),
+  ]);
+  const texts = events.flatMap((event) =>
+    event.type === 'message' && event.message.role === 'assistant' ? [event.message.id] : [],
+  );
+  assert.equal(texts.length, 3, 'the result adds no copy of text already shown');
+  assert.deepEqual(answered(events), [
+    [texts[1], 'final_answer', 'result'],
+    [texts[2], 'final_answer', 'result'],
+  ]);
+});
+test('a result the stream never showed becomes one answer row; a mismatch labels nothing', async () => {
+  const only = await run([assistant('m1', [tool('t1')]), finished('All done.')]);
+  const added = only.events.find(
+    (event) => event.type === 'message' && event.message.role === 'assistant',
+  );
+  assert.ok(added?.type === 'message');
+  assert.equal(added.message.text, 'All done.');
+  assert.equal(added.message.phase, 'final_answer');
+  const mismatch = await run([
+    assistant('m1', [{ type: 'text', text: 'Something else' }]),
+    finished('Different'),
+  ]);
+  assert.deepEqual(answered(mismatch.events), []);
+  assert.equal(
+    mismatch.events.filter((e) => e.type === 'message' && e.message.role === 'assistant').length,
+    1,
+  );
+});
+test('an unusual ending, an error, or an empty result labels no answer', async () => {
+  for (const frame of [
+    finished('Hi', { terminal_reason: 'hook_stopped' }),
+    finished('Hi', { is_error: true }),
+    finished(''),
+  ]) {
+    const { events } = await run([assistant('m1', [{ type: 'text', text: 'Hi' }]), frame]);
+    assert.deepEqual(answered(events), []);
+  }
+});
