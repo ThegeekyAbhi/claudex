@@ -120,6 +120,7 @@ export function App() {
       }
       session={session}
       sessions={snapshot.sessions}
+      pages={snapshot.pages}
       project={snapshot.project}
       choice={compose.choice}
       onMode={compose.rememberMode}
@@ -407,12 +408,7 @@ export function App() {
     <SidePanel
       snapshot={snapshot}
       session={session}
-      tab={changes.panel}
-      onTab={changes.setPanel}
       onClose={() => changes.setPanel(null)}
-      changes={changes.result}
-      changesLoading={changes.loading}
-      onRefreshChanges={changes.refresh}
       onLinkThread={() => {
         if (session) tabs.compose({ agent: agentKind(session), parentId: session.id });
       }}
@@ -426,6 +422,7 @@ export function App() {
       seen={threads.seen}
       view={threads.threadView}
       onView={threads.setThreadView}
+      onNew={snapshot.trusted ? () => tabs.compose() : undefined}
     />
   );
   return (

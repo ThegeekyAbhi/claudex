@@ -1,0 +1,23 @@
+/* Keep the composer flush with the panel; focus lifts the outer edge. */
+.page-ask-box input:focus-visible,
+.page-chat textarea:focus-visible {
+  outline: none;
+}
+.page-chat {
+  transition: border-color 120ms ease;
+}
+.page-chat:focus-within {
+  border-color: var(--vscode-focusBorder, var(--foreground));
+}
+
+/* The chat's reply text inside the page's chat panel. */
+.page-chat-reply p + p {
+  margin-top: 0.6em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-chat * {
+    transition: none;
+    animation: none;
+  }
+}

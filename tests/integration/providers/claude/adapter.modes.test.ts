@@ -169,6 +169,7 @@ test('an unset Claude mode reports the CLI default with no notice', async () => 
 
 test('Claude in Ask cannot start other agents', async () => {
   const ask = await claudeTurn('ask', 'dontAsk');
+  // With no page tools given, Ask has no tool server at all.
   assert.equal(ask.options.mcpServers, undefined);
   assert.deepEqual(ask.options.disallowedTools, ['Edit', 'Write', 'NotebookEdit']);
   assert.ok((await claudeTurn('auto', 'auto')).options.mcpServers);
@@ -277,4 +278,49 @@ test('a thread saved in the old Agent mode survives with its ID and no mode', ()
   assert.equal(legacy?.id, 'legacy');
   assert.equal(legacy?.mode, undefined);
   assert.equal(unset?.id, 'unset');
+});
+
+test('Claude gets page tools under its normal permissions, and only reading ones in Ask', async () => {
+  const calls: unknown[][] = [];
+  const turn = async (mode: Session['mode']) => {
+    const options: Record<string, any>[] = [];
+    const agent = new ClaudeAgent(
+      { ...fakeSession({ status: 'running' }), mode },
+      'claude',
+      () => {},
+      {
+        pages: async (name, args) => {
+          calls.push([name, args]);
+          return 'ok';
+        },
+        query: ((params: { options: Record<string, unknown> }) => {
+          options.push(params.options);
+          const stream = (async function* () {
+            yield initOf('default');
+            yield { type: 'result', subtype: 'success', session_id: 'native', is_error: false };
+          })();
+          return Object.assign(stream, { close() {} });
+        }) as never,
+      },
+    );
+    await agent.send('hello');
+    return options[0];
+  };
+  const tools = (server: any) => Object.keys(server.instance?._registeredTools ?? {}).sort();
+  const ask = (await turn('ask')).mcpServers['agent-workspace'];
+  assert.deepEqual(tools(ask), ['pages_list', 'pages_read'], 'Ask only reads');
+  const server = (await turn('auto')).mcpServers['agent-workspace'];
+  // No delegate here, so no run_agent and no override of the CLI's own permission rules.
+  assert.equal(server.tools, undefined);
+  assert.deepEqual(tools(server), [
+    'pages_add_image',
+    'pages_create',
+    'pages_list',
+    'pages_read',
+    'pages_suggest_edit',
+  ]);
+  const args = { id: 'daily/2026-11-21', edits: [{ find: '- [ ] a', replace: '- [x] a' }] };
+  const result = await server.instance._registeredTools.pages_suggest_edit.handler(args, {});
+  assert.deepEqual(calls, [['pages_suggest_edit', args]]);
+  assert.equal(result.content[0].text, 'ok');
 });

@@ -128,7 +128,7 @@ async function checkResizablePanes(ctx: UiCheckContext): Promise<void> {
   assert.ok(box, 'the thread list has a resize handle');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x - 80, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.move(box.x + 80, box.y + box.height / 2, { steps: 6 });
   await page.mouse.up();
   await frame();
   const dragged = await width();
@@ -136,7 +136,7 @@ async function checkResizablePanes(ctx: UiCheckContext): Promise<void> {
 
   // The keyboard works too: the handle is a focusable separator.
   await handle.focus();
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowLeft');
   await frame();
   assert.ok((await width()) < dragged, 'arrow keys resize the thread list');
 
@@ -153,12 +153,15 @@ async function checkResizablePanes(ctx: UiCheckContext): Promise<void> {
   );
   await page.screenshot({ path: 'test-results/screenshots/threads-folded.png' });
   // Opening and closing a side pane re-sizes the panes, and must not unfold what you folded.
-  const changesToggle = page.getByRole('button', { name: 'Toggle changes' });
-  await changesToggle.click();
+  await page.locator('main > header').getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Documents' }).click();
   await frame();
   await frame();
   assert.ok((await width()) < 1, 'a side pane opening keeps the thread list folded');
-  await changesToggle.click();
+  await page
+    .getByRole('complementary', { name: 'Documents' })
+    .getByRole('button', { name: 'Close panel' })
+    .click();
   await frame();
   await frame();
   assert.ok((await width()) < 1, 'a side pane closing keeps the thread list folded');

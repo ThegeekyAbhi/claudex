@@ -18,6 +18,8 @@ import type { PlanFiles } from './session-types';
 
 interface Dependencies {
   planFiles?: PlanFiles;
+  /** A finished plan now has its file; called only for plans written by a live turn. */
+  planSaved?(session: Session): void;
   assertAvailable(id: string): void;
   get(id: string): Session;
   changed(): void;
@@ -42,6 +44,7 @@ export class SessionPlans {
         if (session.plan?.text !== text) return;
         session.plan.file = file;
         this.deps.changed();
+        this.deps.planSaved?.(session);
       })
       .catch((error) =>
         applyTranscript(session, {

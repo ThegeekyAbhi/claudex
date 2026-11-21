@@ -34,8 +34,26 @@ export async function checkMarkdown(ctx: UiCheckContext): Promise<void> {
     return check && getComputedStyle(check).opacity === '1';
   });
   await confirmation.waitFor({ state: 'hidden' });
-  await page.getByRole('region', { name: 'Mermaid diagram' }).locator('svg').waitFor();
-  const diagram = page.getByRole('region', { name: 'Mermaid diagram' }).locator('svg');
+  const region = page.getByRole('region', { name: 'Mermaid diagram' });
+  const diagram = region.locator('.diagram-viewer-stage > svg');
+  await diagram.waitFor();
+  // The drawing zooms from the toolbar, shows actual size from the readout, and fits again.
+  const stage = region.locator('.diagram-viewer-stage');
+  const readout = region.getByRole('button', { name: 'Zoom level; show actual size' });
+  const fitted = await readout.textContent();
+  await region.getByRole('button', { name: 'Zoom in (+)' }).click();
+  assert.notEqual(await readout.textContent(), fitted);
+  assert.match((await stage.getAttribute('style')) ?? '', /scale\(/);
+  await readout.click();
+  assert.equal(await readout.textContent(), '100%');
+  await region.getByRole('button', { name: 'Fit (1)' }).click();
+  assert.equal(await readout.textContent(), fitted);
+  // Expanding opens a modal with its own copy; Escape closes it.
+  await region.getByRole('button', { name: 'Expand' }).click();
+  const expanded = page.getByRole('dialog', { name: 'Expanded diagram' });
+  await expanded.locator('.diagram-viewer-stage > svg').waitFor();
+  await page.keyboard.press('Escape');
+  await expanded.waitFor({ state: 'detached' });
   const initialDiagram = await diagram.getAttribute('id');
   await page.evaluate(() => {
     document.body.style.setProperty('--vscode-editor-background', '#fbfaf7');
@@ -44,7 +62,9 @@ export async function checkMarkdown(ctx: UiCheckContext): Promise<void> {
     document.body.style.setProperty('--vscode-panel-border', '#555555');
   });
   await page.waitForFunction((id) => {
-    const svg = document.querySelector('[aria-label="Mermaid diagram"] svg');
+    const svg = document.querySelector(
+      '[aria-label="Mermaid diagram"] .diagram-viewer-stage > svg',
+    );
     return svg && svg.id !== id;
   }, initialDiagram);
   assert.match(await diagram.innerHTML(), /#202020/);

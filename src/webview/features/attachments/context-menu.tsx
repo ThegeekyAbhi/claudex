@@ -5,6 +5,7 @@ import {
   attachmentLabel,
   IMAGE_EXTENSION,
   LEGACY_SECOND_CLAUDE,
+  type PageEntry,
   profileLabel,
   runnableProfiles,
   type Session,
@@ -46,7 +47,7 @@ export function triggerAt(text: string, caret: number): Trigger | undefined {
     end,
   };
 }
-type View = 'root' | 'files' | 'threads' | 'terminals';
+type View = 'root' | 'files' | 'threads' | 'terminals' | 'pages';
 interface Row {
   key: string;
   label: string;
@@ -70,6 +71,7 @@ export function ContextMenu({
   results,
   project,
   sessions,
+  pages = [],
   currentId,
   anchor,
   leading,
@@ -83,6 +85,7 @@ export function ContextMenu({
   results?: ContextResults;
   project: string;
   sessions: Session[];
+  pages?: PageEntry[];
   currentId?: string;
   anchor: MenuAnchor;
   /** @ is the first thing in the message, so an agent is the likely pick. */
@@ -124,11 +127,25 @@ export function ContextMenu({
       icon: 'terminal',
       run: () => onAttach({ kind: 'terminal', name }),
     }));
+  const pageRow = (item: PageEntry): Row => ({
+    key: `page:${item.id}`,
+    label: `${item.icon ? `${item.icon} ` : ''}${item.title}`,
+    detail: item.day ? 'Daily page' : item.openTasks ? `${item.openTasks} open tasks` : 'Page',
+    icon: 'page',
+    run: () => onAttach({ kind: 'page', id: item.id, title: item.title.slice(0, 120) }),
+  });
+  const recentPages = [...pages].sort((a, b) => b.updatedAt - a.updatedAt);
+  const titleMatches = (limit: number) =>
+    recentPages
+      .filter((item) => !query || item.title.toLowerCase().includes(query))
+      .slice(0, limit);
+  const pageMatches = (limit: number) => titleMatches(limit).map(pageRow);
   function buildRows(): Row[] {
     const matches = (results?.matches ?? []).map((item) => fileRow(item.path, item.kind));
     if (view === 'files') return matches;
     if (view === 'threads') return threadRows;
     if (view === 'terminals') return terminalRows;
+    if (view === 'pages') return pageMatches(30);
     const agents = mentionable()
       .filter(
         (item) =>
@@ -161,6 +178,17 @@ export function ContextMenu({
         more: true,
         run: () => setView('threads'),
       },
+      ...(pages.length
+        ? [
+            {
+              key: 'pages',
+              label: 'Pages',
+              icon: 'page' as const,
+              more: true,
+              run: () => setView('pages'),
+            },
+          ]
+        : []),
       ...(terminals.length
         ? [
             {
@@ -180,9 +208,24 @@ export function ContextMenu({
       },
       { key: 'images', label: 'Images', icon: 'image', run: onImages },
     ];
+    // Pages come first when you type part of a title, or start typing "pages" (rather than
+    // every folder called pages); with nothing typed, your latest two follow your recent files.
+    const askingForPages = query.length > 1 && 'pages'.startsWith(query);
+    const pageHits = askingForPages
+      ? [...new Set([...titleMatches(5), ...recentPages.slice(0, 5)])].slice(0, 5)
+      : query.length > 1
+        ? titleMatches(3)
+        : recentPages.slice(0, 2);
+    const pageRows = pageHits.map(pageRow);
+    // An agent you name still comes first, so @claude never attaches a page called Claude.
+    const others = query
+      ? [...agents, ...pageRows, ...top]
+      : leading
+        ? [...agents, ...top, ...pageRows]
+        : [...top, ...pageRows, ...agents];
     // A bare @ mid-sentence is usually context, so Enter shouldn't re-route the whole message.
     return [
-      ...(leading || query ? [...agents, ...top] : [...top, ...agents]),
+      ...others,
       ...categories.filter((item) => !query || item.label.toLowerCase().includes(query)),
     ];
   }
@@ -246,7 +289,9 @@ export function ContextMenu({
               ? 'Files & Folders'
               : view === 'threads'
                 ? 'Past Threads'
-                : 'Terminals'}
+                : view === 'pages'
+                  ? 'Pages'
+                  : 'Terminals'}
           </button>
         ) : null}
         {rows.map((row, index) => (

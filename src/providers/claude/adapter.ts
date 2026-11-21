@@ -18,7 +18,13 @@ import {
   type ImageInput,
   MODE_LABELS,
   modeView,
+  PAGE_TOOL_DESCRIPTIONS,
+  PAGE_TOOL_NAMES,
+  PAGE_TOOL_TITLES,
+  type PageTools,
+  pageToolInput,
   parseRunAgent,
+  READ_ONLY_PAGE_TOOLS,
   RUN_AGENT_TOOL,
   runAgentApprovalTitle,
   runAgentDescription,
@@ -63,11 +69,20 @@ export interface ClaudeOptions {
   env?: Record<string, string>;
   delegate?: Delegate;
   skills?: () => SkillRequest[];
+  /** Your pages, as tools. In Ask, only the ones that read. */
+  pages?: PageTools;
   /** Test seam; the installed SDK is used when omitted. */
   query?: QueryFunction;
   titleRetryMs?: number;
 }
 const RUN_AGENT_FULL_NAME = `mcp__agent-workspace__${RUN_AGENT_TOOL}`;
+const PAGE_TOOL_PREFIX = 'mcp__agent-workspace__';
+function pageToolTitle(name: string): string | undefined {
+  if (!name.startsWith(PAGE_TOOL_PREFIX)) return undefined;
+  return (PAGE_TOOL_TITLES as Record<string, string | undefined>)[
+    name.slice(PAGE_TOOL_PREFIX.length)
+  ];
+}
 const DELEGATE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 interface WorkerState {
@@ -119,14 +134,41 @@ export class ClaudeAgent {
     private emit: EventSink,
     private options: ClaudeOptions = {},
   ) {}
-  private async delegateServer(): Promise<Options['mcpServers']> {
-    const delegate = this.options.delegate;
-    if (!delegate) return undefined;
+  /** In Ask, only tools that read: no delegation and no page suggestions. */
+  private async workspaceToolServers(readOnly: boolean): Promise<Options['mcpServers']> {
+    const { pages } = this.options;
+    const delegate = readOnly ? undefined : this.options.delegate;
+    if (!delegate && !pages) return undefined;
     const { createSdkMcpServer, tool } = await import('@anthropic-ai/claude-agent-sdk');
-    const server = createSdkMcpServer({
-      name: 'agent-workspace',
-      version: '0.6.0',
-      tools: [
+    // Each follows the thread's own permission mode, like any tool; none bypasses it.
+    const tools: NonNullable<Parameters<typeof createSdkMcpServer>[0]['tools']> = pages
+      ? PAGE_TOOL_NAMES.filter((name) => !readOnly || READ_ONLY_PAGE_TOOLS.includes(name)).map(
+          (name) =>
+            tool(
+              name,
+              PAGE_TOOL_DESCRIPTIONS[name],
+              pageToolInput[name].shape,
+              async (args) => {
+                try {
+                  return { content: [{ type: 'text' as const, text: await pages(name, args) }] };
+                } catch (error) {
+                  return {
+                    content: [
+                      {
+                        type: 'text' as const,
+                        text: error instanceof Error ? error.message : String(error),
+                      },
+                    ],
+                    isError: true,
+                  };
+                }
+              },
+              { alwaysLoad: name === 'pages_list' },
+            ),
+        )
+      : [];
+    if (delegate) {
+      tools.push(
         tool(
           RUN_AGENT_TOOL,
           runAgentDescription(),
@@ -149,15 +191,18 @@ export class ClaudeAgent {
           },
           { alwaysLoad: true },
         ),
-      ],
-    });
+      );
+    }
+    const server = createSdkMcpServer({ name: 'agent-workspace', version: '0.6.0', tools });
     // Each delegation stays user-approved even where settings allow every MCP tool.
     return {
       'agent-workspace': {
         ...server,
         // The call lasts as long as the other agent's turn, so it gets a generous limit.
         timeout: DELEGATE_TIMEOUT_MS,
-        tools: [{ name: RUN_AGENT_TOOL, permission_policy: 'always_ask' as const }],
+        ...(delegate
+          ? { tools: [{ name: RUN_AGENT_TOOL, permission_policy: 'always_ask' as const }] }
+          : {}),
       },
     };
   }
@@ -205,7 +250,7 @@ export class ClaudeAgent {
     const queryFunction =
       this.options.query ?? (await import('@anthropic-ai/claude-agent-sdk')).query;
     // Ask is read-only, and another agent started from here wouldn't be.
-    const mcpServers = this.session.mode === 'ask' ? undefined : await this.delegateServer();
+    const mcpServers = await this.workspaceToolServers(this.session.mode === 'ask');
     let sawResult = false;
     let finishPrompt = () => {};
     const promptDone = new Promise<void>((resolve) => {
@@ -400,7 +445,7 @@ export class ClaudeAgent {
             ? 'Your input is needed'
             : runAgent
               ? runAgentApprovalTitle(runAgent)
-              : `Allow ${name}?`,
+              : (pageToolTitle(name) ?? `Allow ${name}?`),
           detail: runAgent ? runAgent.prompt : JSON.stringify(input, null, 2),
           questions,
           origin: runAgent ? 'delegation' : 'provider',

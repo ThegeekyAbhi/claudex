@@ -1,5 +1,5 @@
 import type { Attachment } from '../../shared/model';
-import { referenceParts } from '../features/composer/references';
+import { inlineTitle, referenceParts } from '../features/composer/references';
 
 interface MarkdownNode {
   type: string;
@@ -23,7 +23,10 @@ export function remarkReferences({ attachments }: { attachments: Attachment[] })
             type: 'referenceChip',
             data: {
               hName: 'span',
-              hProperties: { className: ['inline-reference'], title: part.attachment.path },
+              hProperties: {
+                className: ['inline-reference'],
+                title: inlineTitle(part.attachment),
+              },
             },
             children: [{ type: 'text', value: part.label }],
           };

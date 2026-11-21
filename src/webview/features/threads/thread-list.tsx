@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   agentKind,
   agentLabel,
@@ -36,6 +36,8 @@ interface Props {
   seen: SeenAt;
   view: ThreadViewState;
   onView: (view: ThreadViewState) => void;
+  /** Starts a new chat; absent while the workspace isn't trusted. */
+  onNew?: () => void;
 }
 const OLDER_SHOWN = 7;
 /** The shortcut as each system writes it: ⌘ on a Mac, Ctrl elsewhere. */
@@ -53,7 +55,91 @@ function startOfToday(): number {
   today.setHours(0, 0, 0, 0);
   return today.getTime();
 }
-export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onView }: Props) {
+/** A quiet mark for work that began in a terminal; the words are for screen readers. */
+function TerminalMark() {
+  return (
+    <span className="inline-flex shrink-0 text-faint" title="From the terminal">
+      <Icon name="terminal" size={11} />
+      <span className="sr-only">, from the terminal</span>
+    </span>
+  );
+}
+/**
+ * Accounts as one segmented control: a track with a highlight that slides to the chosen account.
+ * It scrolls sideways rather than wrapping, so the list below never jumps.
+ */
+function AccountTabs({
+  ids,
+  selected,
+  onSelect,
+}: {
+  ids: (string | undefined)[];
+  selected: string | undefined;
+  onSelect: (id: string | undefined) => void;
+}) {
+  const list = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState<{ left: number; width: number }>();
+  const key = ids.join('|');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure when the choice or the accounts change
+  useLayoutEffect(() => {
+    const element = list.current;
+    if (!element) return;
+    const measure = () => {
+      const tab = element.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+      setThumb(tab ? { left: tab.offsetLeft, width: tab.offsetWidth } : undefined);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [selected, key]);
+  return (
+    <div className="mb-2 rounded-lg bg-muted p-0.5">
+      <div
+        ref={list}
+        role="tablist"
+        aria-label="Chats by account"
+        className="relative flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onKeyDown={(event) => moveTabFocus(event)}
+      >
+        {thumb ? (
+          <span
+            aria-hidden="true"
+            className="absolute inset-y-0 left-0 rounded-md bg-raised shadow-[0_1px_2px_#0003] outline outline-1 outline-thread-active-edge -outline-offset-1 transition-[transform,width] duration-200 ease-out motion-reduce:transition-none"
+            style={{ transform: `translateX(${thumb.left}px)`, width: thumb.width }}
+          />
+        ) : null}
+        {ids.map((id) => (
+          <button
+            key={id ?? 'all'}
+            type="button"
+            role="tab"
+            aria-selected={selected === id}
+            tabIndex={selected === id ? 0 : -1}
+            title={id ? `${profileLabel(id)}: threads and terminal sessions` : 'Every account'}
+            className="relative z-[1] shrink-0 gap-1.5 h-7 px-2.5 rounded-md text-[12px] text-muted-foreground enabled:hover:bg-transparent enabled:hover:text-foreground aria-selected:text-foreground aria-selected:font-medium focus-visible:outline-offset-[-2px]"
+            onClick={(event) => {
+              event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+              onSelect(id);
+            }}
+          >
+            {id ? <AgentMark agent={id} size={12} /> : null}
+            <span className="truncate max-w-24">{id ? profileLabel(id) : 'All'}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+export function ThreadSidebar({
+  snapshot,
+  selectedId,
+  onSelect,
+  seen,
+  view,
+  onView,
+  onNew,
+}: Props) {
   const [search, setSearch] = useState('');
   const collapsed = view.collapsed ?? {};
   const showEarlier = view.showEarlier ?? {};
@@ -120,12 +206,12 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
     return (
       <div
         key={`native-${entry.profileId}-${entry.sessionId}`}
-        className="thread group/row flex items-center rounded-md min-h-8 hover:bg-muted focus-within:bg-muted"
+        className="thread group/row flex items-center rounded-lg min-h-9 pr-0.5 hover:bg-muted focus-within:bg-muted"
       >
-        <span className="w-3.5 h-[26px] shrink-0" />
+        <span className="w-4 shrink-0" />
         <button
           type="button"
-          className="flex-1 min-w-0 justify-start gap-2 py-1 pr-1.5 pl-0 text-left text-muted-foreground in-[.thread:hover]:text-foreground enabled:hover:bg-transparent"
+          className="flex-1 min-w-0 self-stretch justify-start gap-2.5 py-1.5 pr-1.5 pl-0.5 rounded-lg text-left text-muted-foreground in-[.thread:hover]:text-foreground enabled:hover:bg-transparent focus-visible:outline-offset-[-2px]"
           title={`${title}\n${profileLabel(entry.profileId)} · from the terminal. Opening it continues the same session.`}
           aria-label={`${title}, from the terminal`}
           data-native-session={entry.sessionId}
@@ -136,14 +222,13 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           <span className="relative inline-flex shrink-0 items-center justify-center size-[18px]">
             <AgentMark agent={entry.profileId} size={13} />
           </span>
-          <span className="min-w-0 flex-1 flex flex-col leading-[1.3]">
-            <span className="truncate text-[12.5px]">{title}</span>
-            <small className="flex items-center gap-1 truncate text-[11px] text-faint">
-              <Icon name="terminal" size={10} />
-              Terminal
-            </small>
+          <span className="min-w-0 flex-1 flex items-center gap-1.5 leading-[1.3]">
+            <span className="truncate text-[13px]">{title}</span>
+            <span className="inline-flex shrink-0 text-faint" aria-hidden="true">
+              <Icon name="terminal" size={11} />
+            </span>
           </span>
-          <span className="text-[10.5px] text-faint shrink-0 tabular-nums">
+          <span className="text-[11px] text-faint shrink-0 tabular-nums">
             {relativeTime(entry.updatedAt)}
           </span>
         </button>
@@ -171,26 +256,24 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           ? SIGNAL_LABELS.failed
           : item.status === 'interrupted'
             ? 'Interrupted'
-            : item.origin === 'terminal' && !shownSignal
-              ? 'From the terminal'
-              : shownSignal === 'running'
-                ? [
-                    ...(item.status === 'running' ? ['Running'] : []),
-                    ...(runningKids
-                      ? [`${runningKids} ${runningKids === 1 ? 'subagent' : 'subagents'} running`]
-                      : []),
-                  ].join(' · ')
-                : undefined;
+            : shownSignal === 'running'
+              ? [
+                  ...(item.status === 'running' ? ['Running'] : []),
+                  ...(runningKids
+                    ? [`${runningKids} ${runningKids === 1 ? 'subagent' : 'subagents'} running`]
+                    : []),
+                ].join(' · ')
+              : undefined;
     const lines = [...kids, ...(split.earlier.length && !filtering ? [undefined] : [])];
     return (
       <div key={item.id} className="thread-node">
         <div
-          className={`thread group/row flex items-center rounded-md min-h-8 hover:bg-muted focus-within:bg-muted [&.active]:bg-accent ${active ? 'active' : ''}`}
+          className={`thread group/row flex items-center rounded-lg min-h-9 pr-0.5 hover:bg-muted focus-within:bg-muted [&.active]:bg-thread-active [&.active]:outline [&.active]:outline-1 [&.active]:outline-thread-active-edge [&.active]:-outline-offset-1 ${active ? 'active' : ''}`}
         >
           {expandable ? (
             <button
               type="button"
-              className="w-3.5 h-[26px] shrink-0 p-0 text-faint enabled:hover:bg-transparent enabled:hover:text-foreground"
+              className="w-4 self-stretch shrink-0 p-0 rounded-md text-faint enabled:hover:bg-transparent enabled:hover:text-foreground focus-visible:outline-offset-[-2px]"
               aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`}
               aria-expanded={open}
               onClick={() => onView({ ...view, collapsed: { ...collapsed, [item.id]: open } })}
@@ -202,11 +285,11 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
               </span>
             </button>
           ) : (
-            <span className="w-3.5 h-[26px] shrink-0" />
+            <span className="w-4 shrink-0" />
           )}
           <button
             type="button"
-            className="flex-1 min-w-0 justify-start gap-2 py-1 pr-1.5 pl-0 text-left text-muted-foreground in-[.thread:hover]:text-foreground in-[.thread.active]:text-foreground enabled:hover:bg-transparent"
+            className="flex-1 min-w-0 self-stretch justify-start gap-2.5 py-1.5 pr-1.5 pl-0.5 rounded-lg text-left text-muted-foreground in-[.thread:hover]:text-foreground in-[.thread.active]:text-thread-active-foreground in-[.thread.active]:font-medium enabled:hover:bg-transparent focus-visible:outline-offset-[-2px]"
             onClick={() => onSelect(item)}
             title={`${title}\n${agentLabel(item)} · ${item.cwd}`}
             aria-current={active ? 'page' : undefined}
@@ -220,20 +303,23 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
               ) : null}
             </span>
             <span className="min-w-0 flex-1 flex flex-col leading-[1.3]">
-              <span
-                className={`truncate text-[12.5px] ${signal === 'unread' ? 'font-medium text-foreground' : ''}`}
-              >
-                {title}
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className={`truncate text-[13px] ${signal === 'unread' ? 'font-medium text-foreground' : ''}`}
+                >
+                  {title}
+                </span>
+                {item.origin === 'terminal' ? <TerminalMark /> : null}
               </span>
               {detail ? (
                 <small
-                  className={`truncate text-[11px] ${signal === 'waiting' ? 'text-warning' : signal === 'failed' ? 'text-error' : 'text-faint'}`}
+                  className={`truncate text-[11.5px] ${signal === 'waiting' ? 'text-warning' : signal === 'failed' ? 'text-error' : 'text-faint'}`}
                 >
                   {detail}
                 </small>
               ) : null}
             </span>
-            <span className="text-[10.5px] text-faint shrink-0 tabular-nums group-hover/row:hidden group-focus-within/row:hidden has-[~_*_[data-state=open]]:hidden">
+            <span className="text-[11px] text-faint shrink-0 tabular-nums group-hover/row:hidden group-focus-within/row:hidden has-[~_*_[data-state=open]]:hidden">
               {relativeTime(item.updatedAt)}
             </span>
           </button>
@@ -300,7 +386,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
   const group = (label: string, items: Row[]) =>
     items.length ? (
       <section>
-        <h3 className="block text-[11px] font-[450] text-faint mt-0 mx-2 mb-[3px] truncate">
+        <h3 className="sticky top-0 z-[2] block m-0 px-2 py-1 bg-chrome text-[11.5px] font-medium text-muted-foreground truncate">
           {label}
         </h3>
         {items.map(row)}
@@ -308,16 +394,16 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
     ) : null;
   return (
     <nav
-      className="threads bg-chrome border-l border-subtle flex flex-col min-h-0 pt-1.5 px-1.5 pb-2 max-[900px]:hidden max-[900px]:border-l-0 max-[900px]:in-[.show-history]:flex max-[900px]:in-[.show-history]:absolute max-[900px]:in-[.show-history]:inset-[40px_0_0] max-[900px]:in-[.show-history]:z-30"
+      className="threads bg-chrome border-r border-subtle flex flex-col min-h-0 px-2 pb-2 max-[900px]:hidden max-[900px]:border-r-0 max-[900px]:in-[.show-history]:flex max-[900px]:in-[.show-history]:absolute max-[900px]:in-[.show-history]:inset-[40px_0_0] max-[900px]:in-[.show-history]:z-30"
       aria-label="Agent sessions"
     >
-      <div className="flex items-center justify-between px-2 py-2">
-        <h2 className="text-xs font-semibold text-foreground">Chats</h2>
+      <div className="flex items-center justify-between h-10 shrink-0 pl-2">
+        <h2 className="m-0 text-[13px] font-semibold text-foreground">Chats</h2>
         <div className="flex items-center gap-0.5">
           <Hint label={runningOnly ? 'Showing running agents only' : 'Show running agents only'}>
             <button
               type="button"
-              className={`icon-button p-[5px] enabled:hover:text-foreground ${runningOnly ? 'text-foreground bg-muted' : 'text-muted-foreground'}`}
+              className={`icon-button p-[6px] rounded-md enabled:hover:text-foreground enabled:hover:bg-muted ${runningOnly ? 'text-foreground bg-accent' : 'text-muted-foreground'}`}
               aria-label="Running only"
               aria-pressed={runningOnly}
               onClick={() => onView({ ...view, runningOnly: !runningOnly })}
@@ -327,32 +413,25 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           </Hint>
         </div>
       </div>
+      <button
+        type="button"
+        className="w-full justify-start gap-2.5 min-h-9 mb-2 px-2 rounded-lg text-[13px] text-foreground enabled:hover:bg-muted focus-visible:outline-offset-[-2px]"
+        aria-label="Start a new chat"
+        disabled={!onNew}
+        onClick={onNew}
+      >
+        <Icon name="newChat" size={15} />
+        New chat
+      </button>
       {profiles.length > 1 ? (
-        <div
-          role="tablist"
-          aria-label="Chats by account"
-          className="flex flex-wrap gap-0.5 mb-1.5 px-1"
-          onKeyDown={(event) => moveTabFocus(event)}
-        >
-          {[undefined, ...profiles].map((id) => (
-            <button
-              key={id ?? 'all'}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              tabIndex={tab === id ? 0 : -1}
-              title={id ? `${profileLabel(id)}: threads and terminal sessions` : 'Every account'}
-              className="shrink-0 gap-1 min-h-6 px-1.5 py-[3px] rounded-md text-[11.5px] text-muted-foreground enabled:hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground"
-              onClick={() => onView({ ...view, profile: id })}
-            >
-              {id ? <AgentMark agent={id} size={11} /> : null}
-              <span className="truncate max-w-24">{id ? profileLabel(id) : 'All'}</span>
-            </button>
-          ))}
-        </div>
+        <AccountTabs
+          ids={[undefined, ...profiles]}
+          selected={tab}
+          onSelect={(id) => onView({ ...view, profile: id })}
+        />
       ) : null}
-      <label className="relative flex items-center gap-1.5 mb-2 px-2 py-[5px] text-faint rounded-md focus-within:bg-muted [&_kbd]:opacity-0 in-[.threads:hover]:[&_kbd]:opacity-100 [&_input]:w-full [&_input]:text-[12px] [&_input]:text-foreground [&_input:focus-visible]:outline-none">
-        <Icon name="search" size={12} />
+      <label className="relative flex items-center gap-2 mb-3 px-2.5 min-h-8 text-faint rounded-lg bg-raised border border-transparent focus-within:border-[var(--focus)] [&_kbd]:opacity-0 in-[.threads:hover]:[&_kbd]:opacity-100 focus-within:[&_kbd]:opacity-100 [&_input]:w-full [&_input]:text-[12.5px] [&_input]:text-foreground [&_input:focus-visible]:outline-none">
+        <Icon name="search" size={13} />
         <span className="sr-only">Find a thread</span>
         <input
           id="thread-search"
@@ -362,7 +441,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
         />
         <kbd>{FIND_KEY}</kbd>
       </label>
-      <div className="overflow-y-auto flex-1 flex flex-col gap-3.5">
+      <div className="overflow-y-auto flex-1 flex flex-col gap-3 -mx-1 px-1">
         {group('Needs you', attention)}
         {group('Running', working)}
         {group('Pinned', pinned)}
@@ -370,14 +449,14 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
         {group('Yesterday', lastDayRows)}
         {olderRows.length ? (
           <section>
-            <h3 className="block text-[11px] font-[450] text-faint mt-0 mx-2 mb-[3px] truncate">
+            <h3 className="sticky top-0 z-[2] block m-0 px-2 py-1 bg-chrome text-[11.5px] font-medium text-muted-foreground truncate">
               Older
             </h3>
             {olderVisible.map(row)}
             {hidden ? (
               <button
                 type="button"
-                className="w-full justify-start gap-[7px] min-h-[26px] py-[3px] pr-2 pl-3 text-[12px] text-faint"
+                className="w-full justify-start gap-2 min-h-8 py-1 pr-2 pl-2.5 rounded-lg text-[12.5px] text-muted-foreground enabled:hover:bg-muted enabled:hover:text-foreground focus-visible:outline-offset-[-2px]"
                 onClick={() => setShowAll(true)}
               >
                 <Icon name="more" size={12} />
@@ -387,7 +466,7 @@ export function ThreadSidebar({ snapshot, selectedId, onSelect, seen, view, onVi
           </section>
         ) : null}
         {!roots.length && !natives.length ? (
-          <p className="text-muted-foreground text-[12px] m-2">
+          <p className="text-muted-foreground text-[12.5px] m-2">
             {search
               ? 'No matching threads.'
               : runningOnly

@@ -23,6 +23,7 @@ function colors() {
       ),
     ),
     surface: token('--raised', token('--vscode-input-background', light ? '#eeeeee' : '#303030')),
+    font: `${token('--vscode-font-family', 'system-ui')}, system-ui, sans-serif`,
   };
 }
 
@@ -38,9 +39,25 @@ export function diagramSvg(source: string): Promise<string> {
         startOnLoad: false,
         securityLevel: 'strict',
         theme: 'base',
+        look: 'classic',
         suppressErrorRendering: true,
+        fontFamily: theme.font,
+        fontSize: 13,
+        flowchart: { curve: 'basis', padding: 12, nodeSpacing: 36, rankSpacing: 40 },
+        // Flat, quiet shapes: no drop shadows, soft corners, hairline edges.
+        themeCSS: [
+          '.node rect, .node polygon, .node circle, .node path, .cluster rect { filter: none; stroke-width: 1px; }',
+          '.node rect, .cluster rect { rx: 6px; ry: 6px; }',
+          '.flowchart-link, .edgePath .path { stroke-width: 1.25px; }',
+          `.edgeLabel, .edgeLabel p, .labelBkg { background-color: ${theme.background}; }`,
+          `.edgeLabel rect { fill: ${theme.background}; opacity: 1; }`,
+          '.edgeLabel p { padding: 0 4px; }',
+          '.label, .nodeLabel, .edgeLabel { font-size: 13px; }',
+          '* { filter: none; }',
+        ].join('\n'),
         themeVariables: {
           background: theme.background,
+          fontFamily: theme.font,
           primaryColor: theme.surface,
           primaryTextColor: theme.foreground,
           primaryBorderColor: theme.border,

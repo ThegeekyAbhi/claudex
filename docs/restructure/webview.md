@@ -6,7 +6,7 @@
 
 The stylesheet entry point is `src/webview/app/index.css`. It imports theme tokens and native
 defaults from `app/styles`, generated Markdown from `lib/markdown.css`, and scoped CSS owned by
-the mascot, onboarding, composer, Changes, conversation, and copy controls. Preflight remains
+the mascot, onboarding, composer, conversation, and copy controls. Preflight remains
 omitted. `dist/webview.css` separately supplies the font faces. Tailwind scanning uses
 `source(none)` plus `@source "../"`, covering the browser source tree only.
 
@@ -80,7 +80,7 @@ All paths below are relative to `src/webview/`.
 | `app/use-compose-choice.ts` | Compose choice, nudges, mode memory, installed-agent fallback |
 | `app/use-tabs.ts` | Selected thread, open/draft tabs, history visibility, closing/started-draft guards, reconciliation/navigation |
 | `app/use-thread-view.ts` | Sidebar filter, seen timestamps, document visibility, scroll ref, child-thread map |
-| `app/use-changes-panel.ts` | Panel selection, per-session change results, request/loading lifecycle |
+| `app/use-changes-panel.ts` | Docs panel selection; Changes opens VS Code's multi-file diff editor (no webview list) |
 | `app/use-turns.ts` | Submission/starting state, submit guards, continuation actions, acknowledgement/error lifecycle |
 | `app/use-workspace-ui.ts` | Error/skills state, appearance effect, keyboard shortcut/focus effects |
 | `app/use-host-messages.ts` | One bridge subscription, snapshot merging, image base, context results; callback dispatch to state owners |

@@ -46,3 +46,11 @@
     animation: none;
   }
 }
+
+/* The Claudex mark, as page tabs show it: a page chip carries it so it reads as a page. */
+.claudex-mark {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  background: url("./mascot/icon.png") center / contain no-repeat;
+}

@@ -149,7 +149,65 @@ export async function checkContextMenu(ctx: UiCheckContext): Promise<void> {
   await menu.getByRole('option', { name: 'Playback review' }).waitFor();
   await box.press('Escape');
   await box.fill('');
+  // @ finds a page by title, or by starting to type "pages", ahead of folders called pages;
+  // the pick sits in the text as a chip and goes with the message.
+  (ctx.snapshot as any).pages = [
+    { id: 'cache-plan-1a2b3c', title: 'Cache plan', updatedAt: 2, openTasks: 0, doneTasks: 0 },
+    {
+      id: 'release-notes-4d5e6f',
+      title: 'Release notes',
+      updatedAt: 1,
+      openTasks: 0,
+      doneTasks: 0,
+    },
+  ];
+  await update('claude-two');
+  const contextMenu = page.getByRole('listbox', { name: 'Add context' });
+  await box.fill('Read ');
+  await box.press('End');
+  await box.pressSequentially('@');
+  await contextMenu.waitFor();
+  await box.pressSequentially('pag');
+  await contextMenu.getByText('Cache plan').waitFor();
+  await box.fill('Read ');
+  await box.press('End');
+  await box.pressSequentially('@');
+  await contextMenu.waitFor();
+  await box.pressSequentially('cache');
+  await contextMenu.getByRole('option', { name: /Cache plan/ }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector<HTMLElement>('.composer-input')?.dataset.value ===
+      'Read [Page: Cache plan] ',
+  );
+  const pageChip = page.locator('.composer-input .inline-reference', { hasText: 'Cache plan' });
+  assert.equal(await pageChip.getAttribute('title'), 'Page · Cache plan');
+  // A page chip carries the Claudex mark, as page tabs do, so it reads as a page.
+  const mark = pageChip.locator('.claudex-mark');
+  assert.match(
+    await mark.evaluate((element) => getComputedStyle(element).backgroundImage),
+    /icon\.png/,
+  );
+  assert.ok(
+    await mark.evaluate(async (element) => {
+      const url = getComputedStyle(element).backgroundImage.slice(5, -2);
+      const image = new Image();
+      image.src = url;
+      await image.decode().catch(() => undefined);
+      return image.naturalWidth > 0;
+    }),
+    'the mark loads',
+  );
+  await page.locator('.composer').screenshot({ path: 'test-results/screenshots/page-chip.png' });
+  assert.equal(await page.locator('.composer .attachment-chip').count(), 0, 'not above the text');
+  await box.press('End');
+  await box.press('Backspace');
+  await box.press('Backspace');
+  await pageChip.waitFor({ state: 'detached' });
+  await box.fill('');
+  await contextMenu.waitFor({ state: 'detached' });
   // That thread is waiting on its plan, so the send itself uses an idle thread.
+  await box.fill('');
   await update('claude-two');
   await box.fill('@');
   await menu.getByRole('option', { name: /Branch/ }).click();

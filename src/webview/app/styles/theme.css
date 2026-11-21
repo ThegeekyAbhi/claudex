@@ -26,6 +26,10 @@ body {
   --accent-hover: var(--vscode-button-hoverBackground, var(--accent));
   --accent-text: var(--vscode-button-foreground, #181818);
   --focus: var(--vscode-focusBorder, #888);
+  /* The open thread in the list: the quieter selection VS Code gives lists you aren't typing in. */
+  --thread-active: var(--vscode-list-inactiveSelectionBackground, var(--selection));
+  --thread-active-foreground: var(--vscode-list-inactiveSelectionForeground, var(--foreground));
+  --thread-active-edge: transparent;
   --success: var(--vscode-testing-iconPassed, #58b88b);
   --warning: var(--vscode-editorWarning-foreground, #d8b268);
   --error: var(--vscode-errorForeground, #e47777);
@@ -64,7 +68,8 @@ body {
   --file-renamed: var(--vscode-gitDecoration-renamedResourceForeground, #73c991);
   --file-description: var(--vscode-descriptionForeground);
 }
-html[data-surface="sidebar"] body {
+html[data-surface="sidebar"] body,
+html[data-surface="pages"] body {
   --canvas: var(--vscode-sideBar-background, var(--vscode-editor-background, #181818));
 }
 body.vscode-light,
@@ -74,6 +79,7 @@ body.vscode-high-contrast-light {
   --raised: var(--vscode-input-background, #f4f4f4);
   --foreground: var(--vscode-foreground, #222);
   --muted: var(--vscode-descriptionForeground, #606060);
+  --thread-active: var(--vscode-list-inactiveSelectionBackground, #0000000f);
   --accent: var(--vscode-button-background, #333);
   --accent-text: var(--vscode-button-foreground, #fff);
   --claude: #c15f3c;
@@ -83,6 +89,7 @@ body.vscode-high-contrast,
 body.vscode-high-contrast-light {
   --border: var(--vscode-contrastBorder, var(--foreground));
   --border-strong: var(--vscode-contrastBorder, var(--foreground));
+  --thread-active-edge: var(--vscode-contrastActiveBorder, var(--focus));
   --claude: var(--foreground);
   --codex: var(--foreground);
   --mode-ask: var(--foreground);
@@ -109,6 +116,8 @@ html[data-appearance="cursor"] body.vscode-dark {
   --composer-edge: #494949;
   --hover: #ffffff0d;
   --selection: #ffffff14;
+  --thread-active: #ffffff14;
+  --thread-active-foreground: #f0f0f0;
   --accent: #81a1c1;
   --accent-hover: #87a6c4;
   --accent-text: #191c22;
@@ -210,6 +219,9 @@ body.vscode-high-contrast-light [data-agent] {
   --color-subtle: var(--border);
   --color-strong: var(--border-strong);
   --color-accent-hover: var(--accent-hover);
+  --color-thread-active: var(--thread-active);
+  --color-thread-active-foreground: var(--thread-active-foreground);
+  --color-thread-active-edge: var(--thread-active-edge);
   --color-link: var(--link);
   --color-success: var(--success);
   --color-error: var(--error);

@@ -119,7 +119,11 @@ export class Surfaces {
 export function webviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
-  kind: Surface['kind'] | 'plan',
+  /**
+   * `pages` is the Pages side bar, `pagesOverview` the All pages tab and `page` a page editor;
+   * none is a chat surface.
+   */
+  kind: Surface['kind'] | 'plan' | 'pages' | 'pagesOverview' | 'page',
 ): string {
   const nonce = randomUUID();
   const asset = (name: string) =>

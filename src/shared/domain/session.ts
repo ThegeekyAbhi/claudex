@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentKind, AgentMode, Provider, Status } from './agents';
+import { PAGE_ID, type PageEntry } from './pages/entry';
 import type { Preferences } from './preferences';
 import { type AgentProfile, PROFILE_ID, profileLabel } from './profiles';
 import type { SkillCatalogs, SkillRequest } from './skills';
@@ -67,6 +68,12 @@ export const attachmentSchema = z.discriminatedUnion('kind', [
     upTo: z.string().max(200).optional(),
   }),
   z.object({ kind: z.literal('diff') }),
+  /** One of your pages, inlined at send time. Sending it links the page to the thread. */
+  z.object({
+    kind: z.literal('page'),
+    id: z.string().regex(PAGE_ID),
+    title: z.string().max(500).optional(),
+  }),
   z.object({ kind: z.literal('terminal'), name: z.string().min(1).max(200) }),
   z.object({
     kind: z.literal('skill'),
@@ -94,6 +101,9 @@ export function numberImages(attachments: Attachment[]): Attachment[] {
 export function attachmentToken(attachment: Attachment): string {
   if ('reference' in attachment && attachment.reference) return `[Image #${attachment.reference}]`;
   if (attachment.kind === 'file' || attachment.kind === 'folder') return `[${attachment.path}]`;
+  // Pages and skills sit inline in your text too; the prefix keeps them apart from paths.
+  if (attachment.kind === 'page') return `[Page: ${attachment.title ?? 'Page'}]`;
+  if (attachment.kind === 'skill') return `[Skill: ${attachment.name}]`;
   return `[${attachmentLabel(attachment)}]`;
 }
 export function attachmentLabel(attachment: Attachment): string {
@@ -114,6 +124,8 @@ export function attachmentLabel(attachment: Attachment): string {
         : (attachment.title ?? 'Thread');
     case 'diff':
       return 'Branch diff';
+    case 'page':
+      return attachment.title ?? 'Page';
     case 'terminal':
       return attachment.name;
     case 'skill':
@@ -365,6 +377,8 @@ export interface Snapshot {
   onboardingDismissed?: boolean;
   /** Sessions the CLIs keep for this folder that no thread here is linked to yet. */
   nativeSessions?: NativeSessionEntry[];
+  /** Your pages, for the composer's @ menu. */
+  pages?: PageEntry[];
 }
 /** A CLI session found in that profile's own history, such as one you ran in a terminal. */
 export interface NativeSessionEntry {
@@ -377,7 +391,6 @@ export interface NativeSessionEntry {
   createdAt?: number;
 }
 export interface ChangesResult {
-  requestId?: string;
   root?: string;
   baseline?: string;
   files: FileDiff[];

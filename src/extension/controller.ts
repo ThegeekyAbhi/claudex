@@ -10,9 +10,13 @@ import {
 } from '../shared/domain/preferences';
 import {
   agentKind,
+  agentLabel,
+  allProfiles,
+  canBuildPlan,
   canRun,
   INSTALL_HELP,
   type Provider,
+  profileProvider,
   type Session,
   type Snapshot,
   type SnapshotUpdate,
@@ -21,12 +25,14 @@ import {
   skillsFor,
   tailStart,
 } from '../shared/model';
+import type { PagePlan } from '../shared/protocol/pages';
 import type { HandlersFor } from './action-groups';
 import { readAtRevision } from './changes';
 import { listDocuments } from './documents';
 import { AttachmentsHandlers } from './handlers/attachments';
 import { CatalogHandlers } from './handlers/catalog';
 import { DocumentsHandlers } from './handlers/documents';
+import { PagesHandlers } from './handlers/pages';
 import { PlansHandlers } from './handlers/plans';
 import { ProfilesHandlers } from './handlers/profiles';
 import { SideQuestionsHandlers } from './handlers/side-questions';
@@ -34,6 +40,7 @@ import { TerminalHandlers } from './handlers/terminal';
 import { ThreadsHandlers } from './handlers/threads';
 import { launcherFor } from './launcher';
 import { NativeHistory } from './native-history';
+import { Pages } from './pages/pages';
 import { restoredThreadId } from './panel-state';
 import { PlanStore } from './plans';
 import { type ActionRoutes, RoutedActionError, routeAction } from './router';
@@ -61,6 +68,7 @@ export class WorkspaceController {
   private attachmentsHandlers: AttachmentsHandlers;
   private terminalHandlers: TerminalHandlers;
   private sideQuestionsHandlers: SideQuestionsHandlers;
+  private pages: Pages;
   private sessions: Sessions;
   private images: ImageStore;
   private surfaces: Surfaces;
@@ -80,6 +88,7 @@ export class WorkspaceController {
       catalog: number;
       skills: number;
       documents?: Snapshot['documents'];
+      pages: number;
     }
   >();
   private cachedDocuments = new Map<string, Awaited<ReturnType<typeof listDocuments>>>();
@@ -101,10 +110,15 @@ export class WorkspaceController {
     this.plans = new PlanStore(path.join(storage.fsPath, 'plans'));
     this.sessions = new Sessions(
       storage.fsPath,
-      createAgentFactory(launcherFor, this.images, (session) =>
-        skillsFor(this.catalogHandlers.skillsAt(session.cwd), agentKind(session)).skills.filter(
-          (skill) => skill.enabled,
-        ),
+      createAgentFactory(
+        launcherFor,
+        this.images,
+        (session) =>
+          skillsFor(this.catalogHandlers.skillsAt(session.cwd), agentKind(session)).skills.filter(
+            (skill) => skill.enabled,
+          ),
+        // Read when an agent starts, by which time the handlers exist.
+        (session) => (name, args) => this.pages.agentTool(session.id, name, args),
       ),
       undefined,
       this.plans,
@@ -146,6 +160,10 @@ export class WorkspaceController {
       terminals: this.terminals,
       surfaces: this.surfaces,
       catchUp: (id) => this.history.catchUp(id),
+      pages: {
+        forAgent: (id) => this.pages.forAgent(id),
+        link: (threadId, attachments) => this.pages.link(threadId, attachments),
+      },
     });
     this.plansHandlers = new PlansHandlers({
       sessions: this.sessions,
@@ -198,6 +216,51 @@ export class WorkspaceController {
       launcherFor,
       output: this.output,
     });
+    this.pages = new Pages({
+      extensionUri: context.extensionUri,
+      storage: storage.fsPath,
+      state: context.workspaceState,
+      globalState: context.globalState,
+      output: this.output,
+      sessions: this.sessions,
+      startThread: this.threadsHandlers.startThread.bind(this.threadsHandlers),
+      send: async (threadId, text, surface) => {
+        await this.threadsHandlers.handlers().send({ type: 'send', id: threadId, text }, surface);
+      },
+      interrupt: async (threadId, surface) => {
+        await this.threadsHandlers
+          .handlers()
+          .interrupt({ type: 'interrupt', id: threadId }, surface);
+      },
+      searchFiles: async (query) => {
+        const root = this.documentRoot();
+        if (!root) return [];
+        return (await this.search.search(root, query))
+          .filter((match) => match.kind === 'file')
+          .slice(0, 20)
+          .map((match) => ({
+            path: match.path,
+            name: match.path.split(/[\\/]/).pop() ?? match.path,
+          }));
+      },
+      workspaceRoot: () => this.documentRoot(),
+      openChat: (id) => this.open(id),
+      link: async (href) => {
+        await this.documentsHandlers
+          .handlers()
+          .link({ type: 'link', href }, this.surfaces.active as Surface);
+      },
+      changed: () => this.scheduleUpdate(),
+      planFor: (file) => this.planFor(file),
+      buildPlan: async (threadId, choice) => {
+        // The build shows in the chat, as one started there would.
+        await this.open(threadId);
+        const surface = this.surfaces.active;
+        if (!surface) throw new Error('Open the Claudex chat, then build the plan again.');
+        await this.plansHandlers.buildPlan(threadId, choice, surface);
+        await this.publish(true);
+      },
+    });
     this.routes = {
       unrestricted: this.surfaceHandlers(),
       profiles: this.profilesHandlers.handlers(),
@@ -209,6 +272,11 @@ export class WorkspaceController {
         ...this.attachmentsHandlers.handlers(),
         ...this.terminalHandlers.handlers(),
         ...this.sideQuestionsHandlers.handlers(),
+        ...new PagesHandlers({
+          open: (id) => this.pages.open(id),
+          openToday: () => this.pages.openToday(),
+          browse: async () => this.pages.openOverview(),
+        }).handlers(),
       },
       requireTrust: () => this.requireTrust(),
     };
@@ -234,6 +302,14 @@ export class WorkspaceController {
       if (full) this.lastSent = new WeakMap();
       this.scheduleUpdate();
     });
+    this.sessions.on('planReady', (id: string) => {
+      void this.plansHandlers.revealPlan(id).catch((error) => {
+        this.output.appendLine(`Plan: ${String(error)}`);
+        void vscode.window.showWarningMessage(
+          'Claudex could not open the plan as a page. Use Open plan in the thread to try again.',
+        );
+      });
+    });
     this.sessions.on('storageError', (error) => {
       this.output.appendLine(String(error));
       void vscode.window.showErrorMessage(
@@ -253,6 +329,7 @@ export class WorkspaceController {
       },
     };
     const viewOptions = { webviewOptions: { retainContextWhenHidden: true } };
+    this.subscriptions.push(...this.pages.register());
     this.subscriptions.push(
       vscode.window.registerWebviewViewProvider(CHAT_VIEW, viewProvider, viewOptions),
       vscode.window.registerWebviewViewProvider(FALLBACK_VIEW, viewProvider, viewOptions),
@@ -393,11 +470,31 @@ export class WorkspaceController {
       ? `Claudex: ${active} active ${active === 1 ? 'thread' : 'threads'}`
       : 'Open Claudex';
   }
+  /** The thread whose plan is `file`, as a page's Build bar shows it. */
+  private planFor(file: string): PagePlan | undefined {
+    const session = this.sessions.sessions.find(
+      (item) => item.plan?.file && path.resolve(item.plan.file) === path.resolve(file),
+    );
+    const plan = session?.plan;
+    if (!session || !plan) return undefined;
+    return {
+      threadId: session.id,
+      agentLabel: agentLabel(session),
+      ...(session.model ? { model: session.model } : {}),
+      status: plan.status,
+      manualAllowed: profileProvider(agentKind(session)) === 'claude',
+      canBuild: canBuildPlan(session),
+      agent: agentKind(session),
+      profiles: allProfiles(),
+      catalog: this.catalogHandlers.catalog,
+    };
+  }
   /**
    * Sends only what changed while a thread streams: its tail, and catalog or documents when new.
    * Anything structural (a new surface, another thread, a status change) sends everything.
    */
   private async publish(full = false): Promise<void> {
+    this.pages?.refreshPlans();
     this.updateStatusItem();
     this.watchDocuments();
     if (!this.surfaces.size) return;
@@ -447,6 +544,7 @@ export class WorkspaceController {
           ? {}
           : { agents: this.catalogHandlers.agents }),
         ...(streaming && last.documents === documents ? {} : { documents: documents ?? [] }),
+        ...(streaming && last.pages === this.pages.version ? {} : { pages: this.pages.list }),
       };
       this.lastSent.set(surface, {
         selectedId,
@@ -456,6 +554,7 @@ export class WorkspaceController {
         catalog: this.catalogHandlers.catalogVersion,
         skills: this.catalogHandlers.skillsVersion,
         documents,
+        pages: this.pages.version,
       });
       void surface.webview.postMessage({
         type: 'snapshot',
@@ -616,6 +715,7 @@ export class WorkspaceController {
     if (chosen) this.profilesHandlers.signIn(chosen);
   }
 
+  /** A chat view to start a thread from, opening one if needed. */
   async dispose(): Promise<void> {
     this.catalogHandlers.skillLoads.clear();
     if (this.updateTimer) clearTimeout(this.updateTimer);

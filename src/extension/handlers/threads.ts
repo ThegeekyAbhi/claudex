@@ -58,6 +58,11 @@ export interface ThreadsHandlersContext {
   surfaces: Iterable<Surface>;
   /** Brings in turns run in a terminal since the thread last matched the CLI's history. */
   catchUp(id: string): Promise<void>;
+  /** Your pages: what an agent reads, and linking a page to the thread it was sent to. */
+  pages?: {
+    forAgent(id: string): Promise<string>;
+    link(threadId: string, attachments?: Attachment[]): void;
+  };
 }
 
 export class ThreadsHandlers {
@@ -86,6 +91,7 @@ export class ThreadsHandlers {
       sessions: this.context.sessions.sessions,
       terminal: (name) => this.context.terminalCapture.text(name),
       synced: receiver?.synced,
+      page: this.context.pages && ((id) => this.context.pages?.forAgent(id) ?? Promise.resolve('')),
     });
   }
   async chooseWorkspace(parent?: Session): Promise<string> {
@@ -138,6 +144,7 @@ export class ThreadsHandlers {
       target.profileId,
     );
     if (continued) session.continuedFrom = continued.id;
+    this.context.pages?.link(session.id, action.attachments);
     this.context.sessions.setModel(
       session.id,
       action.model ?? null,
@@ -315,6 +322,7 @@ export class ThreadsHandlers {
           target.workspace,
           target,
         );
+        this.context.pages?.link(action.id, action.attachments);
         void this.context.sessions
           .send(action.id, action.text, input)
           .catch((error) => this.context.output.appendLine(String(error)));

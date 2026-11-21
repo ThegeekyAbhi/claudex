@@ -1,0 +1,871 @@
+/*
+ * The page editor: Milkdown Crepe, drawn in the workbench's own colours. Crepe's structure comes
+ * from its common stylesheet; everything it paints reads these tokens, so editor, Cursor, light,
+ * dark and high-contrast appearances all follow.
+ */
+.page-editor .milkdown {
+  --crepe-color-background: transparent;
+  --crepe-color-on-background: var(--foreground);
+  --crepe-color-surface: var(--surface);
+  --crepe-color-surface-low: var(--hover);
+  --crepe-color-on-surface: var(--foreground);
+  --crepe-color-on-surface-variant: var(--muted);
+  --crepe-color-outline: var(--muted);
+  --crepe-color-primary: var(--foreground);
+  --crepe-color-secondary: var(--selection);
+  --crepe-color-on-secondary: var(--foreground);
+  --crepe-color-inverse: var(--foreground);
+  --crepe-color-on-inverse: var(--canvas);
+  --crepe-color-inline-code: var(--foreground);
+  --crepe-color-error: var(--error);
+  --crepe-color-hover: var(--hover);
+  --crepe-color-selected: var(--selection);
+  --crepe-color-inline-area: var(--hover);
+  --crepe-base-font-size: 15px;
+  --crepe-font-title: "Inter Variable", var(--vscode-font-family, system-ui), sans-serif;
+  --crepe-font-default: "Inter Variable", var(--vscode-font-family, system-ui), sans-serif;
+  --crepe-font-code: var(--mono);
+  --crepe-shadow-1: 0 1px 2px rgb(0 0 0 / 0.24), 0 1px 3px rgb(0 0 0 / 0.16);
+  --crepe-shadow-2: 0 4px 16px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+/* Notion's rhythm: 15px text, a calm type scale, and blocks that sit close together. */
+.page-editor .milkdown .ProseMirror {
+  padding: 0;
+  font-size: 15px;
+  line-height: 1.65;
+  caret-color: var(--foreground);
+}
+.page-editor .milkdown .ProseMirror > * + * {
+  margin-top: 2px;
+}
+.page-editor .milkdown .ProseMirror p {
+  padding: 3px 0;
+  font-size: 15px;
+  line-height: 1.65;
+}
+.page-editor .milkdown .ProseMirror h1,
+.page-editor .milkdown .ProseMirror h2,
+.page-editor .milkdown .ProseMirror h3 {
+  font-family: var(--crepe-font-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  padding: 3px 0;
+  margin-bottom: 2px;
+}
+/* The first heading is the page's title. */
+.page-editor .milkdown .ProseMirror > h1:first-child {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+.page-editor .milkdown .ProseMirror h1 {
+  font-size: 24px;
+  margin-top: 1.6em;
+}
+.page-editor .milkdown .ProseMirror h2 {
+  font-size: 20px;
+  margin-top: 1.6em;
+}
+.page-editor .milkdown .ProseMirror h3 {
+  font-size: 17px;
+  margin-top: 1.3em;
+}
+.page-editor .milkdown .ProseMirror blockquote {
+  border-left: 3px solid var(--foreground);
+  padding: 2px 0 2px 14px;
+  margin: 4px 0;
+}
+.page-editor .milkdown .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
+}
+/* Links: the text as written, with a quiet underline. */
+.page-editor .milkdown .ProseMirror a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 120ms ease;
+}
+.page-editor .milkdown .ProseMirror a:hover {
+  text-decoration-color: var(--foreground);
+}
+/* Inline code: a light tint, not a box. */
+.page-editor .milkdown .ProseMirror code {
+  font-family: var(--crepe-font-code);
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--foreground) 9%, transparent);
+  border-radius: 4px;
+  padding: 0.12em 0.36em;
+  color: var(--foreground);
+}
+
+/* Lists: markers and checkboxes sit on the first line, as in Notion. */
+.page-editor .milkdown .milkdown-list-item-block li {
+  gap: 4px;
+}
+.page-editor .milkdown .milkdown-list-item-block + .milkdown-list-item-block,
+.page-editor .milkdown .ProseMirror li + li {
+  margin-top: 2px;
+}
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper {
+  height: calc(15px * 1.65 + 6px);
+  width: 22px;
+  color: var(--muted);
+}
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper .label {
+  height: auto;
+  padding: 0;
+  width: 22px;
+  font-size: 15px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper svg {
+  fill: none;
+}
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper .milkdown-icon,
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper .milkdown-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper .unchecked svg {
+  color: var(--muted);
+}
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper .checked svg {
+  color: var(--accent);
+}
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper .checked,
+.page-editor .milkdown .milkdown-list-item-block li .label-wrapper .unchecked {
+  cursor: pointer;
+}
+.page-editor .milkdown .milkdown-list-item-block li:has(> .label-wrapper .checked) > .children {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--faint);
+}
+
+/* A link to another page shows an arrow before its name. */
+.page-editor .milkdown .ProseMirror a[href$=".md"]:not(:has(.page-file-chip))::before {
+  content: "↗";
+  color: var(--faint);
+  margin-right: 2px;
+}
+
+/* Code blocks: a soft tinted panel, no gutter; the language and Copy appear on hover. */
+.page-editor .milkdown .milkdown-code-block {
+  background: color-mix(in srgb, var(--foreground) 4%, var(--canvas));
+  border: none;
+  border-radius: 8px;
+  margin: 8px 0;
+  padding: 6px 16px 12px;
+}
+.page-editor .milkdown .milkdown-code-block.selected {
+  outline: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+}
+.page-editor .milkdown .milkdown-code-block .cm-editor,
+.page-editor .milkdown .milkdown-code-block .cm-gutters {
+  background: transparent;
+}
+.page-editor .milkdown .milkdown-code-block .cm-gutters {
+  display: none;
+}
+.page-editor .milkdown .milkdown-code-block .cm-content {
+  padding: 2px 0;
+  font-family: var(--crepe-font-code);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.page-editor .milkdown .milkdown-code-block .cm-line {
+  padding: 0;
+}
+.page-editor .milkdown .milkdown-code-block .cm-activeLine {
+  background: transparent;
+}
+.page-editor .milkdown .milkdown-code-block .tools {
+  min-height: 26px;
+}
+.page-editor .milkdown .milkdown-code-block .tools .language-button {
+  background: transparent;
+  margin: 0;
+  padding: 2px 4px 2px 0;
+  font-size: 12px;
+  font-weight: 450;
+  color: var(--faint);
+  opacity: 1;
+}
+.page-editor .milkdown .milkdown-code-block .tools .language-button:hover {
+  background: transparent;
+  color: var(--muted);
+}
+/* The language list is a solid menu, like the `/` menu, so the code beneath never shows through. */
+.page-editor .milkdown .milkdown-code-block .language-picker .list-wrapper {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--overlay);
+  box-shadow:
+    0 12px 32px rgb(0 0 0 / 0.32),
+    0 2px 6px rgb(0 0 0 / 0.18);
+}
+.page-editor .milkdown .milkdown-code-block .language-picker .search-box {
+  background: var(--overlay);
+}
+.page-editor .milkdown .milkdown-code-block .tools .language-button .expand-icon {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.page-editor .milkdown .milkdown-code-block:hover .tools .language-button .expand-icon {
+  opacity: 1;
+}
+.page-editor .milkdown .milkdown-code-block .tools .tools-button-group {
+  gap: 2px;
+}
+.page-editor .milkdown .milkdown-code-block .tools .tools-button-group button {
+  background: transparent;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 450;
+  color: var(--muted);
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease;
+}
+.page-editor .milkdown .milkdown-code-block .tools .tools-button-group button:hover {
+  background: var(--hover);
+  color: var(--foreground);
+}
+.page-editor .milkdown .milkdown-code-block .tools .tools-button-group button svg {
+  fill: currentColor;
+}
+.page-editor .milkdown .milkdown-code-block:focus-within .tools-button-group > button {
+  opacity: 1;
+}
+
+/* Diagrams: a Mermaid block shows its drawing, open on the page; Edit shows the source above. */
+.page-editor .milkdown .milkdown-code-block:has(.preview svg) {
+  background: transparent;
+  padding: 4px 0 8px;
+}
+.page-editor .milkdown .milkdown-code-block:has(.preview svg):hover,
+.page-editor .milkdown .milkdown-code-block:has(.preview svg):focus-within {
+  background: color-mix(in srgb, var(--foreground) 3%, var(--canvas));
+}
+.page-editor .milkdown .milkdown-code-block .preview-panel .preview {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+/* The drawing pans and zooms inside its own frame (lib/diagram-viewer.ts). */
+.page-editor .milkdown .milkdown-code-block .preview .diagram-viewer-stage > svg {
+  /* Labels were measured at Mermaid's own size; the page's text styles mustn't reach them. */
+  font-size: 13px;
+  line-height: 1.5;
+}
+.page-editor .milkdown .milkdown-code-block .preview .diagram-viewer-stage > svg foreignObject * {
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* A diagram's language shows only when you reach for it. */
+.page-editor .milkdown .milkdown-code-block:has(.preview svg) .tools .language-button,
+.page-editor .milkdown .milkdown-code-block:has(.preview svg) .tools-button-group > button {
+  opacity: 0;
+}
+.page-editor .milkdown .milkdown-code-block:has(.preview svg):hover .tools .language-button,
+.page-editor .milkdown .milkdown-code-block:has(.preview svg):hover .tools-button-group > button,
+.page-editor .milkdown .milkdown-code-block:has(.preview svg):focus-within .tools .language-button {
+  opacity: 1;
+}
+.page-editor .milkdown .milkdown-code-block .preview-divider {
+  height: 1px;
+  margin: 8px 0;
+  background: var(--border);
+}
+.page-editor .milkdown .milkdown-code-block .preview-label {
+  font-size: 12px;
+  color: var(--faint);
+}
+.page-diagram-loading {
+  color: var(--faint);
+  font-size: 12px;
+}
+.page-diagram-error {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.page-diagram-error strong {
+  color: var(--warning);
+  font-weight: 550;
+}
+
+/* The block handle: small and faint, at the margin. */
+.page-editor .milkdown .milkdown-block-handle {
+  background: transparent;
+  border: none;
+  gap: 0;
+  color: var(--faint);
+}
+.page-editor .milkdown .milkdown-block-handle .operation-item {
+  width: 22px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+}
+.page-editor .milkdown .milkdown-block-handle .operation-item svg {
+  width: 16px;
+  height: 16px;
+  fill: var(--faint);
+}
+.page-editor .milkdown .milkdown-block-handle .operation-item:hover {
+  background: var(--hover);
+}
+.page-editor .milkdown .milkdown-block-handle .operation-item:hover svg {
+  fill: var(--muted);
+}
+
+/*
+ * The `/` menu, after Notion's: one quiet list with sentence-case groups, an outline icon, the
+ * block's name and a short description.
+ */
+.page-editor .milkdown .milkdown-slash-menu {
+  width: 340px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--overlay);
+  box-shadow:
+    0 12px 32px rgb(0 0 0 / 0.32),
+    0 2px 6px rgb(0 0 0 / 0.18);
+  animation: page-menu-in 120ms ease-out;
+}
+@keyframes page-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.page-editor .milkdown .milkdown-slash-menu .tab-group {
+  display: none;
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups {
+  max-height: 360px;
+  padding: 6px;
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group + .menu-group::before {
+  content: none;
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group h6 {
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-transform: none;
+  color: var(--faint);
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li {
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  gap: 10px;
+  border-radius: 8px;
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li.hover,
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li.active {
+  background: var(--hover);
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li .milkdown-icon {
+  display: contents;
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li svg {
+  order: 0;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  color: var(--muted);
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li > span {
+  order: 1;
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 450;
+  line-height: 20px;
+  color: var(--foreground);
+}
+.page-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li .slash-desc {
+  order: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--faint);
+}
+
+/* Link previews and editors are menus too. */
+.page-editor .milkdown .milkdown-link-preview,
+.page-editor .milkdown .milkdown-link-edit {
+  background: var(--overlay);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/*
+ * Images (plugins/image-view.ts): left-aligned with the text, at their own size or the width you
+ * dragged, never wider than the page. Handles and actions show on hover or when selected.
+ */
+.page-editor .milkdown .page-image {
+  margin: 6px 0;
+}
+.page-editor .milkdown .page-image-frame {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  border-radius: 6px;
+}
+.page-editor .milkdown .page-image.is-sized .page-image-frame img {
+  width: 100%;
+}
+.page-editor .milkdown .page-image-frame img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+.page-editor .milkdown .page-image.selected .page-image-frame {
+  outline: 2px solid var(--focus, var(--foreground));
+  outline-offset: 2px;
+}
+.page-editor .milkdown .page-image-handle {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: min(48px, 40%);
+  min-height: 24px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--foreground);
+  box-shadow:
+    0 0 0 1px var(--canvas),
+    0 1px 4px rgb(0 0 0 / 0.35);
+  cursor: col-resize;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  touch-action: none;
+}
+.page-editor .milkdown .page-image-handle.is-left {
+  left: 6px;
+}
+.page-editor .milkdown .page-image-handle.is-right {
+  right: 6px;
+}
+.page-editor .milkdown .page-image-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--overlay);
+  box-shadow: var(--crepe-shadow-1);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.page-editor .milkdown .page-image-action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--muted);
+  background: transparent;
+}
+.page-editor .milkdown .page-image-action:hover {
+  color: var(--foreground);
+  background: var(--hover);
+}
+.page-editor .milkdown .page-image-action svg {
+  width: 16px;
+  height: 16px;
+}
+.page-editor .milkdown .page-image:not(.is-readonly):hover .page-image-handle,
+.page-editor .milkdown .page-image:not(.is-readonly).selected .page-image-handle,
+.page-editor .milkdown .page-image.is-resizing .page-image-handle,
+.page-editor .milkdown .page-image:not(.is-readonly):hover .page-image-actions,
+.page-editor .milkdown .page-image:not(.is-readonly).selected .page-image-actions,
+.page-editor .milkdown .page-image-actions:focus-within {
+  opacity: 1;
+}
+.page-editor .milkdown .page-image.is-resizing,
+.page-editor .milkdown .page-image.is-resizing * {
+  cursor: col-resize;
+  user-select: none;
+}
+.page-editor .milkdown .page-image-caption {
+  display: none;
+  width: 100%;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--muted);
+}
+.page-editor .milkdown .page-image.has-caption .page-image-caption {
+  display: block;
+}
+.page-editor .milkdown .page-image-broken {
+  display: none;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.page-editor .milkdown .page-image.is-broken img,
+.page-editor .milkdown .page-image.is-broken .page-image-handle,
+.page-editor .milkdown .page-image.is-broken .page-image-actions {
+  display: none;
+}
+.page-editor .milkdown .page-image.is-broken .page-image-broken {
+  display: block;
+}
+
+/* The full-size view: the image at its own size, fitted to the window. */
+.page-image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 4vh 4vw;
+  background: color-mix(in srgb, var(--canvas) 90%, transparent);
+  cursor: zoom-out;
+  outline: none;
+}
+.page-image-viewer img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: var(--crepe-shadow-2, 0 4px 16px rgb(0 0 0 / 0.28));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-editor .milkdown * {
+    transition: none;
+    animation: none;
+  }
+}
+
+/*
+ * A workspace file reads like Notion's page links: its icon and name with a quiet underline.
+ * The folder hides until the cursor is in it; a plain click opens the file.
+ */
+.page-editor .milkdown .ProseMirror .page-file-dir {
+  display: none;
+}
+.page-editor .milkdown .ProseMirror code:has(.page-file-chip),
+.page-editor .milkdown .ProseMirror code:has(.page-file-dir) {
+  font-family: var(--crepe-font-default);
+  font-size: 1em;
+  background: transparent;
+  padding: 0;
+}
+.page-editor .milkdown .ProseMirror .page-file-chip {
+  cursor: pointer;
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 120ms ease;
+}
+.page-editor .milkdown .ProseMirror .page-file-chip:hover {
+  text-decoration-color: var(--foreground);
+}
+.page-editor .milkdown .ProseMirror .page-file-chip::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  vertical-align: -2px;
+  background: var(--file-icon) center / contain no-repeat;
+}
+.page-editor .milkdown .ProseMirror a:has(.page-file-chip) {
+  text-decoration: none;
+}
+
+/*
+ * Suggested changes, reviewed where they apply: removed text struck in red, added text in green,
+ * and Accept / Reject at the end of each change.
+ */
+.page-editor .milkdown .ProseMirror .page-change {
+  position: relative;
+  border-radius: 4px;
+}
+.page-editor .milkdown .ProseMirror .page-change::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: -14px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--agent-edge, var(--accent));
+}
+.page-editor .milkdown .ProseMirror .page-change-gone {
+  background: color-mix(in srgb, var(--error) 9%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--error) 70%, transparent);
+  color: var(--muted);
+}
+.page-editor .milkdown .ProseMirror .page-change-removed {
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--error) 70%, transparent);
+  border-radius: 3px;
+}
+.page-editor .milkdown .ProseMirror .page-change-added {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--foreground);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.page-editor .milkdown .ProseMirror .page-change-ins {
+  position: relative;
+  margin: 2px 0 6px;
+  padding: 2px 10px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  user-select: none;
+}
+.page-editor .milkdown .ProseMirror .page-change-ins::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -14px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--success);
+}
+.page-editor .milkdown .ProseMirror .page-change-ins > :first-child {
+  margin-top: 0;
+}
+.page-editor .milkdown .ProseMirror .page-change-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+  padding: 1px;
+  vertical-align: 1px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--overlay);
+  box-shadow: var(--crepe-shadow-1);
+  font-family: var(--crepe-font-default);
+  font-size: 12px;
+  line-height: 18px;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+}
+.page-editor .milkdown .ProseMirror .page-change-ins > .page-change-actions {
+  margin: 6px 0 0;
+}
+.page-editor .milkdown .ProseMirror .page-change-who {
+  padding: 0 6px 0 5px;
+  color: var(--faint);
+}
+.page-editor .milkdown .ProseMirror .page-change-actions button {
+  padding: 1px 8px;
+  border-radius: 5px;
+  color: var(--muted);
+}
+.page-editor .milkdown .ProseMirror .page-change-actions button:hover {
+  background: var(--hover);
+  color: var(--foreground);
+}
+.page-editor .milkdown .ProseMirror .page-change-actions .page-change-accept {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+}
+.page-editor .milkdown .ProseMirror .page-change-actions .page-change-accept:hover {
+  background: color-mix(in srgb, var(--success) 32%, transparent);
+}
+.page-editor .milkdown .ProseMirror .page-change-flash {
+  animation: page-change-flash 900ms ease-out;
+}
+@keyframes page-change-flash {
+  from {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+.page-editor .milkdown .ProseMirror .page-change-item {
+  position: relative;
+}
+.page-editor .milkdown .ProseMirror .page-change-item::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -14px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--link);
+}
+.page-editor .milkdown .ProseMirror .page-change-ins-items {
+  margin: 0;
+  padding: 2px 8px;
+}
+.page-editor .milkdown .ProseMirror .page-change-ins-items ul,
+.page-editor .milkdown .ProseMirror .page-change-ins-items ol {
+  margin: 0;
+  padding-left: 28px;
+}
+.page-editor .milkdown .ProseMirror .page-change-ins li[data-item-type="task"] {
+  list-style: none;
+  position: relative;
+}
+.page-editor .milkdown .ProseMirror .page-change-ins li[data-item-type="task"]::before {
+  content: "";
+  position: absolute;
+  left: -24px;
+  top: 0.35em;
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+}
+.page-editor
+  .milkdown
+  .ProseMirror
+  .page-change-ins
+  li[data-item-type="task"][data-checked="true"]::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.page-editor .milkdown .ProseMirror .page-change-actions-row {
+  margin: 2px 0 6px;
+}
+.page-editor .milkdown .ProseMirror .page-change-actions-row > .page-change-actions {
+  margin-left: 0;
+}
+
+/* The selection toolbar's tooltips and menus sit on the same surface. */
+.page-selection-bar button {
+  white-space: nowrap;
+}
+
+/*
+ * The page column: a reading width that grows with a wide editor, so a full-screen page isn't a
+ * narrow strip; or, with Full width on, the whole editor.
+ */
+.page-app {
+  --page-width: clamp(740px, 64vw, 1040px);
+}
+.page-app[data-width="full"] {
+  --page-width: 100%;
+}
+.page-app .page-column {
+  max-width: var(--page-width);
+}
+.page-app .page-width-toggle {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.page-app:hover .page-width-toggle,
+.page-app .page-width-toggle:focus-visible {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-app .page-width-toggle {
+    transition: none;
+  }
+}
+
+/*
+ * Tables: compact, so a row reads across at a glance. Smaller text and tight cells here only;
+ * body text keeps its size. Widths you drag come from plugins/column-widths.ts.
+ */
+.page-editor .milkdown .milkdown-table-block {
+  margin: 10px 0 14px;
+}
+.page-editor .milkdown .milkdown-table-block .table-wrapper {
+  overflow-x: auto;
+}
+.page-editor .milkdown .milkdown-table-block table.children {
+  border-collapse: collapse;
+  min-width: var(--page-table-min-width, 0);
+}
+.page-editor .milkdown .milkdown-table-block th,
+.page-editor .milkdown .milkdown-table-block td {
+  padding: 6px 10px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.page-editor .milkdown .milkdown-table-block th {
+  background: var(--surface);
+  text-align: left;
+}
+.page-editor .milkdown .ProseMirror .milkdown-table-block td p {
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.page-editor .milkdown .ProseMirror .milkdown-table-block th p {
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--muted);
+}
+.page-editor .milkdown .ProseMirror .milkdown-table-block code {
+  font-size: 11.5px;
+  padding: 0.08em 0.3em;
+}
+.page-editor .milkdown .ProseMirror .milkdown-table-block a {
+  text-decoration-color: color-mix(in srgb, var(--foreground) 30%, transparent);
+}
+.page-editor .milkdown .milkdown-table-block tr:hover > td {
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+}
+/* Shown while you drag a column's edge; fixed on the page, outside the table's own view. */
+.column-resize-guide {
+  position: fixed;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 40;
+}
+body.near-column-edge .page-editor .milkdown-table-block :is(th, td),
+body.resizing-column,
+body.resizing-column * {
+  cursor: col-resize;
+}

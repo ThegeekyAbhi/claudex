@@ -8,6 +8,7 @@ Use Claude Code and Codex beside your code, with your existing CLI accounts and 
 
 - **Keep the context when you switch agents.** Continue a thread with Claude Code or Codex and inspect the context chip before sending.
 - **Go from plan to implementation.** Review and edit a Markdown plan, then start implementation from the latest version.
+- **Plan your day where the agents work.** Keep today's todos and notes as Markdown pages that Claude Code and Codex can read and suggest edits to.
 - **Review the work as it happens.** Respond to provider approval requests and open changed files in VS Code’s diff editor.
 - **Give each task its own space.** Keep local conversation threads and optionally start a task in a Git worktree.
 - **Bring your existing setup.** Use your installed agents’ skills and MCP configuration, with separate profiles for additional accounts.
@@ -62,7 +63,13 @@ Select **Plan** and describe the task. Review the plan inline, use **Open plan**
 
 ![Review a Markdown plan and choose how to implement it. Sample conversation.](media/guide/planning.png)
 
-### 3. Review requests and changes
+### 3. Keep today's todos beside your agents
+
+Open **⋯ → Today’s todos** in the chat header to open today's page in its own editor tab, with a **Tasks** checklist. **All pages…** finds or starts any other page, and ⌘⌥⇧T (Ctrl+Alt+Shift+T) adds a task to today from anywhere. Type **@** in the chat to give an agent a page. Agents can read your pages and suggest edits, but nothing changes until you accept them in the page.
+
+[How pages work](docs/usage.md)
+
+### 4. Review requests and changes
 
 When a request appears, read the command or action, then choose **Allow once** or **Decline**. Open **Changes** in the header to see uncommitted files in the thread's checkout. Click a file to open VS Code's diff editor.
 

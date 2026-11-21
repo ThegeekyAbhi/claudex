@@ -8,9 +8,12 @@
 @import "../features/onboarding/onboarding.css";
 @import "./styles/base.css";
 @import "../lib/markdown.css";
+@import "../lib/diagram-viewer.css";
 @import "../features/conversation/conversation.css";
-@import "../features/changes/changes.css";
 @import "../features/composer/composer.css";
 @import "../components/copy-button.css";
+@import "@milkdown/crepe/theme/common/style.css";
+@import "../features/pages/editor/editor.css";
+@import "../features/pages/page/chat/chat.css";
 
 @source "../";

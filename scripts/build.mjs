@@ -41,6 +41,12 @@ const results = await Promise.all([
     minify: true,
     sourcemap: true,
     loader: { '.woff2': 'file' },
+    // Vue, used only by the page editor's Crepe menus, in its runtime-only production build.
+    define: {
+      __VUE_OPTIONS_API__: 'false',
+      __VUE_PROD_DEVTOOLS__: 'false',
+      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false',
+    },
     assetNames: 'fonts/[name]',
     metafile: true,
   }),
@@ -93,7 +99,16 @@ runBin(
 
 // The SDK must retain its ESM import and assets; ship it next to the CJS extension.
 await mkdir('dist/mascot', { recursive: true });
-for (const activity of ['working', 'thinking', 'planning', 'coding', 'reading', 'attentive'])
+// `icon` is the Claudex mark itself, which page chips show.
+for (const activity of [
+  'working',
+  'thinking',
+  'planning',
+  'coding',
+  'reading',
+  'attentive',
+  'icon',
+])
   await cp(`media/mascot/${activity}.png`, `dist/mascot/${activity}.png`);
 await mkdir('dist/node_modules/@anthropic-ai', { recursive: true });
 await cp(

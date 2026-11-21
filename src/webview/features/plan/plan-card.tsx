@@ -70,7 +70,9 @@ export function PlanCard({
       </div>
     );
   const approved = plan.status === 'approved';
-  const expanded = open ?? !approved;
+  // A finished plan with a file opens as a page, so the transcript keeps one line for it.
+  const asPage = plan.status === 'ready' && Boolean(plan.file) && !startOpen;
+  const expanded = open ?? !(approved || asPage);
   const clamped = expanded && tall && open !== true;
   async function copy() {
     try {
@@ -81,27 +83,45 @@ export function PlanCard({
       // The clipboard can be unavailable; the plan stays selectable.
     }
   }
-  // Built plans fold to one quiet line, so the work that follows reads without it in the way.
-  if (approved && !expanded)
+  // Folded to one quiet line: built plans, so the work that follows reads without them in the
+  // way, and plans that open as a page.
+  if (!expanded && (approved || asPage))
     return (
       <div className="plan-card plan-folded my-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
         <Icon name="plan" size={13} />
+        <span className="truncate">
+          Plan · {agentLabel(session)} ·{' '}
+          <span
+            className={
+              plan.status === 'ready'
+                ? 'text-success'
+                : plan.status === 'incomplete'
+                  ? 'text-warning'
+                  : ''
+            }
+          >
+            {approved ? 'built' : STATUS[plan.status]}
+          </span>
+        </span>
+        {plan.file ? (
+          <button
+            type="button"
+            className="gap-1 rounded px-1.5 py-0.5 text-[11.5px] text-foreground enabled:hover:bg-raised"
+            onClick={() => send({ type: 'viewPlan', id: session.id })}
+          >
+            <Icon name="page" size={12} />
+            Open in page
+          </button>
+        ) : null}
         <button
           type="button"
           className="gap-1 px-1 py-0.5 text-[11.5px] text-muted-foreground enabled:hover:text-foreground enabled:hover:bg-transparent"
           aria-expanded={false}
           onClick={() => setOpen(true)}
         >
-          Plan · {agentLabel(session)} · built
+          Show plan
           <Icon name="chevronDown" size={12} />
         </button>
-        {plan.file ? (
-          <HeaderAction
-            icon="external"
-            label="Open plan"
-            onClick={() => send({ type: 'viewPlan', id: session.id })}
-          />
-        ) : null}
       </div>
     );
   return (

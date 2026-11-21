@@ -12,7 +12,7 @@ import { send } from '../../app/bridge';
 import { caretRect, type MenuAnchor, placeMenu } from '../../lib/caret';
 import { requestContext, type Trigger, triggerAt } from '../attachments/context-menu';
 import type { ComposerEditorHandle } from './editor-dom';
-import { referenceParts } from './references';
+import { isInline, referenceParts } from './references';
 import type { ComposerProps } from './types';
 
 function readFile(file: File): Promise<string> {
@@ -138,9 +138,7 @@ export function useContextInput({
     const added = images.filter((item) => !previousImages.current.files.has(item.file));
     previousImages.current.files = new Set(images.map((item) => item.file));
     const referenced = new Set(referenceParts(draft, attachments).map((part) => part.attachment));
-    const missingPaths = attachments.filter(
-      (item) => (item.kind === 'file' || item.kind === 'folder') && !referenced.has(item),
-    );
+    const missingPaths = attachments.filter((item) => isInline(item) && !referenced.has(item));
     const tokens = [...added, ...missingPaths]
       .map(attachmentToken)
       .filter((token) => !draft.includes(token));
@@ -156,7 +154,7 @@ export function useContextInput({
         : JSON.stringify(item) === JSON.stringify(attachment);
     const existing = attachments.find(same);
     if (existing) {
-      if (attachment.kind === 'file' || attachment.kind === 'folder') {
+      if (isInline(existing)) {
         insertTokens(
           [attachmentToken(existing)],
           trigger?.start ?? draft.length,
@@ -173,7 +171,7 @@ export function useContextInput({
     const next = numberImages([...attachments, attachment]);
     const added = next[next.length - 1];
     onAttachments(next);
-    if (added.kind === 'file' || added.kind === 'folder') {
+    if (isInline(added)) {
       const box = textarea.current;
       insertTokens(
         [attachmentToken(added)],
@@ -185,7 +183,7 @@ export function useContextInput({
   }
   function removeAttachment(attachment: Attachment) {
     onAttachments(attachments.filter((item) => item !== attachment));
-    if (attachment.kind === 'image' || attachment.kind === 'file' || attachment.kind === 'folder') {
+    if (attachment.kind === 'image' || isInline(attachment)) {
       const token = attachmentToken(attachment);
       onDraft(draft.replaceAll(`${token} `, '').replaceAll(token, ''));
     }

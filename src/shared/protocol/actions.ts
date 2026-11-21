@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AgentKind } from '../domain/agents';
 import { agentModeEnum } from '../domain/modes';
+import { PAGE_ID } from '../domain/pages/entry';
 import { APPEARANCES } from '../domain/preferences';
 import { findProfile, PROFILE_ID } from '../domain/profiles';
 import { attachmentSchema, IMAGE_FILE, MAX_ATTACHMENTS } from '../domain/session';
@@ -13,7 +14,8 @@ const agentEnum = z
 const optionName = z.string().min(1).max(200);
 const attachments = z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional();
 const thinking = z.enum(['default', 'on', 'off']);
-const buildChoice = {
+/** How a plan is built: in its own thread, or in a new chat with another agent and model. */
+export const buildChoice = {
   agent: agentEnum.optional(),
   model: optionName.optional(),
   effort: optionName.optional(),
@@ -144,11 +146,6 @@ export const actionSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('handoff'), id: z.string() }),
   z.object({
-    type: z.literal('changes'),
-    id: z.string(),
-    requestId: z.string().max(100).optional(),
-  }),
-  z.object({
     type: z.literal('reviewChanges'),
     id: z.string(),
     file: z.string().max(4096).optional(),
@@ -264,6 +261,12 @@ export const actionSchema = z.discriminatedUnion('type', [
     file: z.string().regex(IMAGE_FILE),
     reveal: z.boolean().optional(),
   }),
+  /** Opens one of your pages in the page editor. */
+  z.object({ type: z.literal('pageOpen'), id: z.string().regex(PAGE_ID) }),
+  /** Opens today's page, where your todos are. */
+  z.object({ type: z.literal('openTodayPage') }),
+  /** Picks one of your pages to open, or starts a new one. */
+  z.object({ type: z.literal('browsePages') }),
 ]);
 export type Action = z.infer<typeof actionSchema>;
 

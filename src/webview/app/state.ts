@@ -25,10 +25,6 @@ export function useAppState() {
       failed: (submissionId, key) => turns.failed(submissionId, key),
     },
     tabs: { snapshot: (id) => tabs.snapshot(id) },
-    changes: {
-      received: (id, result) => changes.received(id, result),
-      failed: (id, requestId) => changes.failed(id, requestId),
-    },
     reportError: ui.setError,
   });
   const compose = useComposeChoice(saved, host.snapshot.agents);

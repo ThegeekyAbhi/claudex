@@ -10,9 +10,15 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import type { Attachment } from '../../../shared/model';
-import { ReferenceIcon } from '../../components/reference-icon';
+import { InlineIcon } from '../../components/reference-icon';
 import { type ComposerEditorHandle, editorSelection, editorText, selectEditor } from './editor-dom';
-import { hasImageReference, type PathAttachment, referenceParts } from './references';
+import {
+  hasImageReference,
+  type InlineAttachment,
+  inlineTitle,
+  isInline,
+  referenceParts,
+} from './references';
 
 interface Props {
   ref: Ref<ComposerEditorHandle>;
@@ -34,7 +40,7 @@ interface Revision {
 }
 export function ComposerEditor(props: Props): ReactElement {
   const root = useRef<HTMLDivElement>(null);
-  const [icons, setIcons] = useState<{ target: HTMLElement; attachment: PathAttachment }[]>([]);
+  const [icons, setIcons] = useState<{ target: HTMLElement; attachment: InlineAttachment }[]>([]);
   const composing = useRef(false);
   const selection = useRef({ start: 0, end: 0 });
   const pending = useRef<number | undefined>(undefined);
@@ -83,7 +89,7 @@ export function ComposerEditor(props: Props): ReactElement {
     const signature = JSON.stringify([props.draftKey, parts]);
     if (rendered.current !== signature || editorText(element) !== props.value) {
       const fragment = document.createDocumentFragment();
-      const nextIcons: { target: HTMLElement; attachment: PathAttachment }[] = [];
+      const nextIcons: { target: HTMLElement; attachment: InlineAttachment }[] = [];
       for (const part of parts) {
         if (!part.attachment) {
           fragment.append(document.createTextNode(part.text));
@@ -93,7 +99,7 @@ export function ComposerEditor(props: Props): ReactElement {
         chip.contentEditable = 'false';
         chip.className = 'inline-reference';
         chip.dataset.token = part.text;
-        chip.title = part.attachment.path;
+        chip.title = inlineTitle(part.attachment);
         const icon = document.createElement('span');
         icon.className = 'reference-icon-slot';
         nextIcons.push({ target: icon, attachment: part.attachment });
@@ -148,7 +154,7 @@ export function ComposerEditor(props: Props): ReactElement {
     const kept = props.attachments.filter((item) => {
       if (item.kind === 'image')
         return !hasImageReference(props.value, item) || hasImageReference(text, item);
-      if (item.kind !== 'file' && item.kind !== 'folder') return true;
+      if (!isInline(item)) return true;
       return !previousReferences.has(item) || nextReferences.has(item);
     });
     if (kept.length !== props.attachments.length) props.onAttachments(kept);
@@ -272,11 +278,7 @@ export function ComposerEditor(props: Props): ReactElement {
         onDrop={(event) => event.preventDefault()}
       />
       {icons.map(({ target, attachment }, index) =>
-        createPortal(
-          <ReferenceIcon kind={attachment.kind} path={attachment.path} />,
-          target,
-          String(index),
-        ),
+        createPortal(<InlineIcon attachment={attachment} />, target, String(index)),
       )}
     </>
   );

@@ -9,7 +9,7 @@ import {
 } from 'react-resizable-panels';
 import type { useWorkspaceLayout } from './use-workspace-layout';
 
-const SIDE_DEFAULT: Record<string, string> = { changes: '42%', docs: '280px' };
+const SIDE_DEFAULT: Record<string, string> = { docs: '280px' };
 const THREADS_DEFAULT = '232px';
 const PANE = 'flex min-h-0 min-w-0 overflow-hidden [&>*]:flex-1 [&>*]:min-w-0';
 /** Zero-width in the flow, so each pane keeps its own border; the hit area is the library's. */
@@ -17,7 +17,7 @@ const HANDLE =
   'relative z-10 w-0 outline-none after:absolute after:inset-y-0 after:-left-px after:w-[3px] after:transition-colors after:duration-150 data-[separator=hover]:after:bg-[var(--focus)] data-[separator=active]:after:bg-[var(--focus)] data-[separator=focus]:after:bg-[var(--focus)] motion-reduce:after:transition-none';
 
 /**
- * Main, the optional changes or documents pane, and the thread list, each resizable when wide.
+ * The thread list, main, and the optional documents pane, each resizable when wide.
  * Narrow, the side panes open as overlays. Main keeps one place in the tree either way, so
  * crossing the breakpoint never remounts it and loses what you were typing.
  */
@@ -39,7 +39,7 @@ export function WorkspacePanes({
   const { wide } = layout;
   // Each pane gets its own id, so changes and documents remember their own widths.
   const sideId = wide && side && sideKind ? `side-${sideKind}` : undefined;
-  const panelIds = ['main', ...(sideId ? [sideId] : []), ...(wide ? ['threads'] : [])];
+  const panelIds = [...(wide ? ['threads'] : []), 'main', ...(sideId ? [sideId] : [])];
   const saved = useDefaultLayout({
     id: 'workspace',
     panelIds,
@@ -88,32 +88,8 @@ export function WorkspacePanes({
         resizeTargetMinimumSize={{ fine: 8, coarse: 20 }}
         disabled={!wide}
       >
-        <Panel id="main" minSize={wide ? 360 : 0} className={PANE}>
-          {main}
-        </Panel>
-        {sideId ? (
-          <>
-            <Separator id="side-handle" className={HANDLE} aria-label="Resize side panel" />
-            <Panel
-              id={sideId}
-              panelRef={sidePanel}
-              className={PANE}
-              {...(sideKind === 'changes'
-                ? { defaultSize: SIDE_DEFAULT.changes, minSize: 320, maxSize: '65%' }
-                : {
-                    defaultSize: SIDE_DEFAULT.docs,
-                    minSize: 220,
-                    maxSize: '50%',
-                    groupResizeBehavior: 'preserve-pixel-size' as const,
-                  })}
-            >
-              {side}
-            </Panel>
-          </>
-        ) : null}
         {wide ? (
           <>
-            <Separator id="threads-handle" className={HANDLE} aria-label="Resize thread list" />
             <Panel
               id="threads"
               panelRef={layout.threads.ref}
@@ -129,6 +105,26 @@ export function WorkspacePanes({
               inert={layout.threads.collapsed}
             >
               {threads}
+            </Panel>
+            <Separator id="threads-handle" className={HANDLE} aria-label="Resize thread list" />
+          </>
+        ) : null}
+        <Panel id="main" minSize={wide ? 360 : 0} className={PANE}>
+          {main}
+        </Panel>
+        {sideId ? (
+          <>
+            <Separator id="side-handle" className={HANDLE} aria-label="Resize side panel" />
+            <Panel
+              id={sideId}
+              panelRef={sidePanel}
+              className={PANE}
+              defaultSize={SIDE_DEFAULT.docs}
+              minSize={220}
+              maxSize="50%"
+              groupResizeBehavior="preserve-pixel-size"
+            >
+              {side}
             </Panel>
           </>
         ) : null}

@@ -252,3 +252,48 @@ test('plan reads use edited files, reject empty files, and retain plans without 
   await assert.rejects(empty.plans.buildPlan(empty.session.id), /empty/);
   assert.deepEqual(empty.counts(), { sends: 0, approvals: 0, declined: 0 });
 });
+
+test('a saved plan file is announced once, and never for a plan that changed meanwhile', async () => {
+  const session: Session = {
+    id: 'saved',
+    title: 'Plan',
+    provider: 'claude',
+    cwd: '/tmp',
+    workspace: '/tmp',
+    status: 'completed',
+    mode: 'plan',
+    messages: [],
+    createdAt: 1,
+    updatedAt: 1,
+    plan: { text: '# First', status: 'ready', updatedAt: 1 },
+  };
+  const saved: string[] = [];
+  let finish: (file: string) => void = () => undefined;
+  const plans = new SessionPlans({
+    planFiles: {
+      save: () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
+      read: async () => '',
+    },
+    planSaved: (item) => saved.push(item.plan?.file ?? ''),
+    assertAvailable() {},
+    get: () => session,
+    changed() {},
+    keepPlanning() {},
+    approve() {},
+    currentPlanText: async () => '',
+    send: async () => undefined,
+  });
+  plans.savePlanFile(session, '# First');
+  finish('/plans/first.md');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(saved, ['/plans/first.md']);
+
+  plans.savePlanFile(session, '# First');
+  if (session.plan) session.plan.text = '# Replanned';
+  finish('/plans/stale.md');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(saved, ['/plans/first.md']);
+});

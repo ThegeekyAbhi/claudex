@@ -13,3 +13,25 @@ export function ReferenceIcon({ kind, path }: { kind: 'file' | 'folder'; path: s
     </span>
   );
 }
+
+/** The glyph for any chip that sits in your text: a path's file icon, a page, or a skill. */
+export function InlineIcon({
+  attachment,
+}: {
+  attachment: { kind: 'file' | 'folder'; path: string } | { kind: 'page' } | { kind: 'skill' };
+}) {
+  if (attachment.kind === 'file' || attachment.kind === 'folder')
+    return <ReferenceIcon kind={attachment.kind} path={attachment.path} />;
+  // A page carries the Claudex mark, as its editor tab does.
+  if (attachment.kind === 'page')
+    return (
+      <span className="reference-icon" aria-hidden="true">
+        <span className="claudex-mark" />
+      </span>
+    );
+  return (
+    <span className="reference-icon" aria-hidden="true">
+      <Icon name="skill" size={14} />
+    </span>
+  );
+}

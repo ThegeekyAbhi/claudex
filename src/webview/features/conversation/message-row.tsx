@@ -4,7 +4,7 @@ import { CopyButton } from '../../components/copy-button';
 import { MarkdownText } from '../../lib/markdown';
 import { AttachmentChip } from '../attachments/context-menu';
 import { InlineReferences } from '../composer/inline-references';
-import { hasReference } from '../composer/references';
+import { hasReference, isInline } from '../composer/references';
 import { ImageMessage } from '../images/image-view';
 import { MessageActions } from './message-actions';
 
@@ -54,10 +54,10 @@ export function SentPrompt({
       <div className="text-[11px] text-muted-foreground mb-0.5">
         {asker} asked {agentName}
       </div>
-      {message?.attachments?.length ? (
+      {message?.attachments?.some((item) => !isInline(item)) ? (
         <div className="flex flex-wrap items-start gap-1 pb-1">
           {message.attachments
-            .filter((item) => item.kind !== 'file' && item.kind !== 'folder')
+            .filter((item) => !isInline(item))
             .map((item, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: a sent message's attachments never change
               <AttachmentChip key={index} attachment={item} />
@@ -90,10 +90,10 @@ function YourMessage({ message, guides }: { message: Message; guides: Guides }) 
       className="user-message relative flex flex-col items-end mt-7 mb-4 first:mt-0 in-[.subagent-transcript]:items-stretch in-[.subagent-transcript]:my-2"
     >
       <div className="bubble w-fit max-w-[min(85%,560px)] px-3.5 py-2 rounded-2xl rounded-br-md bg-[color-mix(in_srgb,var(--accent)_12%,var(--raised))] text-foreground in-[.subagent-transcript]:max-w-none in-[.subagent-transcript]:w-auto in-[.subagent-transcript]:rounded-[8px] in-[.subagent-transcript]:text-[12px]">
-        {message.attachments?.length ? (
+        {message.attachments?.some((item) => !isInline(item)) ? (
           <div className="flex flex-wrap justify-end items-start gap-1 pb-1.5">
             {message.attachments
-              .filter((item) => item.kind !== 'file' && item.kind !== 'folder')
+              .filter((item) => !isInline(item))
               .map((item, index) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: a sent message's attachments never change
                 <AttachmentChip key={index} attachment={item} />
@@ -106,8 +106,7 @@ function YourMessage({ message, guides }: { message: Message; guides: Guides }) 
             text=""
             attachments={(message.attachments ?? []).filter(
               (item) =>
-                (item.kind === 'file' || item.kind === 'folder') &&
-                !hasReference(message.text, item, message.attachments ?? []),
+                isInline(item) && !hasReference(message.text, item, message.attachments ?? []),
             )}
           />
         </div>

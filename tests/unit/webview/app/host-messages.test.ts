@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { ChangesResult } from '../../../../src/shared/model';
 import type { HostMessage } from '../../../../src/webview/app/bridge';
 import {
   type HostMessageTargets,
@@ -32,7 +31,6 @@ function targets() {
       failed: record('turn.failed'),
     },
     tabs: { snapshot: record('tabs.snapshot') },
-    changes: { received: record('changes.received'), failed: record('changes.failed') },
     reportError: record('error'),
   };
   return { calls, handlers };
@@ -87,7 +85,7 @@ test('general errors remain visible without releasing unrelated pending operatio
   assert.deepEqual(calls, [['error', 'Interrupted']]);
 });
 
-test('drafts, attachments, context and changes reach only their owning concern', () => {
+test('drafts, attachments and context reach only their owning concern', () => {
   const { calls, handlers } = targets();
   const attachment = { kind: 'file', path: 'src/app.ts' } as const;
   const context: Extract<HostMessage, { type: 'contextResults' }> = {
@@ -97,16 +95,13 @@ test('drafts, attachments, context and changes reach only their owning concern',
     recent: [],
     terminals: [],
   };
-  const result: ChangesResult = { files: [] };
   receiveHostMessage({ type: 'draft', id: 'local-id', text: 'Draft' }, handlers);
   receiveHostMessage({ type: 'attached', draftKey: 'draft:1', attachment }, handlers);
   receiveHostMessage(context, handlers);
-  receiveHostMessage({ type: 'changes', id: 'local-id', result }, handlers);
   assert.deepEqual(calls, [
     ['draft.write', 'local-id', 'Draft'],
     ['draft.attach', 'draft:1', attachment],
     ['context', context],
-    ['changes.received', 'local-id', result],
   ]);
 });
 
@@ -124,30 +119,15 @@ test('validated operation failures reach only their owner with request identity'
     },
     handlers,
   );
-  receiveHostMessage(
-    {
-      type: 'error',
-      text: 'Changes failed',
-      operation: {
-        kind: 'changes',
-        requestId: 'change-2',
-        id: 'thread',
-      },
-    },
-    handlers,
-  );
   assert.deepEqual(calls, [
     ['turn.failed', 'send-2', 'thread'],
     ['error', 'Send failed'],
-    ['changes.failed', 'thread', 'change-2'],
-    ['error', 'Changes failed'],
   ]);
 });
 
 test('superseded operation failures neither show errors nor release another owner', () => {
   const { calls, handlers } = targets();
   handlers.turns.failed = () => false;
-  handlers.changes.failed = () => false;
   receiveHostMessage(
     {
       type: 'error',
@@ -156,18 +136,6 @@ test('superseded operation failures neither show errors nor release another owne
         kind: 'submission',
         submissionId: 'old',
         draftKey: 'thread',
-      },
-    },
-    handlers,
-  );
-  receiveHostMessage(
-    {
-      type: 'error',
-      text: 'Old changes',
-      operation: {
-        kind: 'changes',
-        requestId: 'old',
-        id: 'thread',
       },
     },
     handlers,

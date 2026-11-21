@@ -64,6 +64,7 @@ export class Sessions extends EventEmitter {
     });
     this.plans = new SessionPlans({
       planFiles: plans,
+      planSaved: (session) => this.emit('planReady', session.id),
       assertAvailable: (id) => this.approvals.assertAvailable(id),
       get: (id) => this.get(id),
       changed: () => this.changed(),

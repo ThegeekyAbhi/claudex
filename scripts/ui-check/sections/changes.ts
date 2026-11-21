@@ -3,105 +3,21 @@ import type { UiCheckContext } from '../context';
 
 export async function checkChanges(ctx: UiCheckContext): Promise<void> {
   // Returns from the worker selected by terminal-drafts.
-  const { page, patch, sentOf, update } = ctx;
-  // The changes panel reads the checkout and shows what is really there.
+  const { page, sentOf, update } = ctx;
   await update('codex-one');
-  await page.getByRole('button', { name: 'Toggle changes' }).click();
-  await page.waitForFunction(() =>
-    (window as any).sent.some((message: any) => message.type === 'changes'),
-  );
-  const pending = (await sentOf('changes')).at(-1);
-  const refresh = page.getByRole('button', { name: 'Refresh changes' });
-  assert.equal(await refresh.isDisabled(), true);
-  await page.evaluate(() =>
-    window.postMessage({ type: 'error', text: 'Document action failed' }, '*'),
-  );
-  assert.equal(await refresh.isDisabled(), true);
-  await page.evaluate(
-    (pending) =>
-      window.postMessage(
-        {
-          type: 'error',
-          text: 'Old changes failed',
-          operation: {
-            kind: 'changes',
-            id: pending.id,
-            requestId: 'superseded-request',
-          },
-        },
-        '*',
-      ),
-    pending,
-  );
-  assert.equal(await refresh.isDisabled(), true);
-  await page.evaluate(
-    (pending) =>
-      window.postMessage(
-        {
-          type: 'error',
-          text: 'Changes failed',
-          operation: {
-            kind: 'changes',
-            id: pending.id,
-            requestId: pending.requestId,
-          },
-        },
-        '*',
-      ),
-    pending,
-  );
-  await page.waitForFunction(
-    () => !document.querySelector<HTMLButtonElement>('[aria-label="Refresh changes"]')?.disabled,
-  );
-  await refresh.click();
-  await page.getByRole('button', { name: 'Dismiss error' }).click();
-  await page.evaluate(
-    ({ patch }) =>
-      window.postMessage(
-        {
-          type: 'changes',
-          id: 'codex-one',
-          result: {
-            files: [
-              { path: 'src/compiler.ts', kind: 'update', patch, additions: 2, deletions: 1 },
-              {
-                path: 'src/plan.ts',
-                kind: 'add',
-                patch: '@@ -0,0 +1,1 @@\n+export {};',
-                additions: 1,
-                deletions: 0,
-              },
-            ],
-          },
-        },
-        '*',
-      ),
-    { patch },
-  );
-  await page.getByRole('complementary').getByText('2 files').waitFor();
-  await page.getByRole('complementary').getByText('compiler.ts', { exact: true }).waitFor();
-  await page.getByRole('textbox', { name: 'Search changed files' }).fill('plan');
-  assert.equal(
-    await page
-      .getByRole('complementary')
-      .getByRole('button', { name: 'Show src/compiler.ts in the Changes editor' })
-      .count(),
-    0,
-  );
-  await page.getByRole('textbox', { name: 'Search changed files' }).fill('');
-  await page.screenshot({ path: 'test-results/screenshots/changes-panel.png' });
-  // Files open in VS Code's own multi-file diff editor: one tab, scrolled to the file.
-  await page.getByRole('complementary').getByText('src', { exact: true }).first().waitFor();
-  await page.getByRole('button', { name: 'Show src/compiler.ts in the Changes editor' }).click();
-  const [picked] = await sentOf('reviewChanges');
-  assert.deepEqual([picked.id, picked.file], ['codex-one', 'src/compiler.ts']);
-  await page.getByRole('complementary').getByRole('button', { name: 'Review all' }).click();
-  const all = (await sentOf('reviewChanges')).at(-1);
-  assert.equal(all.file, undefined);
-  await page.getByRole('button', { name: 'Close panel' }).click();
+  // Changes open in VS Code's own multi-file diff editor, in the main window. The webview keeps
+  // no file list of its own, so nothing opens beside the chat.
+  const before = (await sentOf('reviewChanges')).length;
+  await page.getByRole('button', { name: 'Review changes' }).click();
+  const sent = await sentOf('reviewChanges');
+  assert.equal(sent.length, before + 1);
+  assert.deepEqual([sent.at(-1)?.id, sent.at(-1)?.file], ['codex-one', undefined]);
+  assert.equal(await page.getByRole('complementary').count(), 0, 'no side list opens');
+  assert.equal(await page.getByRole('textbox', { name: 'Search changed files' }).count(), 0);
 
-  // Icon buttons explain themselves.
-  await page.getByRole('button', { name: 'Toggle changes' }).hover();
+  // Icon buttons explain themselves. A click closes a tooltip until the pointer leaves.
+  await page.mouse.move(0, 0);
+  await page.getByRole('button', { name: 'Review changes' }).hover();
   await page.getByRole('tooltip').waitFor();
   await page.mouse.move(0, 0);
 }

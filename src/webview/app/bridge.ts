@@ -5,7 +5,6 @@ import type {
   AgentMode,
   Attachment,
   Catalog,
-  ChangesResult,
   ConfigurationResult,
   Snapshot,
   SnapshotUpdate,
@@ -13,6 +12,7 @@ import type {
   Thinking,
 } from '../../shared/model';
 import type { ActionFailure } from '../../shared/protocol/failures';
+import type { PagesListAction, PageViewAction } from '../../shared/protocol/pages';
 import type { SeenAt } from '../features/threads/tab-state';
 import type { ThreadViewState } from '../features/threads/thread-filter';
 
@@ -54,6 +54,8 @@ interface HostApi {
   postMessage(
     action:
       | Action
+      | PagesListAction
+      | PageViewAction
       | { type: 'reviewReady' | 'reviewRefresh' }
       | { type: 'reviewNative' | 'reviewPatch'; entry: string }
       | { type: 'reviewViewed'; entry: string; viewed: boolean },
@@ -100,7 +102,6 @@ export type HostMessage =
   | { type: 'sent'; id: string; text: string; submissionId?: string; threadId?: string }
   | { type: 'error'; text: string; operation?: ActionFailure }
   | { type: 'draft'; id: string; text: string }
-  | { type: 'changes'; id: string; result: ChangesResult }
   | { type: 'attached'; draftKey: string; attachment: Attachment }
   | {
       type: 'contextResults';

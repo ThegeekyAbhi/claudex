@@ -1,6 +1,6 @@
 import { type Launcher, providerRegistry } from '../../providers/registry';
 import type { ImageStore } from '../../providers/shared/image-store';
-import type { Provider, Session, SkillRequest } from '../../shared/model';
+import type { PageTools, Provider, Session, SkillRequest } from '../../shared/model';
 import type { AgentFactory } from './session-types';
 
 export type { Launcher } from '../../providers/registry';
@@ -10,6 +10,8 @@ export function createAgentFactory(
   paths: LauncherLookup,
   images?: ImageStore,
   skills?: (session: Session) => SkillRequest[],
+  /** Your pages, as tools for the thread's agent. */
+  pages?: (session: Session) => PageTools | undefined,
 ): AgentFactory {
   const resolve = (session: Session): Launcher => {
     const value = paths(session.provider, session.profileId);
@@ -20,5 +22,6 @@ export function createAgentFactory(
       delegate,
       images,
       skills: () => skills?.(session) ?? [],
+      pages: pages?.(session),
     });
 }

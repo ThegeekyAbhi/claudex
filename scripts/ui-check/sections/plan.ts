@@ -79,6 +79,15 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
   planned.plan.status = 'ready';
   planned.status = 'waiting';
   planned.approval = { id: 'plan-1', title: 'Build this plan?', detail: '', kind: 'plan' };
+  // A finished plan with a file opens as a page; the transcript keeps one line for it.
+  await update('planned');
+  const slim = page.locator('.conversation-scroll .plan-folded');
+  await slim.getByText('Ready for you').waitFor();
+  await slim.getByRole('button', { name: 'Open in page' }).click();
+  assert.equal((await sentOf('viewPlan')).at(-1).id, 'planned');
+  // Without a file (its save failed), the plan reads in full in the transcript.
+  const planFile = planned.plan.file;
+  delete planned.plan.file;
   await update('planned');
   const plan = page.getByRole('region', { name: 'Plan' });
   // The plan reads in place, as Markdown: headings, lists, code.
@@ -121,7 +130,10 @@ export async function checkPlan(ctx: UiCheckContext): Promise<void> {
   await plan.getByRole('button', { name: 'Show less' }).click();
   await plan.getByRole('button', { name: 'Show plan' }).waitFor();
   assert.ok((await trailingGap()) <= 16, 'folding again leaves no blank scroll');
-  await plan.getByRole('button', { name: 'Show plan' }).click();
+  // With its file back, "Show plan" on the one-line form opens it in place.
+  planned.plan.file = planFile;
+  await update('planned');
+  await slim.getByRole('button', { name: 'Show plan' }).click();
   await plan.getByRole('button', { name: 'Open plan' }).click();
   assert.equal((await sentOf('viewPlan')).at(-1).id, 'planned');
   await plan.getByRole('button', { name: 'Edit plan' }).click();

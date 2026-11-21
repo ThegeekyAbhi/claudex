@@ -18,6 +18,7 @@ import {
 const MAX_DIFF = 60_000;
 const MAX_THREAD = 8_000;
 const MAX_TERMINAL = 20_000;
+const MAX_PAGE = 60_000;
 /** The same limit skill discovery reads frontmatter under. */
 const MAX_BORROWED_SKILL = 64 * 1024;
 
@@ -97,6 +98,8 @@ export interface ResolveOptions {
   terminal?: (name: string) => string | undefined;
   /** What the receiving thread has already been sent from each linked thread. */
   synced?: Record<string, string>;
+  /** One of your pages as an agent reads it. */
+  page?: (id: string) => Promise<string>;
 }
 /**
  * Turns what you attached into what the agent receives. Files stay as paths so the agent reads
@@ -171,6 +174,10 @@ export async function resolveAttachments(
           ? `This branch compared with ${base}:\n\`\`\`diff\n${capped(diff, MAX_DIFF, 'diff')}\n\`\`\``
           : `This branch has no committed differences from ${base}.`,
       );
+      shown.push(attachment);
+    } else if (attachment.kind === 'page') {
+      if (!options.page) throw new Error('Your pages can’t be read here.');
+      lines.push(capped(await options.page(attachment.id), MAX_PAGE, 'page'));
       shown.push(attachment);
     } else if (attachment.kind === 'terminal') {
       const output = options.terminal?.(attachment.name);

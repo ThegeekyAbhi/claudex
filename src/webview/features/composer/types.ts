@@ -3,6 +3,7 @@ import type {
   AgentMode,
   Attachment,
   Catalog,
+  PageEntry,
   Preferences,
   Session,
   SkillCatalogs,
@@ -17,6 +18,8 @@ export interface ComposerProps {
   onManageSkills: (query?: string) => void;
   session?: Session;
   sessions: Session[];
+  /** Your pages, for the @ menu. */
+  pages?: PageEntry[];
   project: string;
   /** Used until a thread exists. */
   choice: ComposeChoice;

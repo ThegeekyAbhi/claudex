@@ -1,6 +1,14 @@
+import './diagram-viewer.css';
+import { enhanceDiagram } from './diagram-viewer';
 import { diagramSvg, subscribeDiagramTheme } from './diagrams';
 
-const rendered = new WeakMap<HTMLElement, HTMLElement>();
+const rendered = new WeakMap<HTMLElement, { element: HTMLElement; dispose: () => void }>();
+function clear(block: HTMLElement) {
+  const previous = rendered.get(block);
+  previous?.dispose();
+  previous?.element.remove();
+  rendered.delete(block);
+}
 let generation = 0;
 async function renderDiagrams() {
   const current = ++generation;
@@ -10,16 +18,19 @@ async function renderDiagrams() {
     try {
       const svg = await diagramSvg(block.textContent ?? '');
       if (current !== generation || !block.isConnected) return;
-      rendered.get(block)?.remove();
+      clear(block);
       const diagram = document.createElement('div');
-      diagram.setAttribute('role', 'img');
+      diagram.setAttribute('role', 'group');
       diagram.setAttribute('aria-label', 'Mermaid diagram');
-      diagram.style.overflowX = 'auto';
       diagram.innerHTML = svg;
       block.parentElement?.before(diagram);
-      rendered.set(block, diagram);
+      const drawing = diagram.querySelector('svg');
+      rendered.set(block, {
+        element: diagram,
+        dispose: drawing ? enhanceDiagram(drawing) : () => undefined,
+      });
     } catch {
-      rendered.get(block)?.remove();
+      clear(block);
       // Keep the original source and the rest of the Markdown readable.
     }
   }

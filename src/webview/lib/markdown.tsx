@@ -5,7 +5,8 @@ import remend from 'remend';
 import type { Attachment } from '../../shared/model';
 import { send } from '../app/bridge';
 import { CopyButton } from '../components/copy-button';
-import { ReferenceIcon } from '../components/reference-icon';
+import { InlineIcon, ReferenceIcon } from '../components/reference-icon';
+import { inlineTitle, isInline } from '../features/composer/references';
 import { ColouredLines } from './coloured-lines';
 import { MermaidBlock } from './mermaid-block';
 import { remarkReferences } from './remark-references';
@@ -85,15 +86,11 @@ function components(streaming: boolean, attachments?: Attachment[]): Components 
     blockquote: Blockquote,
     span: ({ children, className, title }) => {
       const attachment = className?.includes('inline-reference')
-        ? attachments?.find(
-            (item) => (item.kind === 'file' || item.kind === 'folder') && item.path === title,
-          )
+        ? attachments?.filter(isInline).find((item) => inlineTitle(item) === title)
         : undefined;
       return (
         <span className={className} title={title}>
-          {attachment && (attachment.kind === 'file' || attachment.kind === 'folder') ? (
-            <ReferenceIcon kind={attachment.kind} path={attachment.path} />
-          ) : null}
+          {attachment ? <InlineIcon attachment={attachment} /> : null}
           {attachment ? <span className="reference-label">{children}</span> : children}
         </span>
       );
@@ -140,16 +137,29 @@ function components(streaming: boolean, attachments?: Attachment[]): Components 
     },
     code: ({ className, children }) => {
       const text = textOf(children);
-      if (!className && PATH.test(text))
+      if (!className && PATH.test(text)) {
+        // A file reads as a chip: its icon and name; the full path is a hover away.
+        const name =
+          text
+            .replace(/:\d+(?:-\d+)?$/, '')
+            .split('/')
+            .pop() ?? text;
+        const line = /:(\d+(?:-\d+)?)$/.exec(text)?.[1];
         return (
           <button
             type="button"
-            className="inline p-0 border-0 text-[inherit] text-start whitespace-normal [&_code]:text-link enabled:hover:bg-transparent enabled:hover:underline enabled:hover:decoration-link"
+            title={`${text} · open`}
+            className="inline-reference file-chip cursor-pointer border-0 text-start align-baseline enabled:hover:bg-[color-mix(in_srgb,var(--accent)_24%,var(--raised))]"
             onClick={() => send({ type: 'link', href: encodeURI(text) })}
           >
-            <code>{children}</code>
+            <ReferenceIcon kind={text.includes('.') ? 'file' : 'folder'} path={name} />
+            <span className="reference-label">
+              {name}
+              {line ? <span className="text-faint">:{line}</span> : null}
+            </span>
           </button>
         );
+      }
       return <code className={className}>{children}</code>;
     },
   };

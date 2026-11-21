@@ -537,3 +537,63 @@ test('Codex agent-message phases reach the transcript; missing or unknown ones s
     ['r', 'partial_answer'],
   ]);
 });
+
+const pageCall = (tool: string, args: unknown) =>
+  `emit({ id: 'call-1', method: 'item/tool/call', params: { threadId: root, turnId: 't1', callId: 'cid', tool: '${tool}', arguments: ${JSON.stringify(args)} } });`;
+test('Codex gets the page tools, and its calls reach your pages through the host', async () => {
+  const args = { id: 'daily/2026-11-21', edits: [{ find: 'a', replace: 'b' }] };
+  const { root, executable } = await fixture(pageCall('pages_suggest_edit', args));
+  const events: AgentEvent[] = [];
+  const calls: unknown[][] = [];
+  const agent = new CodexAgent(codexSession(root), executable, (event) => events.push(event), {
+    pages: async (name, input) => {
+      calls.push([name, input]);
+      return 'suggested';
+    },
+  });
+  try {
+    await agent.send('go');
+    await untilDone(events);
+    const start = JSON.parse(await readFile(path.join(root, 'start.json'), 'utf8'));
+    assert.deepEqual(
+      start.dynamicTools.map((tool: { name: string }) => tool.name),
+      ['pages_list', 'pages_read', 'pages_suggest_edit', 'pages_create', 'pages_add_image'],
+    );
+    assert.deepEqual(calls, [['pages_suggest_edit', args]]);
+    const reply = JSON.parse(await readFile(path.join(root, 'reply.json'), 'utf8'));
+    assert.deepEqual(reply, {
+      success: true,
+      contentItems: [{ type: 'inputText', text: 'suggested' }],
+    });
+  } finally {
+    agent.dispose();
+  }
+});
+test('in Ask, Codex can read your pages but not suggest edits', async () => {
+  const { root, executable } = await fixture(
+    pageCall('pages_suggest_edit', { id: 'notes-a1b2c3', edits: [{ find: '', replace: 'x' }] }),
+  );
+  const events: AgentEvent[] = [];
+  let called = false;
+  const agent = new CodexAgent(
+    { ...codexSession(root), mode: 'ask' },
+    executable,
+    (event) => events.push(event),
+    {
+      pages: async () => {
+        called = true;
+        return '';
+      },
+    },
+  );
+  try {
+    await agent.send('go');
+    await untilDone(events);
+    assert.equal(called, false);
+    const reply = JSON.parse(await readFile(path.join(root, 'reply.json'), 'utf8'));
+    assert.equal(reply.success, false);
+    assert.match(reply.contentItems[0].text, /read-only/);
+  } finally {
+    agent.dispose();
+  }
+});

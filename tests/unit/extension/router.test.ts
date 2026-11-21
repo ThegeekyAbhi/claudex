@@ -130,7 +130,7 @@ test('routed failures derive operation identity from the validated action', asyn
         id: 'thread',
         text: 'message',
         submissionId: 'send-1',
-        operation: { kind: 'changes', requestId: 'forged' },
+        operation: { kind: 'submission', submissionId: 'forged', draftKey: 'other' },
       },
       surface,
       routes({
@@ -154,7 +154,7 @@ test('routed failures derive operation identity from the validated action', asyn
   );
   await assert.rejects(
     routeAction(
-      { type: 'changes', id: 'thread', requestId: 'changes-1' },
+      { type: 'reviewChanges', id: 'thread' },
       surface,
       routes({
         requireTrust: () => {
@@ -164,7 +164,7 @@ test('routed failures derive operation identity from the validated action', asyn
     ),
     (error: unknown) => {
       assert.ok(error instanceof RoutedActionError);
-      assert.deepEqual(error.operation, { kind: 'changes', id: 'thread', requestId: 'changes-1' });
+      assert.equal(error.operation, undefined, 'an action without an owner routes no identity');
       return true;
     },
   );

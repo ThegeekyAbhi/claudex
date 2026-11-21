@@ -10,6 +10,7 @@ import {
 } from '../../shared/model';
 import type { HandlersFor } from '../action-groups';
 import { type listDocuments, savePlan } from '../documents';
+import { PAGE_EDITOR } from '../pages/page-editor';
 import type { Surface, Surfaces } from '../surfaces';
 
 export interface PlansHandlersContext {
@@ -85,6 +86,22 @@ export class PlansHandlers {
     });
     await this.context.publish();
   }
+  /** Opens the plan's file in the page editor, beside the chat. */
+  private async openInPage(id: string, preserveFocus: boolean): Promise<void> {
+    const file = this.context.sessions.get(id).plan?.file;
+    if (!file) throw new Error('This plan has no saved file.');
+    await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), PAGE_EDITOR, {
+      viewColumn: this.context.surfaces.codeColumn(),
+      preview: false,
+      preserveFocus,
+    });
+  }
+  /** A plan a turn just finished opens as a page; your typing stays in the chat. */
+  async revealPlan(id: string): Promise<void> {
+    const plan = this.context.sessions.get(id).plan;
+    if (!plan?.file || plan.status === 'drafting') return;
+    await this.openInPage(id, true);
+  }
   handlers(): HandlersFor<'plans'> {
     return {
       buildPlan: async (action, surface) => {
@@ -104,9 +121,7 @@ export class PlansHandlers {
         await this.context.sessions.send(action.id, feedback);
       },
       viewPlan: async (action) => {
-        const file = this.context.sessions.get(action.id).plan?.file;
-        if (!file) throw new Error('This plan has no saved file.');
-        await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(file));
+        await this.openInPage(action.id, false);
       },
       editPlan: async (action) => {
         const file = this.context.sessions.get(action.id).plan?.file;

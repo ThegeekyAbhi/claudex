@@ -101,7 +101,7 @@ function PaneStatus({
 }: {
   entry: AgentCatalog;
   profile?: AgentProfile;
-  onRetry: () => void;
+  onRetry?: () => void;
 }) {
   if (profile && !canRun(profile))
     return (
@@ -123,9 +123,11 @@ function PaneStatus({
     return (
       <div className="flex items-center gap-[7px] p-[7px] text-[11.5px] justify-between text-error [&_button]:px-1.5 [&_button]:py-px [&_button]:text-[11px] [&_button]:text-foreground [&_button]:border-strong">
         <span title={entry.error}>Could not read this CLI’s models.</span>
-        <button type="button" onClick={onRetry}>
-          Retry
-        </button>
+        {onRetry ? (
+          <button type="button" onClick={onRetry}>
+            Retry
+          </button>
+        ) : null}
       </div>
     );
   return null;
@@ -174,6 +176,7 @@ export function ModelSelector({
   active,
   lockedAgent,
   side = 'top',
+  accounts = true,
   onSelect,
   onRetry,
   onClosed,
@@ -185,8 +188,11 @@ export function ModelSelector({
   /** Set once a thread has started: picking another agent opens a new thread instead. */
   lockedAgent?: boolean;
   side?: 'top' | 'bottom';
+  /** Offers adding and managing accounts; off where the accounts page can't open. */
+  accounts?: boolean;
   onSelect: (choice: ModelChoice) => void;
-  onRetry: () => void;
+  /** Reads the models again after an error; without it, the error only shows. */
+  onRetry?: () => void;
   onClosed?: () => void;
 }) {
   const openAccounts = useContext(AccountsNavigation);
@@ -314,18 +320,20 @@ export function ModelSelector({
             })}
           </div>
           <span className="flex-1" />
-          <button
-            type="button"
-            className="rail-item relative justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[11.5px] text-muted-foreground enabled:hover:text-foreground"
-            title="Add another account for Claude Code or Codex, with its own folder"
-            onClick={() => {
-              setOpen(false);
-              openAccounts(undefined, true);
-            }}
-          >
-            <Icon name="plus" size={12} />
-            <span className="min-w-0 truncate">Add account</span>
-          </button>
+          {accounts ? (
+            <button
+              type="button"
+              className="rail-item relative justify-start gap-[7px] min-h-[26px] px-1.5 py-[3px] text-[11.5px] text-muted-foreground enabled:hover:text-foreground"
+              title="Add another account for Claude Code or Codex, with its own folder"
+              onClick={() => {
+                setOpen(false);
+                openAccounts(undefined, true);
+              }}
+            >
+              <Icon name="plus" size={12} />
+              <span className="min-w-0 truncate">Add account</span>
+            </button>
+          ) : null}
         </div>
         <Command
           className="flex flex-col min-w-0 min-h-0 rounded-none bg-transparent"
@@ -418,7 +426,7 @@ export function ModelSelector({
               );
             })}
           </CommandList>
-          {paneProfile && !searching ? (
+          {accounts && paneProfile && !searching ? (
             <ProfileActions
               profile={paneProfile}
               onManage={() => {

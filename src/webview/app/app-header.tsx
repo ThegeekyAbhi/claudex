@@ -30,6 +30,22 @@ export function AppHeader({
   const { session } = tabs.current;
   return (
     <header className="h-10 shrink-0 bg-chrome flex items-center">
+      {threadsPane ? (
+        // Beside the list it shows and hides, as a sidebar toggle sits in most chat apps.
+        <div className="flex shrink-0 items-center h-full px-1 border-b border-subtle">
+          <Hint label={threadsPane.collapsed ? 'Show threads' : 'Hide threads'}>
+            <button
+              type="button"
+              className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-expanded:text-foreground"
+              aria-label="Toggle thread list"
+              aria-expanded={!threadsPane.collapsed}
+              onClick={threadsPane.toggle}
+            >
+              <Icon name="sidebar" />
+            </button>
+          </Hint>
+        </div>
+      ) : null}
       <ThreadTabs
         items={tabs.strip.items}
         activeKey={tabs.strip.activeKey}
@@ -108,36 +124,26 @@ export function AppHeader({
             </PopoverContent>
           </Popover>
         ) : null}
-        <Hint label="Changes">
+        <Hint label="All pages">
           <button
             type="button"
-            className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-expanded:text-foreground in-[.question-card]:size-[22px] in-[.question-card]:p-0"
-            aria-label="Toggle changes"
-            aria-expanded={changes.panel === 'changes'}
-            onClick={() => {
-              if (changes.panel !== 'changes') {
-                tabs.history.setOpen(false);
-                if (threadsPane && !threadsPane.collapsed) threadsPane.toggle();
-              }
-              changes.setPanel((value) => (value === 'changes' ? null : 'changes'));
-            }}
+            className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground"
+            aria-label="All pages"
+            onClick={() => send({ type: 'browsePages' })}
+          >
+            <Icon name="page" />
+          </button>
+        </Hint>
+        <Hint label="Open changes in the diff editor">
+          <button
+            type="button"
+            className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground in-[.question-card]:size-[22px] in-[.question-card]:p-0"
+            aria-label="Review changes"
+            onClick={changes.review}
           >
             <Icon name="diff" />
           </button>
         </Hint>
-        {threadsPane ? (
-          <Hint label={threadsPane.collapsed ? 'Show threads' : 'Hide threads'}>
-            <button
-              type="button"
-              className="icon-button text-muted-foreground p-[5px] enabled:hover:text-foreground aria-expanded:text-foreground"
-              aria-label="Toggle thread list"
-              aria-expanded={!threadsPane.collapsed}
-              onClick={threadsPane.toggle}
-            >
-              <Icon name="sidebar" />
-            </button>
-          </Hint>
-        ) : null}
         <OverflowMenu
           items={[
             ...(session && !session.observed && !tabs.page
@@ -161,6 +167,12 @@ export function AppHeader({
                   },
                 ]
               : []),
+            {
+              key: 'today',
+              label: 'Today’s todos',
+              icon: <Icon name="tasks" size={14} />,
+              onSelect: () => send({ type: 'openTodayPage' }),
+            },
             {
               key: 'docs',
               label: 'Documents',

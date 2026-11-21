@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { type Attachment, attachmentToken } from '../../../../../src/shared/model';
-import { referenceParts } from '../../../../../src/webview/features/composer/references';
+import {
+  inlineTitle,
+  isInline,
+  referenceParts,
+} from '../../../../../src/webview/features/composer/references';
 
 const files: Attachment[] = [
   { kind: 'file', path: 'src/app/route.ts' },
@@ -41,4 +45,25 @@ test('image numbering preserves surviving references and assigns new images afte
   assert.equal(attachmentToken(numbered[1]), '[Image #3]');
   assert.equal(attachmentToken(numbered[2]), '[Image #4]');
   assert.deepEqual(numberImages(numbered), numbered);
+});
+
+test('pages and skills sit inline as chips, apart from paths and other attachments', () => {
+  const page: Attachment = { kind: 'page', id: 'cache-plan-1a2b3c', title: 'Cache plan' };
+  const skill: Attachment = { kind: 'skill', name: 'review' };
+  const thread: Attachment = { kind: 'thread', id: 't1', title: 'Old thread' };
+  assert.equal(attachmentToken(page), '[Page: Cache plan]');
+  assert.equal(attachmentToken(skill), '[Skill: review]');
+  const text = 'Use [Skill: review] on [Page: Cache plan] and [scripts]. [Old thread]';
+  const parts = referenceParts(text, [...files, page, skill, thread]);
+  assert.equal(parts.map((part) => part.text).join(''), text);
+  assert.deepEqual(
+    parts.filter((part) => part.attachment).map((part) => [part.label, part.attachment?.kind]),
+    [
+      ['review', 'skill'],
+      ['Cache plan', 'page'],
+      ['scripts', 'folder'],
+    ],
+  );
+  assert.equal(isInline(thread), false);
+  assert.equal(inlineTitle(page as never), 'Page · Cache plan');
 });

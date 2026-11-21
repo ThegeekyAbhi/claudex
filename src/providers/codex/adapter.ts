@@ -14,10 +14,17 @@ import {
   type FileDiff,
   type ImageInput,
   isAssistantPhase,
+  isPageTool,
   type MessageImage,
   type NativeSettings,
+  PAGE_TOOL_DESCRIPTIONS,
+  PAGE_TOOL_NAMES,
+  type PageToolName,
+  type PageTools,
+  pageToolJsonSchema,
   parseRunAgent,
   type Question,
+  READ_ONLY_PAGE_TOOLS,
   RUN_AGENT_TOOL,
   runAgentApprovalTitle,
   runAgentDescription,
@@ -67,6 +74,8 @@ export interface CodexOptions {
   delegate?: Delegate;
   skills?: () => SkillRequest[];
   images?: ImageStore;
+  /** Your pages, as tools. Codex registers them when a thread starts. */
+  pages?: PageTools;
 }
 function optionDetails(options: any[] = []): Record<string, string> {
   return Object.fromEntries(
@@ -148,33 +157,29 @@ export class CodexAgent implements Agent {
     const rpc = this.rpc;
     this.ready = (async () => {
       await initializeCodex(rpc, { experimentalApi: true });
-      const fork = this.session.nativeId ? undefined : this.session.forkFrom;
-      const result = this.session.nativeId
-        ? await rpc.request('thread/resume', { threadId: this.session.nativeId })
-        : fork
-          ? // A branch of another thread, kept up to one of its turns. The source is unchanged.
-            await rpc.request('thread/fork', {
-              threadId: fork.nativeId,
-              ...(fork.at ? { lastTurnId: fork.at } : {}),
-              cwd: this.session.cwd,
-              // Only the new thread's id is used; its turns come from history like any thread.
-              excludeTurns: true,
-            })
-          : await rpc.request('thread/start', {
-              cwd: this.session.cwd,
-              ...(this.options.delegate
-                ? {
-                    dynamicTools: [
-                      {
-                        type: 'function',
-                        name: RUN_AGENT_TOOL,
-                        description: runAgentDescription(),
-                        inputSchema: runAgentJsonSchema(),
-                      },
-                    ],
-                  }
-                : {}),
-            });
+      const { nativeId, forkFrom } = this.session;
+      let result: {
+        thread: { id: string; name?: string };
+        instructionSources?: unknown;
+        model?: string;
+      };
+      if (nativeId) {
+        result = await rpc.request('thread/resume', { threadId: nativeId });
+      } else if (forkFrom) {
+        result = await rpc.request('thread/fork', {
+          threadId: forkFrom.nativeId,
+          ...(forkFrom.at ? { lastTurnId: forkFrom.at } : {}),
+          cwd: this.session.cwd,
+          // Only the new thread's id is used; its turns come from history like any thread.
+          excludeTurns: true,
+        });
+      } else {
+        const dynamicTools = this.dynamicTools();
+        result = await rpc.request('thread/start', {
+          cwd: this.session.cwd,
+          ...(dynamicTools.length ? { dynamicTools } : {}),
+        });
+      }
       this.threadId = result.thread.id;
       this.captureSettings(result);
       if (Array.isArray(result.instructionSources))
@@ -671,12 +676,56 @@ export class CodexAgent implements Agent {
       },
     });
   }
+  /** Tools this extension adds to a new Codex thread. */
+  private dynamicTools() {
+    return [
+      ...(this.options.delegate
+        ? [
+            {
+              type: 'function',
+              name: RUN_AGENT_TOOL,
+              description: runAgentDescription(),
+              inputSchema: runAgentJsonSchema(),
+            },
+          ]
+        : []),
+      ...(this.options.pages
+        ? PAGE_TOOL_NAMES.map((name) => ({
+            type: 'function',
+            name,
+            description: PAGE_TOOL_DESCRIPTIONS[name],
+            inputSchema: pageToolJsonSchema(name),
+          }))
+        : []),
+    ];
+  }
+  private pageCall(id: string | number, name: PageToolName, args: unknown): void {
+    const rpc = this.rpc;
+    const pages = this.options.pages;
+    if (!rpc) return;
+    const reply = (success: boolean, text: string) =>
+      rpc.reply(id, { success, contentItems: [{ type: 'inputText', text }] });
+    if (!pages) {
+      reply(false, 'Pages are not available in this thread.');
+      return;
+    }
+    // Ask is read-only: it may read the list but not change it.
+    if (this.session.mode === 'ask' && !READ_ONLY_PAGE_TOOLS.includes(name)) {
+      reply(false, 'Ask mode is read-only, so this thread can read pages but not suggest edits.');
+      return;
+    }
+    pages(name, args).then(
+      (text) => reply(true, text),
+      (error) => reply(false, error instanceof Error ? error.message : String(error)),
+    );
+  }
   private serverRequest(id: string | number, method: string, params: any): void {
     const rpc = this.rpc;
     if (!rpc) return;
     const requestId = String(id);
     if (method === 'item/tool/call') {
       if (params.tool === RUN_AGENT_TOOL) this.runAgentCall(id, params);
+      else if (isPageTool(params.tool)) this.pageCall(id, params.tool, params.arguments);
       else
         rpc.reply(id, {
           success: false,

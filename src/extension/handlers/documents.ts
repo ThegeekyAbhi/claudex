@@ -142,7 +142,11 @@ export class DocumentsHandlers {
         };
       }),
     );
-    const title = `${CHANGES_TITLE} · ${baseline?.slice(0, 7) ?? 'no commits'} ↔ working tree`;
+    // VS Code's editor has no place for per-file counts, so the tab carries the totals.
+    const added = result.files.reduce((sum, file) => sum + file.additions, 0);
+    const removed = result.files.reduce((sum, file) => sum + file.deletions, 0);
+    const count = `${result.files.length} ${result.files.length === 1 ? 'file' : 'files'}`;
+    const title = `${CHANGES_TITLE} · ${baseline?.slice(0, 7) ?? 'no commits'} ↔ working tree · ${count} +${added} −${removed}`;
     // Same files, same tab: content stays live because the right side is the real file.
     const source = vscode.Uri.from({
       scheme: 'multi-diff-editor',
@@ -304,10 +308,6 @@ export class DocumentsHandlers {
       },
       handoff: async (action, surface) => {
         await this.handoff(action.id, surface);
-      },
-      changes: async (action, surface) => {
-        const result = { ...(await this.listChanges(action.id)), requestId: action.requestId };
-        await surface.webview.postMessage({ type: 'changes', id: action.id, result });
       },
       reviewChanges: async (action) => {
         await this.reviewAll(action.id, action.file);

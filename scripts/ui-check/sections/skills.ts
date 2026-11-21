@@ -71,18 +71,21 @@ export async function checkSkills(ctx: UiCheckContext): Promise<void> {
   assert.equal(await skillMenu.getByText('release', { exact: true }).count(), 0);
   await page.screenshot({ path: 'test-results/screenshots/skills-menu.png' });
   await box.press('Enter');
-  assert.equal(
-    await box.getAttribute('data-value'),
-    '',
-    'the search text goes when the skill is picked',
+  // The pick replaces the search text with the skill, inline where you typed it.
+  await page.waitForFunction(
+    () =>
+      document.querySelector<HTMLElement>('.composer-input')?.dataset.value === '[Skill: review] ',
   );
-  const chip = page.locator('.composer .attachment-chip', { hasText: 'review' });
+  const chip = page.locator('.composer-input .inline-reference', { hasText: 'review' });
   await chip.waitFor();
+  assert.equal(await chip.getAttribute('title'), 'Skill · review');
   assert.equal(await page.getByText('Used skill').count(), 0, 'a selection is not use');
   // Another agent without this skill mutes the chip and says so, rather than sending it.
   await pickAgent('Claude', 'Sonnet 5.5');
   await page.getByText('Claude doesn’t have review.').waitFor();
-  await box.fill('Check this');
+  await box.focus();
+  await box.press('End');
+  await box.pressSequentially('Check this');
   await box.press('Enter');
   const startsBefore = (await sentOf('start')).length;
   await box.press('Enter');
@@ -125,14 +128,21 @@ export async function checkSkills(ctx: UiCheckContext): Promise<void> {
   );
   await page.screenshot({ path: 'test-results/screenshots/skills-menu-borrow.png' });
   await box.press('Enter');
-  const borrowed = page.locator('.composer .attachment-chip', { hasText: 'polish · from Claude' });
+  const borrowed = page.locator('.composer-input .inline-reference', {
+    hasText: 'polish · from Claude',
+  });
   await borrowed.waitFor();
   assert.equal(
     await page.getByText('Codex doesn’t have polish.').count(),
     0,
     'a borrowed skill is not missing',
   );
-  await borrowed.getByRole('button', { name: /^Remove/ }).click();
+  // Deleting the chip from the text removes the skill, as for a file.
+  await box.focus();
+  await box.press('End');
+  await box.press('Backspace');
+  await box.press('Backspace');
+  await borrowed.waitFor({ state: 'detached' });
   // The Skills page lists each CLI's skills, and only offers what that CLI can do.
   await box.fill('/');
   await skillMenu.getByText('Manage skills…').dispatchEvent('pointerdown');

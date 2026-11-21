@@ -31,8 +31,8 @@ createServer(async (request, response) => {
     response.setHeader('Content-Type', 'text/html');
     const surface = new URL(request.url, 'http://localhost').searchParams.get('surface');
     const page =
-      surface === 'plan'
-        ? html.replace('<html lang="en">', '<html lang="en" data-surface="plan">')
+      surface === 'plan' || surface === 'pages' || surface === 'pagesOverview' || surface === 'page'
+        ? html.replace('<html lang="en">', `<html lang="en" data-surface="${surface}">`)
         : html;
     response.end(page.replace('__NONCE__', nonce));
     return;

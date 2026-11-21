@@ -273,45 +273,9 @@ const scenes: Record<string, (guide: Guide) => Promise<void>> = {
         ],
       }),
     );
-    await caption('Open Changes to inspect uncommitted files in this checkout');
-    await click(page.getByRole('button', { name: 'Toggle changes' }));
-    await page.evaluate(() =>
-      window.postMessage(
-        {
-          type: 'changes',
-          id: 'changes',
-          result: {
-            baseline: 'a1b2c3d4e5f6',
-            files: [
-              {
-                path: 'src/request-cache.ts',
-                kind: 'update',
-                patch: '@@ -1 +1 @@\n-return cache.get(key);\n+return readFreshEntry(key);',
-                additions: 1,
-                deletions: 1,
-              },
-              {
-                path: 'test/request-cache.test.ts',
-                kind: 'add',
-                patch: '@@ -0,0 +1 @@\n+test("expired entries are fetched again");',
-                additions: 1,
-                deletions: 0,
-              },
-            ],
-          },
-        },
-        '*',
-      ),
-    );
-    await page.getByRole('complementary').getByText('2 files').waitFor();
-    await frame(2000);
-    await page.getByRole('textbox', { name: 'Search changed files' }).fill('request-cache');
-    await frame(1800);
-    await caption('Select a file to open VS Code’s Changes editor');
-    await click(
-      page.getByRole('button', { name: 'Show src/request-cache.ts in the Changes editor' }),
-    );
-    assert.equal((await ctx.sentOf('reviewChanges')).at(-1).file, 'src/request-cache.ts');
+    await caption('Changes opens every uncommitted file in VS Code’s diff editor');
+    await click(page.getByRole('button', { name: 'Review changes' }));
+    assert.equal((await ctx.sentOf('reviewChanges')).at(-1).id, 'changes');
     await caption('Native editor opens in VS Code · Not shown in this webview capture');
     await frame(2200);
   },

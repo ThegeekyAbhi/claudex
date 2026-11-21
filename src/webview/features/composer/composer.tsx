@@ -16,6 +16,7 @@ import { ComposerCaption } from './caption';
 import { ComposerEditor } from './composer-editor';
 import { ComposerControls } from './controls';
 import { ImageStrip } from './image-strip';
+import { isInline } from './references';
 import type { ComposerProps } from './types';
 import { useComposer } from './use-composer';
 
@@ -29,6 +30,7 @@ export function Composer(props: ComposerProps): ReactElement {
     onManageSkills,
     session,
     sessions,
+    pages,
     project,
     choice,
     draft,
@@ -85,9 +87,8 @@ export function Composer(props: ComposerProps): ReactElement {
     pickAgent,
     addFiles,
   } = useComposer(props);
-  const contextAttachments = attachments.filter(
-    (item) => item.kind !== 'file' && item.kind !== 'folder' && item.kind !== 'image',
-  );
+  // Files, folders, pages and skills sit in the text as chips; the rest show above it.
+  const contextAttachments = attachments.filter((item) => !isInline(item) && item.kind !== 'image');
   return (
     <div
       className={`composer-area pt-2 px-6 pb-2.5 shrink-0 relative [&.top]:pt-3.5 max-[900px]:py-2 max-[900px]:px-3 [.question-dock+&]:pt-0 [.plan-dock+&]:pt-0 ${top ? 'top' : ''}`}
@@ -168,6 +169,7 @@ export function Composer(props: ComposerProps): ReactElement {
             results={contextResults}
             project={project}
             sessions={sessions}
+            pages={pages}
             currentId={session?.id}
             anchor={anchor}
             leading={trigger.mark === '@' && !draft.slice(0, trigger.start).trim()}

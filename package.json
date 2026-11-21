@@ -2,7 +2,7 @@
   "name": "claudex",
   "displayName": "Claudex - Claude Code & Codex",
   "description": "Claude Code and Codex in one AI coding workspace. Chat, carry context between agents, turn plans into code, and review diffs in VS Code.",
-  "version": "0.9.4",
+  "version": "0.9.7",
   "publisher": "nerdyabhi",
   "icon": "media/claudex-icon.png",
   "galleryBanner": {
@@ -47,7 +47,8 @@
   "main": "./dist/extension.cjs",
   "activationEvents": [
     "onStartupFinished",
-    "onWebviewPanel:agentWorkspace"
+    "onWebviewPanel:agentWorkspace",
+    "onFileSystem:claudex-page"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -91,6 +92,32 @@
       {
         "command": "agentWorkspace.signIn",
         "title": "Claudex: Sign In to an Agent"
+      },
+      {
+        "command": "agentWorkspace.openToday",
+        "title": "Claudex: Open Today's Page"
+      },
+      {
+        "command": "agentWorkspace.searchPages",
+        "title": "Claudex: Open a Page…"
+      },
+      {
+        "command": "agentWorkspace.newPage",
+        "title": "Claudex: New Page"
+      },
+      {
+        "command": "agentWorkspace.allPages",
+        "title": "Claudex: All Pages",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "agentWorkspace.addToToday",
+        "title": "Claudex: Add Task to Today"
+      },
+      {
+        "command": "agentWorkspace.openPageAsText",
+        "title": "Claudex: Open Page as Markdown",
+        "icon": "$(go-to-file)"
       }
     ],
     "walkthroughs": [
@@ -318,17 +345,61 @@
           "command": "agentWorkspace.openInEditor",
           "when": "view == agentWorkspace.chat || view == agentWorkspace.chatFallback",
           "group": "navigation"
+        },
+        {
+          "command": "agentWorkspace.allPages",
+          "when": "view == agentWorkspace.pages || view == agentWorkspace.pagesFallback",
+          "group": "navigation"
         }
       ],
       "editor/title": [
         {
+          "command": "agentWorkspace.openPageAsText",
+          "when": "activeCustomEditorId == agentWorkspace.page",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentWorkspace.allPages",
+          "when": "activeCustomEditorId == agentWorkspace.page",
+          "group": "navigation@0"
+        },
+        {
           "command": "agentWorkspace.open",
           "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "agentWorkspace.addToToday",
+          "when": "editorHasSelection",
+          "group": "9_claudex"
         }
       ]
     },
     "markdown.previewScripts": [
       "./dist/markdown-preview.js"
+    ],
+    "markdown.previewStyles": [
+      "./dist/markdown-preview.css"
+    ],
+    "keybindings": [
+      {
+        "command": "agentWorkspace.addToToday",
+        "key": "ctrl+alt+shift+t",
+        "mac": "cmd+alt+shift+t"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "agentWorkspace.page",
+        "displayName": "Claudex Page",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "option"
+      }
     ]
   },
   "scripts": {
@@ -348,7 +419,11 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.318",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/language-data": "6.5.2",
     "@fontsource-variable/inter": "^5.3.0",
+    "@milkdown/crepe": "7.23.0",
+    "@milkdown/kit": "7.23.0",
     "@react-symbols/icons": "^1.4.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
